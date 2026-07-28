@@ -27,6 +27,7 @@ import "./Search.css";
 interface ParsedQuery {
   sector?: string;
   location?: string;
+  country?: string;
   context?: string;
 }
 
@@ -139,10 +140,15 @@ function missionMatchesQuery(m: Mission, parsed: ParsedQuery): boolean {
   const locOk = parsed.location
     ? normalizeLabel(m.location) === normalizeLabel(parsed.location)
     : true;
+  const countryOk = parsed.country
+    ? normalizeLabel(m.country ?? "") === normalizeLabel(parsed.country) ||
+      normalizeLabel(m.country ?? "").includes(normalizeLabel(parsed.country)) ||
+      normalizeLabel(parsed.country).includes(normalizeLabel(m.country ?? ""))
+    : true;
   const secOk = parsed.sector
     ? missionMatchesSector(m, parsed.sector)
     : true;
-  return locOk && secOk;
+  return locOk && countryOk && secOk;
 }
 
 function companyMatchesSector(company: Company, sector: string): boolean {
@@ -245,6 +251,7 @@ export function SingleSearchPage() {
   const { canInteract, needsLogin, isPending } = useCanInteract();
   const [missions, setMissions] = useState<Mission[]>([]);
   const [location, setLocation] = useState("");
+  const [country, setCountry] = useState("");
   const [locationReady, setLocationReady] = useState(false);
   const [geoHint, setGeoHint] = useState<string | null>(null);
   const [what, setWhat] = useState("");
@@ -288,17 +295,21 @@ export function SingleSearchPage() {
       return;
     }
     if (!navigator.geolocation) {
-      setGeoHint("Share your municipality below (geolocation unavailable).");
+      setGeoHint(
+        "Type any city or municipality worldwide — browser geolocation is optional.",
+      );
       return;
     }
     navigator.geolocation.getCurrentPosition(
       () => {
         setGeoHint(
-          "We detected a device location — confirm or edit your municipality below (we store a place name, not GPS).",
+          "Optional tip: we can use a device hint, but you choose the place name. Any country works.",
         );
       },
       () => {
-        setGeoHint("Location access denied — type your municipality.");
+        setGeoHint(
+          "Type any city or municipality worldwide (browser location is optional).",
+        );
       },
       { timeout: 8000 },
     );
@@ -324,9 +335,10 @@ export function SingleSearchPage() {
   async function onSearch(e: FormEvent) {
     e.preventDefault();
     const loc = location.trim();
+    const countryPart = country.trim();
     const sectorPart = what.trim() || query.trim();
     if (!loc) {
-      setError("Confirm where you are searching first (municipality / place).");
+      setError("Confirm where you are searching first (city / municipality).");
       return;
     }
     if (!sectorPart) {
@@ -365,44 +377,39 @@ export function SingleSearchPage() {
 
     try {
       const parsed = parseQuery(composed, missions);
-      if (!parsed.location) parsed.location = loc;
+      // Confirmed place fields win — any city/country worldwide, not only seeded ones.
+      parsed.location = loc;
+      parsed.country = countryPart || parsed.country;
+      // Free-text trade if no alias matched (BGI: not limited to NL trades).
+      if (!parsed.sector) parsed.sector = sectorPart;
       setParsedHint(parsed);
-
-      // Never silently fall through to the first mission (usually DEMO).
-      if (!parsed.location && !parsed.sector) {
-        setNoMatchReason(
-          "Could not detect a location or sector in your query. Try e.g. “painters in Haarlemmermeer”, or pick an investigation below.",
-        );
-        return;
-      }
 
       let candidates = missions.filter((m) => missionMatchesQuery(m, parsed));
 
-      // Location-only query across different subsectors → ask for sector.
-      if (parsed.location && !parsed.sector) {
+      // Location-only ambiguity across different subsectors → ask for sector.
+      if (parsed.location && !what.trim() && !parsed.sector) {
         const subsectors = [
           ...new Set(candidates.map((m) => normalizeLabel(m.subsector))),
         ];
         if (subsectors.length > 1) {
           setNoMatchReason(
-            `Several investigations exist in ${parsed.location}. Add a sector (e.g. painters, plumbers) so we pick the right one.`,
+            `Several investigations exist in ${parsed.location}. Add a trade (e.g. painters, plumbers) so we pick the right one.`,
           );
           return;
         }
       }
 
-      // Sector-only: keep candidates. Location+sector: already filtered.
       if (!candidates.length) {
         const available = missions
           .map(
             (m) =>
-              `${m.location} · ${m.subsector.replace(/\s*\([^)]*\)\s*/g, "").trim()}`,
+              `${m.location}${m.country ? `, ${m.country}` : ""} · ${m.subsector.replace(/\s*\([^)]*\)\s*/g, "").trim()}`,
           )
           .filter((v, i, arr) => arr.indexOf(v) === i);
         setNoMatchReason(
           available.length
-            ? `No investigation matches this query. Available: ${available.join("; ")}.`
-            : "No investigations yet. Create one in Mission Control first.",
+            ? `No finished investigation for “${sectorPart}” in ${loc}${countryPart ? ` (${countryPart})` : ""} yet. That is not a geo-block — the public catalogue only has: ${available.join("; ")}. Start a new investigation for this place (any country).`
+            : `No investigations in the catalogue yet. Start one for ${loc}${countryPart ? ` (${countryPart})` : ""} — worldwide places are welcome.`,
         );
         return;
       }
@@ -421,11 +428,12 @@ export function SingleSearchPage() {
       const rankedMissions = rankMissionsForQuery(bundles, parsed);
       const best = rankedMissions[0];
       if (!best) {
-        setNoMatchReason("No investigation matched after loading data.");
+        setNoMatchReason(
+          `No finished investigation for “${sectorPart}” in ${loc} yet. Start a new one — any country is allowed.`,
+        );
         return;
       }
 
-      // Prefer a mission that actually has seed/imported companies when twins exist.
       setMatchedMission(best.mission);
       setTrustedCount(countTrustedLists(best.sources));
 
@@ -436,8 +444,10 @@ export function SingleSearchPage() {
         if (!prev || r.createdAt > prev.createdAt) reviewMap.set(r.targetId, r);
       }
 
-      let planEntries: { layer: "national" | "regional" | "local"; category: string }[] =
-        [];
+      let planEntries: {
+        layer: "national" | "regional" | "local";
+        category: string;
+      }[] = [];
       try {
         const plan = await api.getSearchPlan(
           best.mission.search_plan_version || DEFAULT_SEARCH_PLAN_VERSION,
@@ -488,7 +498,7 @@ export function SingleSearchPage() {
 
       if (!results.length) {
         setNoMatchReason(
-          `Matched “${best.mission.location} · ${best.mission.subsector}” but it has no companies yet. Import or discover companies in the Data Worker for that mission — seed data only lives on investigations that were seeded or filled.`,
+          `Matched “${best.mission.location} · ${best.mission.subsector}” but it has no companies yet. Open the Data Worker to import or discover companies.`,
         );
       }
     } catch (err) {
@@ -502,30 +512,39 @@ export function SingleSearchPage() {
     if (!canInteract) {
       setError(
         needsLogin
-          ? "Sign in as an approved CURAD volunteer to start an investigation."
+          ? "Sign in as an approved CURAD volunteer to start an investigation anywhere in the world."
           : isPending
             ? "Awaiting admin approval — you cannot start investigations yet."
             : "You cannot start investigations with this account.",
       );
       return;
     }
-    if (!parsedHint?.location || !parsedHint?.sector) return;
+    const loc = parsedHint?.location?.trim() || location.trim();
+    const sectorRaw = parsedHint?.sector?.trim() || what.trim();
+    if (!loc || !sectorRaw) return;
     setCreating(true);
     setError(null);
     try {
       const now = new Date().toISOString();
-      const subsector = displaySubsector(parsedHint.sector);
+      const subsector = displaySubsector(sectorRaw);
+      const missionCountry =
+        (parsedHint?.country || country).trim() || "Unspecified";
       const mission: Mission = {
         id: uuid(),
-        location: parsedHint.location,
-        country: "Netherlands",
+        location: loc,
+        country: missionCountry,
         sector: "Home Maintenance",
         subsector,
-        goal: `Find trustworthy ${subsector.toLowerCase()} in ${parsedHint.location} and validate source reliability.`,
+        goal: `Find trustworthy ${subsector.toLowerCase()} in ${loc}${missionCountry !== "Unspecified" ? ` (${missionCountry})` : ""} and validate source reliability.`,
         search_plan_version: DEFAULT_SEARCH_PLAN_VERSION,
         discoveryBrief: {
-          approach: "Warm-start reusable lists from catalogue; fill sector-specific gaps.",
-          candidateListTypes: ["registry", "local_business_association", "branch_association"],
+          approach:
+            "Warm-start reusable lists from catalogue when they apply; fill local/sector gaps for this place.",
+          candidateListTypes: [
+            "registry",
+            "local_business_association",
+            "branch_association",
+          ],
           successCriteria:
             "≥5 CARA-accepted/adjusted lists before company deep-check",
           producer: "Human",
@@ -627,8 +646,8 @@ export function SingleSearchPage() {
       <div className="search-hero">
         <h1>Single Search</h1>
         <p className="thesis">
-          Confirm where you are, say what you need. Evidence-based, not
-          popularity-based. Every score has a reason.
+          Search any city worldwide. Results come from finished investigations —
+          if yours is not in the catalogue yet, start one.
         </p>
         {!searchUnlimited && remaining != null ? (
           <p className="muted">
@@ -648,7 +667,19 @@ export function SingleSearchPage() {
               setLocation(e.target.value);
               setLocationReady(false);
             }}
-            placeholder="Municipality / place (e.g. Haarlemmermeer)"
+            placeholder="City / municipality (e.g. Eindhoven, Ann Arbor, Nairobi)"
+          />
+        </label>
+        <label>
+          Country <span className="muted">(optional but helps worldwide)</span>
+          <input
+            type="text"
+            value={country}
+            onChange={(e) => {
+              setCountry(e.target.value);
+              setLocationReady(false);
+            }}
+            placeholder="e.g. Netherlands, United States, Kenya"
           />
         </label>
         {geoHint ? <p className="muted">{geoHint}</p> : null}
@@ -718,18 +749,18 @@ export function SingleSearchPage() {
           <p>
             <strong>
               {!matchedMission
-                ? "No investigation found for this query."
+                ? "No catalogue results for this place yet"
                 : "Investigation matched, but no companies to rank."}
             </strong>
           </p>
           {noMatchReason ? <p className="muted">{noMatchReason}</p> : null}
           {parsedHint && (parsedHint.location || parsedHint.sector) ? (
             <p className="muted mono" style={{ fontSize: "0.85rem" }}>
-              Parsed:{" "}
+              Looking for:{" "}
               {[
-                parsedHint.location && `location=${parsedHint.location}`,
-                parsedHint.sector && `sector=${parsedHint.sector}`,
-                parsedHint.context && `context=${parsedHint.context}`,
+                parsedHint.location && `place=${parsedHint.location}`,
+                parsedHint.country && `country=${parsedHint.country}`,
+                parsedHint.sector && `trade=${parsedHint.sector}`,
               ]
                 .filter(Boolean)
                 .join(" · ")}
@@ -737,26 +768,27 @@ export function SingleSearchPage() {
           ) : null}
           <div
             className="row"
-            style={{ justifyContent: "center", marginTop: "0.75rem", gap: "0.5rem" }}
+            style={{ justifyContent: "center", marginTop: "0.75rem", gap: "0.5rem", flexWrap: "wrap" }}
           >
             {!matchedMission &&
-            parsedHint?.location &&
-            parsedHint?.sector ? (
-              <button
-                type="button"
-                className="btn"
-                disabled={creating || !canInteract}
-                onClick={() => void startInvestigationFromQuery()}
-                title={
-                  !canInteract
-                    ? "Approved CURAD volunteers only"
-                    : undefined
-                }
-              >
-                {creating
-                  ? "Starting…"
-                  : `Start ${displaySubsector(parsedHint.sector)} · ${parsedHint.location}`}
-              </button>
+            (parsedHint?.location || location.trim()) &&
+            (parsedHint?.sector || what.trim()) ? (
+              canInteract ? (
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={creating}
+                  onClick={() => void startInvestigationFromQuery()}
+                >
+                  {creating
+                    ? "Starting…"
+                    : `Start investigation · ${displaySubsector(parsedHint?.sector || what)} · ${parsedHint?.location || location.trim()}`}
+                </button>
+              ) : (
+                <Link className="btn" to="/signup">
+                  Join CURAD to investigate this place
+                </Link>
+              )
             ) : null}
             {matchedMission ? (
               <Link
@@ -766,17 +798,19 @@ export function SingleSearchPage() {
                 Open Data Worker → Import
               </Link>
             ) : null}
-            <Link className="btn secondary" to="/">
-              ← Mission Control
+            <Link className="btn secondary" to="/control">
+              Mission Control
             </Link>
+            {!canInteract ? (
+              <Link className="btn secondary" to="/login">
+                Sign in
+              </Link>
+            ) : null}
           </div>
-          {!matchedMission &&
-          parsedHint?.location &&
-          parsedHint?.sector ? (
+          {!matchedMission ? (
             <p className="muted" style={{ marginTop: "0.85rem", fontSize: "0.85rem" }}>
-              Starts a Data Worker mission and warm-starts reusable seed lists
-              (e.g. KvK, local associations). Sector-specific lists stay as gaps
-              to fill — companies are not copied from Painters.
+              Worldwide: Eindhoven, Michigan, Nairobi — same flow. National
+              catalogues can warm-start later; local lists stay as gaps to fill.
             </p>
           ) : null}
         </div>
