@@ -110,9 +110,9 @@ export function HomePage() {
         <p className="home-section-action">
           <a
             className="home-btn home-btn--outline"
-            href="mailto:partners@h3trust.org?subject=H3%20Trust%20partnership"
+            href="mailto:info@handyhousehelp.ai?subject=H3%20Trust%20partnership"
           >
-            Contact partners@h3trust.org
+            Contact info@handyhousehelp.ai
           </a>
         </p>
       </section>

@@ -111,22 +111,28 @@
 
 .search-where {
   max-width: none;
-  margin: 0 0 1.15rem;
-  padding: 0 0 1.15rem;
-  border-bottom: 1px solid var(--line, #c9c0ae);
+  margin: 1.1rem 0 0;
+  padding: 1rem 0 0;
+  border-top: 1px solid var(--line, #c9c0ae);
+}
+
+.search-place-row {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 0.65rem;
 }
 
 .search-where label {
   display: grid;
   gap: 0.3rem;
-  font-size: 0.92rem;
+  font-size: 0.88rem;
   font-weight: 600;
   color: var(--ink, #1a1f1c);
 }
 
 .search-where input {
   width: 100%;
-  padding: 0.6rem 0.75rem;
+  padding: 0.55rem 0.7rem;
   border: 1px solid var(--line, #c9c0ae);
   background: var(--white, #faf8f3);
   color: var(--ink, #1a1f1c);
@@ -141,6 +147,25 @@
 
 .search-where .muted {
   font-weight: 400;
+}
+
+.search-place-confirmed {
+  margin: 0.15rem 0 0;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.9rem;
+  color: var(--ink-soft, #3d4740);
+  background: var(--teal-soft, #e1f5ee);
+  border-left: 3px solid var(--teal, #0f6e56);
+}
+
+.search-place-confirmed strong {
+  color: var(--ink, #1a1f1c);
+  font-weight: 650;
+}
+
+.search-place-hint {
+  margin: 0.15rem 0 0;
+  font-size: 0.85rem;
 }
 
 /* Search bar */
@@ -425,5 +450,9 @@
 
   .search-bar .btn {
     width: 100%;
+  }
+
+  .search-place-row {
+    grid-template-columns: 1fr;
   }
 }

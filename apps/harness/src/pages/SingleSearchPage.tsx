@@ -252,7 +252,6 @@ export function SingleSearchPage() {
   const [missions, setMissions] = useState<Mission[]>([]);
   const [location, setLocation] = useState("");
   const [country, setCountry] = useState("");
-  const [locationReady, setLocationReady] = useState(false);
   const [geoHint, setGeoHint] = useState<string | null>(null);
   const [what, setWhat] = useState("");
   const [query, setQuery] = useState("");
@@ -291,29 +290,24 @@ export function SingleSearchPage() {
   useEffect(() => {
     if (profile?.preferred_location) {
       setLocation(profile.preferred_location);
-      setLocationReady(true);
       return;
     }
     if (!navigator.geolocation) {
-      setGeoHint(
-        "Type any city or municipality worldwide — browser geolocation is optional.",
-      );
+      setGeoHint("City or municipality — any country.");
       return;
     }
     navigator.geolocation.getCurrentPosition(
       () => {
-        setGeoHint(
-          "Optional tip: we can use a device hint, but you choose the place name. Any country works.",
-        );
+        setGeoHint("City or municipality — any country.");
       },
       () => {
-        setGeoHint(
-          "Type any city or municipality worldwide (browser location is optional).",
-        );
+        setGeoHint("City or municipality — any country.");
       },
       { timeout: 8000 },
     );
   }, [profile?.preferred_location]);
+
+  const placeLabel = [location.trim(), country.trim()].filter(Boolean).join(", ");
 
   const exampleQueries = useMemo(() => {
     const seen = new Set<string>();
@@ -337,16 +331,12 @@ export function SingleSearchPage() {
     const loc = location.trim();
     const countryPart = country.trim();
     const sectorPart = what.trim() || query.trim();
-    if (!loc) {
-      setError("Confirm where you are searching first (city / municipality).");
-      return;
-    }
     if (!sectorPart) {
       setError("Say what you need (e.g. painters, plumbers).");
       return;
     }
-    if (!locationReady) {
-      setError("Confirm your location before searching.");
+    if (!loc) {
+      setError("Add a place (city / municipality) so we know where to look.");
       return;
     }
 
@@ -674,60 +664,17 @@ export function SingleSearchPage() {
       </header>
 
       <section className="search-panel" aria-label="Search">
-        <div className="search-where stack">
-          <p className="search-panel-label">1 · Place</p>
-          <label>
-            Where are you searching?
-            <input
-              type="text"
-              value={location}
-              onChange={(e) => {
-                setLocation(e.target.value);
-                setLocationReady(false);
-              }}
-              placeholder="City / municipality (e.g. Eindhoven, Ann Arbor, Nairobi)"
-            />
-          </label>
-          <label>
-            Country <span className="muted">(optional but helps worldwide)</span>
-            <input
-              type="text"
-              value={country}
-              onChange={(e) => {
-                setCountry(e.target.value);
-                setLocationReady(false);
-              }}
-              placeholder="e.g. Netherlands, United States, Kenya"
-            />
-          </label>
-          {geoHint ? <p className="muted">{geoHint}</p> : null}
-          <button
-            type="button"
-            className={`btn secondary small${locationReady ? " active" : ""}`}
-            disabled={!location.trim()}
-            onClick={() => setLocationReady(true)}
-          >
-            {locationReady ? "Location confirmed" : "Confirm location"}
-          </button>
-        </div>
-
-        {/* Search bar */}
         <form className="search-bar" onSubmit={onSearch}>
-          <p className="search-panel-label">2 · Need</p>
+          <p className="search-panel-label">1 · Need</p>
           <div className="search-bar-row">
             <input
               type="text"
               value={what}
               onChange={(e) => setWhat(e.target.value)}
               placeholder='What do you need? e.g. "painters" or "loodgieters"'
-              disabled={!locationReady}
               autoFocus
             />
-            <button
-              type="submit"
-              className="btn"
-              disabled={loading || !locationReady}
-            >
+            <button type="submit" className="btn" disabled={loading}>
               {loading ? "Searching…" : "Search"}
             </button>
           </div>
@@ -747,13 +694,9 @@ export function SingleSearchPage() {
                   );
                   if (m) {
                     setLocation(m.location);
-                    setLocationReady(true);
+                    if (m.country) setCountry(m.country);
                   }
-                  setWhat(
-                    q
-                      .replace(/\s+in\s+.+$/i, "")
-                      .trim(),
-                  );
+                  setWhat(q.replace(/\s+in\s+.+$/i, "").trim());
                 }}
               >
                 {q}
@@ -761,6 +704,37 @@ export function SingleSearchPage() {
             ))}
           </div>
         ) : null}
+
+        <div className="search-where stack">
+          <p className="search-panel-label">2 · Place</p>
+          <div className="search-place-row">
+            <label className="search-place-main">
+              Where?
+              <input
+                type="text"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="City / municipality"
+              />
+            </label>
+            <label className="search-place-country">
+              Country <span className="muted">optional</span>
+              <input
+                type="text"
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
+                placeholder="e.g. Netherlands"
+              />
+            </label>
+          </div>
+          {placeLabel ? (
+            <p className="search-place-confirmed" role="status">
+              Searching in <strong>{placeLabel}</strong>
+            </p>
+          ) : geoHint ? (
+            <p className="muted search-place-hint">{geoHint}</p>
+          ) : null}
+        </div>
       </section>
 
       {error ? <div className="error">{error}</div> : null}
