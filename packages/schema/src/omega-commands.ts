@@ -7,6 +7,7 @@ import {
   ServiceContextSchema,
   KvkGateSchema,
 } from "./index";
+import { AccessBarrierSchema } from "./access-barriers";
 import {
   SourceFieldKeySchema,
   RichnessSchema,
@@ -101,6 +102,8 @@ export const ProbeOutputSchema = z.object({
   extractionGuide: ExtractionGuideSchema,
   suggestedConfidence: z.number().min(0).max(100).optional(),
   evidence: SourceEvidenceSchema,
+  /** Ω raises this when the list needs a human to unlock. Harness stores it on the Source. */
+  accessBarrier: AccessBarrierSchema.optional(),
 });
 export type ProbeOutput = z.infer<typeof ProbeOutputSchema>;
 

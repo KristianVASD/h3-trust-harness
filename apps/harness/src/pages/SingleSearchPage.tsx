@@ -3,6 +3,9 @@ import { Link, useNavigate } from "react-router-dom";
 import { v4 as uuid } from "uuid";
 import {
   computeListCoverage,
+  computeMissionCoverage,
+  computeResultCoverage,
+  explainResultCoverage,
   DEFAULT_SEARCH_PLAN_VERSION,
   type Company,
   type Mission,
@@ -227,6 +230,9 @@ interface RankedCompany {
   lists: { id: string; name: string }[];
   humanReview?: Review;
   displayScore: number;
+  /** Phase 8 — mission × list × kvk confidence (0..100). */
+  coverageConfidence: number;
+  coverageWhy: string;
 }
 
 /* ── Page ── */
@@ -360,6 +366,22 @@ export function SingleSearchPage() {
         if (!prev || r.createdAt > prev.createdAt) reviewMap.set(r.targetId, r);
       }
 
+      let planEntries: { layer: "national" | "regional" | "local"; category: string }[] =
+        [];
+      try {
+        const plan = await api.getSearchPlan(
+          best.mission.search_plan_version || DEFAULT_SEARCH_PLAN_VERSION,
+        );
+        planEntries = plan.entries;
+      } catch {
+        /* coverage still works with empty plan */
+      }
+      const missionCov = computeMissionCoverage({
+        sources: best.sources,
+        companies: best.companies,
+        planEntries,
+      });
+
       let results: RankedCompany[] = best.companies
         .filter((c) => c.kvk_gate !== "fail")
         .filter((c) =>
@@ -370,6 +392,7 @@ export function SingleSearchPage() {
           const human = reviewMap.get(c.id);
           const displayScore =
             human?.humanScore != null ? human.humanScore : cov.score;
+          const coverageConfidence = computeResultCoverage(c, missionCov);
           return {
             company: c,
             score: cov.score,
@@ -378,6 +401,8 @@ export function SingleSearchPage() {
             lists: cov.lists.map((s) => ({ id: s.id, name: s.name })),
             humanReview: human,
             displayScore,
+            coverageConfidence,
+            coverageWhy: explainResultCoverage(c, missionCov),
           };
         })
         .sort((a, b) => b.displayScore - a.displayScore);
@@ -703,6 +728,29 @@ export function SingleSearchPage() {
                     </div>
                   </header>
 
+                  <div
+                    className="worker-result-confidence"
+                    title={r.coverageWhy}
+                    style={{ margin: "0.4rem 0" }}
+                  >
+                    <span className="muted" style={{ fontSize: "0.78rem" }}>
+                      coverageConfidence {r.coverageConfidence}
+                    </span>
+                    <div
+                      className="worker-result-confidence-bar"
+                      role="meter"
+                      aria-valuenow={r.coverageConfidence}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-label={r.coverageWhy}
+                    >
+                      <div
+                        className="worker-result-confidence-fill"
+                        style={{ width: `${r.coverageConfidence}%` }}
+                      />
+                    </div>
+                  </div>
+
                   {/* Can / For / Notable + profile snippet */}
                   <CompanyProfileTags company={r.company} />
 
@@ -710,7 +758,8 @@ export function SingleSearchPage() {
                   <details className="search-why">
                     <summary>
                       Why {r.displayScore}/100? · {r.onCount}/
-                      {r.totalCount} trusted lists
+                      {r.totalCount} trusted lists · conf{" "}
+                      {r.coverageConfidence}
                     </summary>
                     <div className="search-why-body">
                       {r.lists.length ? (

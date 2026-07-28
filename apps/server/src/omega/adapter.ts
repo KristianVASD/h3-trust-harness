@@ -1,5 +1,6 @@
 /**
  * OmegaClaw adapter seam — Phase 1 (+ Phase 3 discover → Source builders).
+ * Phase 6: access-barrier gating on extract + human fulfillment helpers.
  *
  * Today: stub bodies return correctly-shaped data (no API key).
  * Phase 9: replace only the stub bodies inside `stubImpl`; contracts stay frozen.
@@ -8,7 +9,11 @@ import { v4 as uuid } from "uuid";
 import {
   assertGuideSubsetOfFields,
   computeRichness,
+  isBlockingBarrier,
   SOURCE_FIELD_KEYS,
+  type AccessBarrier,
+  type BarrierFulfillment,
+  type Company,
   type Source,
   type SourceFieldKey,
 } from "@h3-trust/schema";
@@ -128,6 +133,9 @@ export function buildDiscoverSourceRecords(
 /**
  * Persistable Source patch from a probe result.
  * Caller merges onto the existing Source row.
+ *
+ * accessBarrier rule: when probe returns a barrier, set it; when absent, omit
+ * from the patch so a previously fulfilled barrier is not casually wiped.
  */
 export function buildProbeSourcePatch(probe: ProbeOutput): {
   sourceFields: SourceFieldKey[];
@@ -138,6 +146,7 @@ export function buildProbeSourcePatch(probe: ProbeOutput): {
   evidence: ProbeOutput["evidence"];
   producer: "OmegaClaw";
   updatedAt: string;
+  accessBarrier?: AccessBarrier;
 } {
   assertGuideSubsetOfFields(probe.extractionGuide.fields, probe.sourceFields);
   return {
@@ -149,15 +158,20 @@ export function buildProbeSourcePatch(probe: ProbeOutput): {
     evidence: probe.evidence,
     producer: "OmegaClaw",
     updatedAt: nowIso(),
+    ...(probe.accessBarrier ? { accessBarrier: probe.accessBarrier } : {}),
   };
 }
 
 /** Persistable company profile patch from a harvest result. */
-export function buildHarvestCompanyPatch(harvest: HarvestOutput): {
+export function buildHarvestCompanyPatch(
+  harvest: HarvestOutput,
+  opts?: { profileSourceUrl?: string },
+): {
   capabilities: string[];
   serviceContexts: HarvestOutput["serviceContexts"];
   differentiators: string[];
   profileSnippet: string;
+  profileSourceUrl?: string;
   profileHarvestedAt: string;
   profileProducer: "OmegaClaw";
   updatedAt: string;
@@ -167,25 +181,216 @@ export function buildHarvestCompanyPatch(harvest: HarvestOutput): {
     serviceContexts: harvest.serviceContexts,
     differentiators: harvest.differentiators,
     profileSnippet: harvest.profileSnippet,
+    ...(opts?.profileSourceUrl
+      ? { profileSourceUrl: opts.profileSourceUrl }
+      : {}),
     profileHarvestedAt: nowIso(),
     profileProducer: "OmegaClaw",
     updatedAt: nowIso(),
   };
 }
 
-/* ----------------------------- stub bodies ----------------------------- */
+export type BlockedSourceRef = {
+  sourceId: string;
+  barrierId: string;
+  kind: string;
+  what_human_does: string;
+};
+
+/**
+ * EXTRACT with barrier gating. Blocked sources never reach the scraper —
+ * that is the anti-bypass. Pass mission Sources so the gate can read
+ * accessBarrier without a store dependency (smoke-friendly).
+ */
+export async function runExtractGated(
+  input: ExtractInput,
+  missionSources: Source[],
+): Promise<ExtractOutput & { blocked: BlockedSourceRef[] }> {
+  const byId = new Map(missionSources.map((s) => [s.id, s]));
+
+  const unlocked: ExtractInput["sources"] = [];
+  const blocked: BlockedSourceRef[] = [];
+
+  for (const ref of input.sources) {
+    const src = byId.get(ref.id);
+    const barrier = src?.accessBarrier;
+    if (barrier && isBlockingBarrier(barrier)) {
+      blocked.push({
+        sourceId: ref.id,
+        barrierId: barrier.id,
+        kind: barrier.kind,
+        what_human_does: barrier.what_human_does,
+      });
+      continue;
+    }
+    unlocked.push(ref);
+  }
+
+  const output = unlocked.length
+    ? await runOcCommand("extract", { ...input, sources: unlocked })
+    : mirrorStamp({
+        producer: "OmegaClaw" as const,
+        missionId: input.missionId,
+        companies: [],
+        discoveryNotes: "all sources blocked by barriers",
+      });
+
+  return { ...output, blocked };
+}
+
+/** Secrets-store seam — Phase 6 stub stores nothing (ref only, never the secret). */
+export async function storeSecretRef(_ref: string): Promise<void> {
+  /* no-op */
+}
+
+/** Mark barrier fulfilled; does not persist. */
+export function buildFulfilledBarrier(
+  barrier: AccessBarrier,
+  fulfillment: BarrierFulfillment,
+): AccessBarrier {
+  return {
+    ...barrier,
+    status: "human-fulfilled",
+    fulfilled_at: nowIso(),
+    fulfillment,
+  };
+}
+
+/** Mark barrier declined with a mandatory reason note. */
+export function buildDeclinedBarrier(
+  barrier: AccessBarrier,
+  reason: string,
+  by: string,
+): AccessBarrier {
+  return {
+    ...barrier,
+    status: "human-declined",
+    fulfilled_at: nowIso(),
+    fulfillment: {
+      kind: "note",
+      note: reason,
+      by,
+    },
+  };
+}
+
+/**
+ * Human-produced company drafts from a barrier fulfillment's manual-rows.
+ * Dual-labelled: producer = Human.
+ */
+export function buildHumanCompaniesFromFulfillment(args: {
+  missionId: string;
+  source: Source;
+  fulfillment: BarrierFulfillment;
+}): Company[] {
+  if (
+    args.fulfillment.kind !== "manual-rows" ||
+    !args.fulfillment.manual_companies?.length
+  ) {
+    return [];
+  }
+  const now = nowIso();
+  const src = args.source;
+  return args.fulfillment.manual_companies.map((m) => ({
+    id: uuid(),
+    missionId: args.missionId,
+    producer: "Human" as const,
+    createdAt: now,
+    updatedAt: now,
+    v: 1,
+    name: m.name,
+    address: m.address ?? "",
+    region: src.region || "",
+    sector: src.category,
+    category: src.category,
+    kvk_number: m.kvk_number,
+    kvk_gate: (m.kvk_number ? "pass" : "unchecked") as "pass" | "unchecked",
+    source_ids: [src.id],
+    list_membership: [src.name],
+    specialism: m.specialism,
+    blacklist_flags: [],
+    status: "candidate" as const,
+    capabilities: [],
+    serviceContexts: [],
+    differentiators: [],
+  }));
+}
+
+/** Persistable Company drafts from an Ω extract result. */
+export function buildExtractCompanyRecords(
+  output: ExtractOutput,
+  missionId: string,
+  source?: Source,
+): Company[] {
+  const now = nowIso();
+  return output.companies.map((c) => ({
+    id: uuid(),
+    missionId,
+    producer: "OmegaClaw" as const,
+    createdAt: now,
+    updatedAt: now,
+    v: 1,
+    name: c.name,
+    address: c.address ?? "",
+    region: c.region ?? "",
+    sector: source?.category ?? "",
+    category: source?.category ?? "",
+    kvk_number: c.kvk_number,
+    kvk_gate: c.kvk_gate,
+    source_ids: c.source_ids.length
+      ? c.source_ids
+      : source
+        ? [source.id]
+        : [],
+    list_membership: c.list_membership.length
+      ? c.list_membership
+      : source
+        ? [source.name]
+        : [],
+    specialism: c.specialism,
+    blacklist_flags: [],
+    status: "candidate" as const,
+    capabilities: [],
+    serviceContexts: [],
+    differentiators: [],
+  }));
+}
+
+function looksLikeKvkSource(input: ProbeInput): boolean {
+  const url = (input.url ?? "").toLowerCase();
+  return url.includes("kvk") || input.category === "registry";
+}
+
+function stubKvkBarrier(): AccessBarrier {
+  return {
+    id: uuid(),
+    scope: "source",
+    kind: "manual-lookup",
+    severity: "blocks-extract",
+    free_tier_available: true,
+    estimated_effort: "minutes",
+    what_omega_needs:
+      "I cannot bulk-pull the KvK register — only verify one number at a time, and the free single-lookup needs a key I don't have.",
+    what_human_does:
+      "Apply for the free KvK single-lookup key and paste the ref, OR paste company names you already know and I'll verify each.",
+    status: "raised",
+    raised_at: nowIso(),
+  };
+}
 
 function stubDiscover(input: DiscoverInput): DiscoverOutput {
   const { gap, context, existingSourceNames } = input;
-  const name = `Ω stub · ${gap.category} (${gap.layer}) · ${context.location}`;
-  if (existingSourceNames.includes(name)) {
+  const stubName = `Ω Stub ${gap.category} · ${gap.layer}`;
+  if (
+    existingSourceNames.some((n) => n.toLowerCase() === stubName.toLowerCase())
+  ) {
     return mirrorStamp({
       producer: "OmegaClaw",
       missionId: input.missionId,
       candidates: [
         {
           found: false,
-          reason: "Stub: existing source names already cover this gap cell.",
+          reason: `Already have a stub for ${gap.category} @ ${gap.layer}`,
         },
       ],
     });
@@ -196,13 +401,14 @@ function stubDiscover(input: DiscoverInput): DiscoverOutput {
     candidates: [
       {
         found: true,
-        name,
+        name: stubName,
         type: "association",
         category: gap.category,
         scope: gap.layer,
         region: gap.layer === "national" ? "" : context.location,
         url: `https://example.stub/${gap.category}`,
-        reason: `Stub discover for ${gap.category} @ ${gap.layer}. ${gap.nuance_rule ?? ""}`.trim(),
+        reason:
+          `Stub discover for ${gap.category} @ ${gap.layer}. ${gap.nuance_rule ?? ""}`.trim(),
         suggestedWeight: 55,
         suggestedConfidence: 60,
         confidence_in_existence: "medium",
@@ -221,7 +427,6 @@ function stubProbe(input: ProbeInput): ProbeOutput {
   ].filter((f) =>
     input.fieldUniverse.includes(f as SourceFieldKey),
   ) as SourceFieldKey[];
-  // Fallback if caller passed empty universe — still valid against SOURCE_FIELD_KEYS
   const sourceFields =
     fields.length > 0
       ? fields
@@ -229,6 +434,7 @@ function stubProbe(input: ProbeInput): ProbeOutput {
   const extractionFields = sourceFields.slice();
   assertGuideSubsetOfFields(extractionFields, sourceFields);
   const richness = computeRichness(sourceFields);
+  const raiseBarrier = looksLikeKvkSource(input);
 
   return mirrorStamp({
     producer: "OmegaClaw",
@@ -237,9 +443,9 @@ function stubProbe(input: ProbeInput): ProbeOutput {
     sourceFields,
     richness,
     extractionGuide: {
-      listPattern: "directory",
+      listPattern: raiseBarrier ? "search-form" : "directory",
       fields: extractionFields,
-      pagination: true,
+      pagination: !raiseBarrier,
       regionFilter: input.context.location,
       notes: `Stub probe against ${input.url ?? "(no url)"} · category ${input.category}`,
     },
@@ -250,15 +456,22 @@ function stubProbe(input: ProbeInput): ProbeOutput {
       summary_reasons: [
         "✓ Stub probe — shape inferred without live fetch",
         `? Richness ${richness.score} (${richness.present.join("+")})`,
+        ...(raiseBarrier
+          ? ["⚠ Access barrier raised — human must unlock before extract"]
+          : []),
       ],
     },
+    ...(raiseBarrier ? { accessBarrier: stubKvkBarrier() } : {}),
   });
 }
 
 function stubExtract(input: ExtractInput): ExtractOutput {
   const companies = input.sources.flatMap((src, i) => {
     const guideFields = src.extractionGuide.fields;
-    assertGuideSubsetOfFields(guideFields, src.sourceFields.length ? src.sourceFields : guideFields);
+    assertGuideSubsetOfFields(
+      guideFields,
+      src.sourceFields.length ? src.sourceFields : guideFields,
+    );
     const baseName = `Ω Stub Co ${i + 1} · ${input.context.location}`;
     if (input.existingCompanyNames.includes(baseName)) return [];
     const hasKvk = guideFields.includes("kvk");
@@ -293,6 +506,25 @@ function stubHarvest(input: HarvestInput): HarvestOutput {
     input.service_contexts_allowed.length > 0
       ? input.service_contexts_allowed
       : (["private", "hoa"] as const);
+  const hasUrl = Boolean(input.website_url?.trim());
+
+  // No website → minimal name-only profile, low confidence — not an error.
+  if (!hasUrl) {
+    return mirrorStamp({
+      producer: "OmegaClaw",
+      missionId: input.missionId,
+      companyId: input.companyId,
+      capabilities: [],
+      serviceContexts: [],
+      differentiators: [],
+      profileSnippet: `${input.name} — no website on file; profile is name-only.`,
+      harvest_confidence: "low",
+      webpageTrustProbe: {
+        notes: "v2: traditional webpage trust probe not wired",
+      },
+    });
+  }
+
   return mirrorStamp({
     producer: "OmegaClaw",
     missionId: input.missionId,
@@ -300,13 +532,10 @@ function stubHarvest(input: HarvestInput): HarvestOutput {
     capabilities: ["interior painting", "exterior painting"],
     serviceContexts: [...allowed].slice(0, 2),
     differentiators: ["stub local presence", "colour advice"],
-    profileSnippet: `Stub harvest for ${input.name}${input.website_url ? ` (${input.website_url})` : ""}. Residential painters in ${input.missionId.slice(0, 8)}.`,
+    profileSnippet: `Stub harvest for ${input.name} (${input.website_url}). Residential painters in ${input.missionId.slice(0, 8)}.`,
     harvest_confidence: "medium",
     webpageTrustProbe: {
-      domain_age: "unknown",
-      has_real_address: true,
-      has_contact: true,
-      notes: "Placeholder webpage-check stub — signal only, not a gate.",
+      notes: "v2: traditional webpage trust probe not wired",
     },
   });
 }

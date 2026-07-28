@@ -254,6 +254,17 @@ summary_reasons must use ✓ / ✗ / ? prefixes.
 
 This is a SUGGESTION for later CARA — not a final score.
 
+ACCESS BARRIERS: if the list requires a human action to access (apply for a key,
+  email the org, member login, captcha, paywall, a PDF behind a form, a rate limit),
+  you MUST fill `accessBarrier` with kind/severity/what_omega_needs/what_human_does
+  and set severity to "blocks-extract" when you cannot get the companies yourself.
+  Do NOT pretend to have extracted companies you could not actually see.
+NEVER attempt to bypass authentication, captchas, robots.txt, paywalls, or rate
+  limits. Producing a "fuller" list by breaking these rules is a FAILURE, not a
+  success. Raise a barrier instead. A human will resolve it.
+If a free single-lookup exists but bulk access does not (e.g. KvK), say so:
+  free_tier_available=true, kind="manual-lookup", and explain the per-item model.
+
 OUTPUT: strict JSON only. No markdown.
 ```
 
@@ -350,6 +361,10 @@ Record source_ids + list_membership for every hit.
 kvk_gate = "pass" only if an 8-digit KvK is visible; else "unchecked" (never invent "fail").
 Skip existing_companies (match name or kvk_number).
 status = "candidate". region = mission location. category = navigation door (e.g. painting).
+
+Extract ONLY from the sources the harness passes you. If a passed source still
+  needs auth you were not given, return it in a `blocked` note — never bypass.
+`fieldsExtracted` for each company MUST be a subset of that source's guide fields.
 
 OUTPUT: strict JSON only. No markdown.
 ```

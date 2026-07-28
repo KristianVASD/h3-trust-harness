@@ -1,69 +1,49 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import type {
-  Company,
-  Hypothesis,
-  JournalEntry,
-  Observation,
-  Review,
-  Source,
-} from "@h3-trust/schema";
-import { api } from "../api";
-import { listReviews } from "../api-extra";
+import { useMemo } from "react";
+import { Link, useOutletContext, useParams } from "react-router-dom";
 import { StatusChip } from "../components/Badges";
+import type { MissionData } from "../hooks/useMissionData";
 
 export function SituationRoomPage() {
   const { missionId = "" } = useParams();
-  const [sources, setSources] = useState<Source[]>([]);
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [observations, setObservations] = useState<Observation[]>([]);
-  const [hypotheses, setHypotheses] = useState<Hypothesis[]>([]);
-  const [journal, setJournal] = useState<JournalEntry[]>([]);
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    void Promise.all([
-      api.listSources(missionId),
-      api.listCompanies(missionId),
-      api.listObservations(missionId),
-      api.listHypotheses(missionId),
-      api.listJournal(missionId),
-      listReviews(missionId),
-    ])
-      .then(([s, c, o, h, j, r]) => {
-        setSources(s);
-        setCompanies(c);
-        setObservations(o);
-        setHypotheses(h);
-        setJournal(j);
-        setReviews(r);
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "Load failed"));
-  }, [missionId]);
+  const {
+    sources,
+    companies,
+    observations,
+    hypotheses,
+    journal,
+    reviews,
+    error,
+  } = useOutletContext<MissionData>();
 
   const metrics = useMemo(() => {
     const pending = sources.filter(
       (s) => s.status === "draft" || s.status === "pending_review",
     ).length;
-    const sourceCandidates = sources.filter((s) => s.status === "candidate").length;
+    const sourceCandidates = sources.filter((s) => s.status === "candidate")
+      .length;
     const trusted = sources.filter(
       (s) => s.status === "accepted" || s.status === "adjusted",
     ).length;
     const reused = sources.filter(
       (s) => s.first_seen_mission !== missionId,
     ).length;
-    const rejectedHyp = hypotheses.filter((h) => h.status === "Rejected").length;
+    const rejectedHyp = hypotheses.filter((h) => h.status === "Rejected")
+      .length;
     const weak = sources.filter(
       (s) => (s.suggestedConfidence ?? s.suggestedWeight ?? 100) < 50,
     ).length;
     const missingEvidence = observations.filter(
       (o) => !o.evidenceUrls.length && !o.evidenceIds.length,
     ).length;
-    const candidates = companies.filter((c) => c.status === "candidate").length;
+    const candidates = companies.filter((c) => c.status === "candidate")
+      .length;
     const kvkFail = companies.filter((c) => c.kvk_gate === "fail").length;
     const blacklisted = companies.filter((c) => c.blacklist_flags.length > 0)
       .length;
+    const thinProfiles = companies.filter(
+      (c) =>
+        c.capabilities.length === 0 && !(c.profileSnippet ?? "").trim(),
+    ).length;
     return {
       pending,
       sourceCandidates,
@@ -75,41 +55,38 @@ export function SituationRoomPage() {
       candidates,
       kvkFail,
       blacklisted,
+      thinProfiles,
     };
   }, [sources, hypotheses, observations, companies, missionId]);
 
   const bars = [
-    { label: "Trusted lists (CARA)", value: metrics.trusted, max: 5 },
-    { label: "Source candidates (triage)", value: metrics.sourceCandidates, max: 8 },
+    { label: "Trusted lists", value: metrics.trusted, max: 5 },
+    { label: "Align queue", value: metrics.pending, max: 8 },
     { label: "Sources (portfolio)", value: sources.length, max: 12 },
     { label: "Observation", value: observations.length, max: 10 },
     { label: "Hypothesis", value: hypotheses.length, max: 8 },
     { label: "Companies", value: companies.length, max: 20 },
-    { label: "CARA reviews", value: reviews.length, max: 10 },
+    { label: "Thin profiles", value: metrics.thinProfiles, max: 20 },
+    { label: "Reviews", value: reviews.length, max: 10 },
     { label: "Journal", value: journal.length, max: 10 },
   ];
 
   return (
     <div>
-      <h1
-        style={{
-          fontFamily: "var(--font-display)",
-          fontSize: "1.8rem",
-          marginTop: 0,
-        }}
-      >
-        Situation Room
-      </h1>
-      <p className="muted">
-        Phase 0: build a suitable list portfolio first. Reuse proves the method transfers.
-      </p>
+      <div className="worker-step-intro">
+        <h2>Situation Room</h2>
+        <p className="hint">
+          Where to spend time next — production queues live in Data Worker;
+          notebook attention stays here.
+        </p>
+      </div>
 
       {error ? <div className="error">{error}</div> : null}
 
       <section className="panel" style={{ marginBottom: "1rem" }}>
         <h2 style={{ marginTop: 0 }}>Data Worker status</h2>
         <p className="hint" style={{ marginTop: 0 }}>
-          Linear production line — gaps, CARA lists, import, ranked results.
+          Brief → Gaps → Probe → Align → Extract → Profile → Coverage → Search
         </p>
         <div className="mission-meta" style={{ marginBottom: "0.75rem" }}>
           <StatusChip
@@ -117,7 +94,7 @@ export function SituationRoomPage() {
             tone={metrics.trusted >= 5 ? "done" : "waiting"}
           />
           <StatusChip
-            label={`${metrics.pending} in CARA queue`}
+            label={`${metrics.pending} in align queue`}
             tone={metrics.pending ? "active" : "waiting"}
           />
           <StatusChip
@@ -133,10 +110,22 @@ export function SituationRoomPage() {
           <Link className="btn small" to={`/work/${missionId}/brief`}>
             Open Data Worker
           </Link>
-          <Link className="btn secondary small" to={`/work/${missionId}/align`}>
-            Align queue
+          <Link className="btn secondary small" to={`/work/${missionId}/gaps`}>
+            Gaps
           </Link>
-          <Link className="btn secondary small" to={`/work/${missionId}/ranking`}>
+          <Link className="btn secondary small" to={`/work/${missionId}/align`}>
+            Align
+          </Link>
+          <Link
+            className="btn secondary small"
+            to={`/work/${missionId}/coverage`}
+          >
+            Coverage
+          </Link>
+          <Link
+            className="btn secondary small"
+            to={`/work/${missionId}/ranking`}
+          >
             Ranking
           </Link>
         </div>
@@ -157,13 +146,16 @@ export function SituationRoomPage() {
 
       <div className="workspace-layout">
         <section className="panel">
-          <h2>Phase progress</h2>
+          <h2>Progress</h2>
           <div className="list">
             {bars.map((b) => {
               const pct = Math.min(100, Math.round((b.value / b.max) * 100));
               return (
                 <div key={b.label}>
-                  <div className="row" style={{ justifyContent: "space-between" }}>
+                  <div
+                    className="row"
+                    style={{ justifyContent: "space-between" }}
+                  >
                     <strong>{b.label}</strong>
                     <span className="mono">{b.value}</span>
                   </div>
@@ -193,12 +185,12 @@ export function SituationRoomPage() {
           <h2>Needs attention</h2>
           <div className="list">
             <Issue
-              label="Source candidates (triage)"
+              label="Open gaps / candidates"
               count={metrics.sourceCandidates}
               to={`/work/${missionId}/gaps`}
             />
             <Issue
-              label="Needs human review (sources)"
+              label="Needs human align (sources)"
               count={metrics.pending}
               to={`/work/${missionId}/align`}
             />
@@ -208,14 +200,27 @@ export function SituationRoomPage() {
               to={`/work/${missionId}/align`}
             />
             <Issue
+              label="Thin company profiles"
+              count={metrics.thinProfiles}
+              to={`/work/${missionId}/profile`}
+            />
+            <Issue
               label="Company candidates"
               count={metrics.candidates}
-              to={`/missions/${missionId}`}
+              to={`/work/${missionId}/extract`}
+            />
+            <Issue
+              label="Company reviews"
+              count={metrics.candidates}
+              to={`/missions/${missionId}/cara?target=company`}
             />
             <Issue label="KvK gate fail" count={metrics.kvkFail} />
             <Issue label="Blacklist flags set" count={metrics.blacklisted} />
             <Issue label="Rejected hypotheses" count={metrics.rejectedHyp} />
-            <Issue label="Missing evidence on observations" count={metrics.missingEvidence} />
+            <Issue
+              label="Missing evidence on observations"
+              count={metrics.missingEvidence}
+            />
             <Issue label="Weak suggested confidence" count={metrics.weak} />
           </div>
           <div className="mission-meta" style={{ marginTop: "1rem" }}>

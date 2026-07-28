@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useOutletContext, useParams } from "react-router-dom";
+import { isBlockingBarrier } from "@h3-trust/schema";
 import { v4 as uuid } from "uuid";
 import { api } from "../../api";
+import { ProducerBadge } from "../../components/Badges";
+import {
+  BarrierCard,
+  BarrierStatusChip,
+} from "../../components/worker/BarrierCard";
 import type { MissionData } from "../../hooks/useMissionData";
 import { parseCompanyImport } from "../../lib/parseCompanyImport";
 import {
@@ -18,6 +24,17 @@ export function WorkerImportPage() {
     () => sources.filter(isTrustedSource),
     [sources],
   );
+  const guidedTrusted = useMemo(
+    () => trustedSources.filter((s) => s.extractionGuide != null),
+    [trustedSources],
+  );
+  const blockedSources = useMemo(
+    () =>
+      trustedSources.filter(
+        (s) => s.accessBarrier && isBlockingBarrier(s.accessBarrier),
+      ),
+    [trustedSources],
+  );
   const trustedCount = countTrustedLists(sources);
   const unlocked = trustedCount >= TRUSTED_LIST_UNLOCK;
 
@@ -26,6 +43,7 @@ export function WorkerImportPage() {
   const [sourceId, setSourceId] = useState("");
   const [previewCount, setPreviewCount] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [extractBusyId, setExtractBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [doneMsg, setDoneMsg] = useState<string | null>(null);
 
@@ -47,6 +65,29 @@ export function WorkerImportPage() {
     if (!file) return;
     const text = await file.text();
     onPasteChange(text);
+  }
+
+  async function askOmegaExtract(sid: string) {
+    setExtractBusyId(sid);
+    setError(null);
+    setDoneMsg(null);
+    try {
+      const result = await api.extractSource(missionId, sid);
+      if (result.blocked.length) {
+        setError(
+          `Blocked: ${result.blocked.map((b) => b.what_human_does).join(" · ")}`,
+        );
+      } else {
+        setDoneMsg(
+          `Ω extracted ${result.created.length} compan${result.created.length === 1 ? "y" : "ies"}.`,
+        );
+      }
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Extract failed");
+    } finally {
+      setExtractBusyId(null);
+    }
   }
 
   async function submit(e: FormEvent) {
@@ -83,6 +124,9 @@ export function WorkerImportPage() {
           list_membership: [listLabel],
           blacklist_flags: [],
           status: "candidate" as const,
+          capabilities: [],
+          serviceContexts: [],
+          differentiators: [],
           createdAt: now,
           updatedAt: now,
           v: 1,
@@ -104,22 +148,104 @@ export function WorkerImportPage() {
       <div className="worker-step-intro">
         <h2>Extract</h2>
         <p className="hint">
-          Upload or paste a company list and attach it to a CARA-approved source
-          (manual extract until Ω extract wires in Phase 6). Only trusted lists
-          count toward trust ratings.
+          Ask Ω to extract from guided trusted sources (barrier-gated), or paste
+          a list yourself. Manual rows and barrier fulfilments are dual-labelled
+          Human.
         </p>
       </div>
+
+      {error ? <div className="error">{error}</div> : null}
+      {doneMsg ? (
+        <div className="thesis" style={{ borderColor: "var(--teal)" }}>
+          {doneMsg}{" "}
+          <Link to={`/work/${missionId}/profile`}>View profiles →</Link>
+        </div>
+      ) : null}
+
+      {blockedSources.length > 0 ? (
+        <section className="panel" style={{ marginBottom: "1rem" }}>
+          <h3 style={{ marginTop: 0 }}>
+            Barriers ({blockedSources.length}) — fulfil before Ω extract
+          </h3>
+          {blockedSources.map((s) => (
+            <div key={s.id} style={{ marginBottom: "1rem" }}>
+              <p style={{ margin: "0 0 0.5rem" }}>
+                <strong>{s.name}</strong>{" "}
+                {s.accessBarrier ? (
+                  <BarrierStatusChip barrier={s.accessBarrier} />
+                ) : null}
+              </p>
+              <BarrierCard
+                missionId={missionId}
+                source={s}
+                onDone={reload}
+              />
+            </div>
+          ))}
+        </section>
+      ) : null}
+
+      {guidedTrusted.length > 0 ? (
+        <section className="panel" style={{ marginBottom: "1rem" }}>
+          <h3 style={{ marginTop: 0 }}>Ask Ω Extract</h3>
+          <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+            {guidedTrusted.map((s) => {
+              const blocked =
+                s.accessBarrier != null && isBlockingBarrier(s.accessBarrier);
+              const rowBusy = extractBusyId === s.id;
+              return (
+                <li key={s.id} style={{ marginBottom: "0.6rem" }}>
+                  <strong>{s.name}</strong>{" "}
+                  <span className="muted">
+                    · {s.extractionGuide?.listPattern} ·{" "}
+                    {s.extractionGuide?.fields.length ?? 0} fields
+                  </span>
+                  {s.accessBarrier ? (
+                    <>
+                      {" "}
+                      <BarrierStatusChip barrier={s.accessBarrier} />
+                    </>
+                  ) : null}
+                  <div style={{ marginTop: "0.35rem" }}>
+                    <button
+                      type="button"
+                      className="btn secondary small"
+                      disabled={blocked || extractBusyId != null}
+                      title={
+                        blocked
+                          ? "Fulfil the access barrier first"
+                          : "Run gated Ω extract"
+                      }
+                      onClick={() => void askOmegaExtract(s.id)}
+                    >
+                      {rowBusy
+                        ? "Extracting…"
+                        : blocked
+                          ? "Blocked"
+                          : "Ask Ω Extract"}
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
 
       {!unlocked ? (
         <div className="empty worker-empty-hero worker-locked">
           <p>
-            Extract locked — need {TRUSTED_LIST_UNLOCK} trusted lists (
+            Manual extract locked — need {TRUSTED_LIST_UNLOCK} trusted lists (
             {trustedCount} so far).
           </p>
           <p className="muted">
-            Approve more sources in Align, then come back to attach CSVs.
+            Approve more sources in Align, then come back to attach CSVs. Ω
+            extract above works once a source is accepted + probed.
           </p>
-          <div className="row" style={{ justifyContent: "center", marginTop: "1rem" }}>
+          <div
+            className="row"
+            style={{ justifyContent: "center", marginTop: "1rem" }}
+          >
             <Link className="btn" to={`/work/${missionId}/align`}>
               ← Back to Align
             </Link>
@@ -127,14 +253,7 @@ export function WorkerImportPage() {
         </div>
       ) : (
         <section className="panel worker-import-panel">
-          {error ? <div className="error">{error}</div> : null}
-          {doneMsg ? (
-            <div className="thesis" style={{ borderColor: "var(--teal)" }}>
-              {doneMsg}{" "}
-              <Link to={`/work/${missionId}/profile`}>View profiles →</Link>
-            </div>
-          ) : null}
-
+          <h3 style={{ marginTop: 0 }}>Manual extract (Human)</h3>
           <form className="form-stack" onSubmit={(e) => void submit(e)}>
             <label>
               CARA-trusted source
@@ -180,7 +299,11 @@ export function WorkerImportPage() {
               Preview: {previewCount} companies · mission already has{" "}
               {companies.length}
             </p>
-            <button className="btn" type="submit" disabled={busy || !previewCount}>
+            <button
+              className="btn"
+              type="submit"
+              disabled={busy || !previewCount}
+            >
               {busy
                 ? "Importing…"
                 : `Extract ${previewCount || ""} candidates`}
@@ -188,6 +311,26 @@ export function WorkerImportPage() {
           </form>
         </section>
       )}
+
+      {companies.length > 0 ? (
+        <section className="panel" style={{ marginTop: "1rem" }}>
+          <h3 style={{ marginTop: 0 }}>Companies in mission</h3>
+          <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+            {companies.slice(0, 12).map((c) => (
+              <li key={c.id} style={{ marginBottom: "0.35rem" }}>
+                <strong>{c.name}</strong>{" "}
+                <ProducerBadge producer={c.producer} />
+                {c.specialism ? (
+                  <span className="muted"> · {c.specialism}</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          {companies.length > 12 ? (
+            <p className="muted">…and {companies.length - 12} more</p>
+          ) : null}
+        </section>
+      ) : null}
 
       <footer className="worker-step-footer">
         <Link className="btn secondary" to={`/work/${missionId}/align`}>

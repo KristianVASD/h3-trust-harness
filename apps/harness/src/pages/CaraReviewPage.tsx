@@ -294,17 +294,18 @@ export function CaraReviewPage() {
   return (
     <div>
       <p className="thesis">
-        <strong>CARA — two human checkpoints</strong> (after candidate triage).
-        Suggested confidence is not a decision. Agree = evidence + score look
-        right; Adjust/Disagree require a reason.{" "}
-        <span style={{ color: "var(--cara)", fontWeight: 600 }}>◉ CARA (sources)</span>{" "}
+        <strong>Align — two human checkpoints</strong> (CURAD / CARA). Suggested
+        confidence is not a decision. Agree = evidence + score look right;
+        Adjust/Disagree require a reason.{" "}
+        <span style={{ color: "var(--cara)", fontWeight: 600 }}>
+          Align sources
+        </span>{" "}
         and{" "}
         <span style={{ color: "var(--cara-company)", fontWeight: 600 }}>
-          ◆ CARA (companies)
+          Align companies
         </span>{" "}
-        are visually separate. Sources with status{" "}
-        <span className="mono">candidate</span> belong in{" "}
-        <Link to={`/missions/${missionId}/triage`}>☰ Triage</Link>, not here.
+        are visually separate. New list candidates belong in{" "}
+        <Link to={`/work/${missionId}/gaps`}>Data Worker · Gaps</Link>, not here.
       </p>
 
       <div className="row" style={{ marginBottom: "1rem" }}>
@@ -421,8 +422,9 @@ export function CaraReviewPage() {
                 ))}
             {mode === "source" && !sourceQueue.length ? (
               <div className="empty">
-                No sources in the CARA queue. Keep candidates first in{" "}
-                <Link to={`/missions/${missionId}/triage`}>☰ Triage</Link>.
+                No sources in the align queue. Discover candidates in{" "}
+                <Link to={`/work/${missionId}/gaps`}>Data Worker · Gaps</Link>
+                {" "}then probe / align.
               </div>
             ) : null}
             {mode === "company" && !companyQueue.length ? (

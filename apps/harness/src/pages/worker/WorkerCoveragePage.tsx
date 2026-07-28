@@ -18,6 +18,11 @@ export function WorkerCoveragePage() {
   });
 
   const breakdown = coverage.breakdown ?? {};
+  const breakdownEntries = Object.entries(breakdown);
+  const breakdownTotal = Math.max(
+    1,
+    breakdownEntries.reduce((a, [, v]) => a + v, 0),
+  );
 
   return (
     <div className="worker-step-page">
@@ -25,7 +30,8 @@ export function WorkerCoveragePage() {
         <h2>Coverage</h2>
         <p className="hint">
           Mission completeness — explainable blend of plan fill, source depth,
-          company breadth, profiles, and KvK quality.
+          company breadth, profiles, and KvK quality. Barriers block readiness
+          until a human fulfils them.
         </p>
       </div>
 
@@ -60,15 +66,28 @@ export function WorkerCoveragePage() {
           </p>
         </div>
 
-        <div className="worker-coverage-bar" aria-hidden>
-          <div
-            className="worker-coverage-fill"
-            style={{ width: `${coverage.completenessScore}%` }}
-          />
+        <div
+          className="worker-coverage-stack"
+          aria-label="Coverage breakdown"
+        >
+          {breakdownEntries.map(([key, value]) => (
+            <div
+              key={key}
+              className="worker-coverage-segment"
+              style={{
+                width: `${(value / breakdownTotal) * 100}%`,
+              }}
+              title={`${key}: ${value}`}
+            >
+              <span className="worker-coverage-segment-label">
+                {key} {value}
+              </span>
+            </div>
+          ))}
         </div>
 
         <div className="worker-coverage-breakdown">
-          {Object.entries(breakdown).map(([key, value]) => (
+          {breakdownEntries.map(([key, value]) => (
             <span key={key} className="worker-coverage-chip">
               {key} {value}
             </span>
@@ -82,7 +101,7 @@ export function WorkerCoveragePage() {
         <p style={{ margin: "0.35rem 0" }}>
           <strong>Sources:</strong> {coverage.sourcesAccepted} accepted ·{" "}
           {coverage.sourcesProbed} probed · {coverage.sourcesWithGuide} with
-          guide
+          guide · {coverage.sourcesBlockedByBarrier} blocked by barrier
         </p>
         <p style={{ margin: "0.35rem 0" }}>
           <strong>Companies:</strong> {coverage.companiesExtracted} extracted ·{" "}
@@ -109,6 +128,14 @@ export function WorkerCoveragePage() {
             <Link className="btn secondary small" to={`/work/${missionId}/align`}>
               Align
             </Link>
+            {coverage.sourcesBlockedByBarrier > 0 ? (
+              <Link
+                className="btn secondary small"
+                to={`/work/${missionId}/extract`}
+              >
+                Barriers
+              </Link>
+            ) : null}
             <Link
               className="btn secondary small"
               to={`/work/${missionId}/profile`}

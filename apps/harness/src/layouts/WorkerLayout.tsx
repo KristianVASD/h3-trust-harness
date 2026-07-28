@@ -43,6 +43,9 @@ export function WorkerLayout() {
           <NavLink to="/" className="btn secondary small">
             ← Home
           </NavLink>
+          <NavLink to="/control" className="btn secondary small">
+            Mission Control
+          </NavLink>
           <NavLink
             to={`/missions/${missionId}`}
             className="btn secondary small"

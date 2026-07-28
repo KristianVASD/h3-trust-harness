@@ -1,63 +1,109 @@
+import { useMemo } from "react";
 import { NavLink, Outlet, useParams } from "react-router-dom";
 import { useMissionData } from "../hooks/useMissionData";
 import { ProcesIndicator } from "../components/ProcesIndicator";
+import { ProducerBadge, StatusChip } from "../components/Badges";
+import { nextIncompleteWorkerStep } from "../lib/worker";
 
 /**
- * Shared layout for all /missions/:missionId/* routes.
- * Renders mission name, process indicator, navigation, and page via <Outlet>.
+ * Investigator desk — notebook + reviews.
+ * Production (discover → harvest → search) lives in Data Worker.
  */
 export function MissionLayout() {
   const { missionId = "" } = useParams();
   const data = useMissionData(missionId);
-  const { mission, error } = data;
+  const { mission, error, sources, companies, catalogue, searchPlan } = data;
+
+  const workerStep = useMemo(
+    () =>
+      nextIncompleteWorkerStep({
+        mission,
+        sources,
+        companies,
+        planEntries: searchPlan?.entries ?? [],
+        catalogue,
+      }),
+    [mission, sources, companies, searchPlan, catalogue],
+  );
 
   if (!mission && !error) {
-    return <p className="muted" style={{ padding: "2rem" }}>Loading mission…</p>;
+    return (
+      <p className="muted" style={{ padding: "2rem" }}>
+        Loading mission…
+      </p>
+    );
   }
 
   const navClass = ({ isActive }: { isActive: boolean }) =>
-    `btn secondary small${isActive ? " active" : ""}`;
+    `mission-nav-link${isActive ? " active" : ""}`;
 
   return (
-    <div className="mission-layout">
+    <div className="mission-shell">
       <header className="mission-header">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
-          <div>
-            <NavLink to="/" className="btn secondary small" style={{ marginBottom: "0.5rem" }}>
-              ← Mission Control
-            </NavLink>
-            <h1 className="mission-title">
-              {mission ? `${mission.location} · ${mission.subsector}` : "Mission"}
-            </h1>
-            {mission ? <p className="muted mission-goal">{mission.goal}</p> : null}
+        <div className="mission-header-top">
+          <NavLink to="/control" className="btn secondary small">
+            ← Mission Control
+          </NavLink>
+          <NavLink
+            to={`/work/${missionId}/${workerStep}`}
+            className="btn small"
+          >
+            Open Data Worker
+          </NavLink>
+        </div>
+
+        <p className="mission-eyebrow">Investigation</p>
+        <h1 className="mission-title">
+          {mission ? `${mission.location} · ${mission.subsector}` : "Mission"}
+        </h1>
+        {mission ? <p className="muted mission-goal">{mission.goal}</p> : null}
+
+        {mission ? (
+          <div className="mission-meta" style={{ marginBottom: "0.85rem" }}>
+            <ProducerBadge producer={mission.producer} />
+            <StatusChip label={mission.country} />
+            <StatusChip label={mission.sector} />
           </div>
-          <div className="row" style={{ gap: "0.35rem", flexWrap: "wrap" }}>
-            <NavLink className="btn small" to={`/work/${missionId}/brief`}>
-              ⚡ Data Worker
-            </NavLink>
+        ) : null}
+
+        <nav className="mission-nav" aria-label="Investigator sections">
+          <div className="mission-nav-group">
+            <span className="mission-nav-label">Notebook</span>
             <NavLink className={navClass} end to={`/missions/${missionId}`}>
               Workspace
             </NavLink>
-            <NavLink className={navClass} to={`/missions/${missionId}/triage`}>
-              ☰ Triage
+          </div>
+          <div className="mission-nav-group">
+            <span className="mission-nav-label">Reviews</span>
+            <NavLink
+              className={navClass}
+              to={`/missions/${missionId}/cara?target=source`}
+            >
+              Align sources
             </NavLink>
-            <NavLink className={navClass} to={`/missions/${missionId}/cara?target=source`}>
-              ◉ CARA sources
+            <NavLink
+              className={navClass}
+              to={`/missions/${missionId}/cara?target=company`}
+            >
+              Align companies
             </NavLink>
-            <NavLink className={navClass} to={`/missions/${missionId}/cara?target=company`}>
-              ◆ CARA companies
-            </NavLink>
+          </div>
+          <div className="mission-nav-group">
+            <span className="mission-nav-label">Desk</span>
             <NavLink className={navClass} to={`/missions/${missionId}/signals`}>
               Signals
             </NavLink>
-            <NavLink className={navClass} to={`/missions/${missionId}/situation`}>
-              Situation Room
+            <NavLink
+              className={navClass}
+              to={`/missions/${missionId}/situation`}
+            >
+              Situation
             </NavLink>
             <NavLink className={navClass} to={`/missions/${missionId}/graph`}>
-              Graph
+              Memory
             </NavLink>
           </div>
-        </div>
+        </nav>
 
         {mission ? (
           <ProcesIndicator

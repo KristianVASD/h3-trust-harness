@@ -1,23 +1,19 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useOutletContext, useParams } from "react-router-dom";
 import { v4 as uuid } from "uuid";
-import {
-  DEFAULT_SEARCH_PLAN_VERSION,
-  resolveSourceGaps,
-  type Hypothesis,
-  type HypothesisStatus,
-  type JournalEntry,
-  type Mission,
-  type Observation,
-  type SearchPlanEntry,
-  type Source,
+import type {
+  Hypothesis,
+  HypothesisStatus,
+  JournalEntry,
+  Mission,
+  Observation,
 } from "@h3-trust/schema";
 import { api } from "../api";
 import type { MissionData } from "../hooks/useMissionData";
-import { CompaniesPanel } from "../components/CompaniesPanel";
 import { ProducerBadge, StatusChip } from "../components/Badges";
+import { countTrustedLists } from "../lib/worker";
 
-type Tab = "journal" | "observations" | "hypotheses" | "sources" | "companies";
+type Tab = "journal" | "observations" | "hypotheses";
 
 export function WorkspacePage() {
   const { missionId = "" } = useParams();
@@ -28,21 +24,40 @@ export function WorkspacePage() {
     observations,
     hypotheses,
     sources,
-    catalogue,
     companies,
-    signals,
-    searchPlan,
     reload,
   } = data;
 
   const [tab, setTab] = useState<Tab>("journal");
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [coverageScore, setCoverageScore] = useState<number | null>(null);
 
-  const keptSources = useMemo(
-    () => sources.filter((s) => s.status !== "candidate"),
+  const trustedCount = useMemo(() => countTrustedLists(sources), [sources]);
+  const thinCompanies = useMemo(
+    () =>
+      companies.filter(
+        (c) =>
+          c.capabilities.length === 0 && !(c.profileSnippet ?? "").trim(),
+      ).length,
+    [companies],
+  );
+  const topSources = useMemo(
+    () =>
+      sources
+        .filter((s) => s.status === "accepted" || s.status === "adjusted")
+        .slice(0, 3),
     [sources],
   );
+  const topCompanies = useMemo(() => companies.slice(0, 3), [companies]);
+
+  useEffect(() => {
+    if (!missionId) return;
+    void api
+      .getCoverage(missionId)
+      .then((c) => setCoverageScore(c.completenessScore))
+      .catch(() => setCoverageScore(null));
+  }, [missionId, sources.length, companies.length]);
 
   async function exportBundle() {
     if (!missionId) return;
@@ -71,11 +86,13 @@ export function WorkspacePage() {
 
   return (
     <div>
-      <div className="row" style={{ marginBottom: "1rem" }}>
-        <div className="mission-meta">
-          <ProducerBadge producer={mission.producer} />
-          <StatusChip label={mission.country} />
-          <StatusChip label={mission.sector} />
+      <div className="row" style={{ marginBottom: "1rem", justifyContent: "space-between" }}>
+        <div className="worker-step-intro" style={{ margin: 0, padding: 0 }}>
+          <h2 style={{ margin: 0 }}>Notebook</h2>
+          <p className="hint" style={{ margin: "0.25rem 0 0" }}>
+            Journal, observations, and hypotheses. Production (lists → companies)
+            runs in Data Worker.
+          </p>
         </div>
         <button
           className="btn secondary small"
@@ -89,23 +106,29 @@ export function WorkspacePage() {
 
       {localError ? <div className="error">{localError}</div> : null}
 
-      <DiscoveryBriefPanel mission={mission} onSaved={reload} />
+      <MissionSummaryCard
+        mission={mission}
+        missionId={missionId}
+        trustedCount={trustedCount}
+        companyCount={companies.length}
+        thinCompanies={thinCompanies}
+        coverageScore={coverageScore}
+        topSources={topSources.map((s) => s.name)}
+        topCompanies={topCompanies.map((c) => c.name)}
+      />
 
       <div className="workspace" style={{ marginTop: "1rem" }}>
         <nav className="side-nav panel">
-          <p className="hint" style={{ marginBottom: "0.5rem" }}>
-            Phase 0: lists first, then companies. Triage is on{" "}
-            <Link to={`/missions/${missionId}/triage`}>☰ Triage</Link>.
+          <p className="notebook-hint muted">
+            Append-only notes. Tasks can be marked done.
           </p>
           {(
             [
-              ["journal", "Journal & tasks"],
-              ["observations", "Observations"],
-              ["hypotheses", "Hypotheses"],
-              ["sources", "Sources"],
-              ["companies", "Companies"],
+              ["journal", "Journal & tasks", journal.length],
+              ["observations", "Observations", observations.length],
+              ["hypotheses", "Hypotheses", hypotheses.length],
             ] as const
-          ).map(([key, label]) => (
+          ).map(([key, label, count]) => (
             <button
               key={key}
               type="button"
@@ -114,110 +137,191 @@ export function WorkspacePage() {
             >
               {label}
               <span className="mono" style={{ float: "right", opacity: 0.6 }}>
-                {key === "journal"
-                  ? journal.length
-                  : key === "observations"
-                    ? observations.length
-                    : key === "hypotheses"
-                      ? hypotheses.length
-                      : key === "sources"
-                        ? keptSources.length
-                        : companies.length}
+                {count}
               </span>
             </button>
           ))}
         </nav>
 
-        {tab === "companies" ? (
-          <div className="panel" style={{ gridColumn: "1 / -1" }}>
-            <h2>Companies</h2>
+        <div className="workspace-layout">
+          <section className="panel">
+            <h2>
+              {tab === "journal" && "Journal"}
+              {tab === "observations" && "Observations"}
+              {tab === "hypotheses" && "Hypotheses"}
+            </h2>
             <p className="hint">
-              Rank by weighted list coverage (trusted lists × their weights). Website
-              deep-check is later — after the portfolio is solid.
+              {tab === "journal" &&
+                "Notes and tasks. Producer stamped on every entry."}
+              {tab === "observations" && "Facts only — no judgement, no score."}
+              {tab === "hypotheses" &&
+                "Ideas under test. Rejected ones stay — that is knowledge."}
             </p>
-            <CompaniesPanel
-              missionId={missionId}
-              companies={companies}
-              sources={sources}
-              signals={signals}
-              onChanged={reload}
-            />
-          </div>
-        ) : (
-          <div className="workspace-layout">
-            <section className="panel">
-              <h2>
-                {tab === "journal" && "Journal"}
-                {tab === "observations" && "Observations"}
-                {tab === "hypotheses" && "Hypotheses"}
-                {tab === "sources" && "Sources"}
-              </h2>
-              <p className="hint">
-                {tab === "journal" &&
-                  "Notes and tasks. Producer stamped on every entry."}
-                {tab === "observations" && "Facts only — no judgement, no score."}
-                {tab === "hypotheses" &&
-                  "Ideas under test. Rejected ones stay — that is knowledge."}
-                {tab === "sources" &&
-                  "Kept sources + evidence. New candidates via ☰ Triage. Weight matters — validate via ◉ CARA (sources)."}
-              </p>
 
-              {tab === "journal" && <JournalList items={journal} />}
-              {tab === "observations" && <ObservationList items={observations} />}
-              {tab === "hypotheses" && (
-                <HypothesisList items={hypotheses} onChanged={reload} />
-              )}
-              {tab === "sources" ? (
-                <>
-                  <CategoryCoveragePanel
-                    mission={mission}
-                    catalogue={catalogue}
-                    planEntries={searchPlan?.entries ?? []}
-                    planVersion={
-                      mission.search_plan_version || DEFAULT_SEARCH_PLAN_VERSION
-                    }
-                  />
-                  <SourceList
-                    items={keptSources}
-                    missionId={missionId}
-                    onChanged={reload}
-                  />
-                </>
-              ) : null}
-            </section>
+            {tab === "journal" && (
+              <JournalList items={journal} onChanged={reload} />
+            )}
+            {tab === "observations" && (
+              <ObservationList items={observations} />
+            )}
+            {tab === "hypotheses" && (
+              <HypothesisList items={hypotheses} onChanged={reload} />
+            )}
+          </section>
 
-            <section className="panel">
-              <h2>{tab === "sources" ? "Link existing" : "Add"}</h2>
-              <p className="hint">Writes as Producer · Human (OmegaClaw later).</p>
-              {tab === "journal" && (
-                <JournalForm missionId={missionId} onSaved={reload} />
-              )}
-              {tab === "observations" && (
-                <ObservationForm missionId={missionId} onSaved={reload} />
-              )}
-              {tab === "hypotheses" && (
-                <HypothesisForm missionId={missionId} onSaved={reload} />
-              )}
-              {tab === "sources" && (
-                <>
-                  <p className="hint">
-                    New sources only via{" "}
-                    <Link to={`/missions/${missionId}/triage`}>☰ Triage</Link>. Here
-                    you link existing CARA sources from other missions.
-                  </p>
-                  <LinkSourceForm missionId={missionId} onSaved={reload} />
-                </>
-              )}
-            </section>
-          </div>
-        )}
+          <section className="panel">
+            <h2>Add</h2>
+            <p className="hint">Writes as Producer · Human.</p>
+            {tab === "journal" && (
+              <JournalForm missionId={missionId} onSaved={reload} />
+            )}
+            {tab === "observations" && (
+              <ObservationForm missionId={missionId} onSaved={reload} />
+            )}
+            {tab === "hypotheses" && (
+              <HypothesisForm missionId={missionId} onSaved={reload} />
+            )}
+          </section>
+        </div>
       </div>
     </div>
   );
 }
 
-function JournalList({ items }: { items: JournalEntry[] }) {
-  if (!items.length) return <div className="empty">No journal entries yet.</div>;
+function MissionSummaryCard({
+  mission,
+  missionId,
+  trustedCount,
+  companyCount,
+  thinCompanies,
+  coverageScore,
+  topSources,
+  topCompanies,
+}: {
+  mission: Mission;
+  missionId: string;
+  trustedCount: number;
+  companyCount: number;
+  thinCompanies: number;
+  coverageScore: number | null;
+  topSources: string[];
+  topCompanies: string[];
+}) {
+  const brief = mission.discoveryBrief;
+
+  return (
+    <section className="panel mission-summary-card">
+      <div className="row" style={{ justifyContent: "space-between", gap: "0.75rem" }}>
+        <div>
+          <h2 style={{ margin: "0 0 0.25rem", fontSize: "1.15rem" }}>
+            Mission overview
+          </h2>
+          <p className="muted" style={{ margin: 0, maxWidth: "36rem" }}>
+            {mission.goal}
+          </p>
+        </div>
+        <Link className="btn small" to={`/work/${missionId}/brief`}>
+          Open Data Worker
+        </Link>
+      </div>
+
+      <div className="mission-summary-grid">
+        <div className="mission-summary-block">
+          <h3>Discovery brief</h3>
+          {brief?.approach ? (
+            <p className="muted">{brief.approach}</p>
+          ) : (
+            <p className="muted">No brief yet — edit it in Data Worker · Brief.</p>
+          )}
+          {brief?.successCriteria ? (
+            <p className="hint">Success: {brief.successCriteria}</p>
+          ) : null}
+          <Link className="btn secondary small" to={`/work/${missionId}/brief`}>
+            Edit in Data Worker
+          </Link>
+        </div>
+
+        <div className="mission-summary-block">
+          <h3>Sources · {trustedCount} trusted</h3>
+          {topSources.length ? (
+            <p className="muted">{topSources.join(" · ")}</p>
+          ) : (
+            <p className="muted">No trusted lists yet.</p>
+          )}
+          <div className="row" style={{ gap: "0.35rem" }}>
+            <Link className="btn secondary small" to={`/work/${missionId}/gaps`}>
+              Gaps
+            </Link>
+            <Link className="btn secondary small" to={`/work/${missionId}/align`}>
+              Align
+            </Link>
+          </div>
+        </div>
+
+        <div className="mission-summary-block">
+          <h3>
+            Companies · {companyCount}
+            {coverageScore != null ? ` · ${coverageScore}%` : ""}
+          </h3>
+          {topCompanies.length ? (
+            <p className="muted">
+              {topCompanies.join(" · ")}
+              {thinCompanies > 0 ? ` · ${thinCompanies} thin` : ""}
+            </p>
+          ) : (
+            <p className="muted">No companies yet — extract in Data Worker.</p>
+          )}
+          <div className="row" style={{ gap: "0.35rem" }}>
+            <Link
+              className="btn secondary small"
+              to={`/work/${missionId}/extract`}
+            >
+              Extract
+            </Link>
+            <Link
+              className="btn secondary small"
+              to={`/work/${missionId}/profile`}
+            >
+              Profile
+            </Link>
+            <Link
+              className="btn secondary small"
+              to={`/work/${missionId}/ranking`}
+            >
+              Ranking
+            </Link>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function JournalList({
+  items,
+  onChanged,
+}: {
+  items: JournalEntry[];
+  onChanged: () => Promise<void>;
+}) {
+  if (!items.length) {
+    return (
+      <div className="empty">
+        No journal entries yet. Add a note or task on the right.
+      </div>
+    );
+  }
+
+  async function toggleDone(item: JournalEntry) {
+    if (item.kind !== "task") return;
+    await api.updateEntity("journal", {
+      ...item,
+      done: !item.done,
+      updatedAt: new Date().toISOString(),
+    });
+    await onChanged();
+  }
+
   return (
     <div className="list">
       {items.map((item) => (
@@ -230,7 +334,19 @@ function JournalList({ items }: { items: JournalEntry[] }) {
           </header>
           <p>{item.body}</p>
           {item.kind === "task" ? (
-            <p className="muted">{item.done ? "Done" : "Open"}</p>
+            <div className="row" style={{ marginTop: "0.35rem" }}>
+              <StatusChip
+                label={item.done ? "Done" : "Open"}
+                tone={item.done ? "done" : "waiting"}
+              />
+              <button
+                type="button"
+                className="btn secondary small"
+                onClick={() => void toggleDone(item)}
+              >
+                Mark {item.done ? "open" : "done"}
+              </button>
+            </div>
           ) : null}
         </article>
       ))}
@@ -239,7 +355,13 @@ function JournalList({ items }: { items: JournalEntry[] }) {
 }
 
 function ObservationList({ items }: { items: Observation[] }) {
-  if (!items.length) return <div className="empty">No observations yet.</div>;
+  if (!items.length) {
+    return (
+      <div className="empty">
+        No observations yet. Record a fact with an evidence URL.
+      </div>
+    );
+  }
   return (
     <div className="list">
       {items.map((item) => (
@@ -271,7 +393,13 @@ function HypothesisList({
   items: Hypothesis[];
   onChanged: () => Promise<void>;
 }) {
-  if (!items.length) return <div className="empty">No hypotheses yet.</div>;
+  if (!items.length) {
+    return (
+      <div className="empty">
+        No hypotheses yet. Capture a claim under test.
+      </div>
+    );
+  }
 
   async function setStatus(item: Hypothesis, status: HypothesisStatus) {
     await api.updateEntity("hypotheses", {
@@ -298,402 +426,23 @@ function HypothesisList({
             />
           </div>
           <div className="item-actions">
-            {(["Draft", "Testing", "Validated", "Rejected", "Archived"] as const).map(
-              (status) => (
-                <button
-                  key={status}
-                  type="button"
-                  className="btn secondary small"
-                  onClick={() => void setStatus(item, status)}
-                  disabled={item.status === status}
-                >
-                  {status}
-                </button>
-              ),
-            )}
+            {(
+              ["Draft", "Testing", "Validated", "Rejected", "Archived"] as const
+            ).map((status) => (
+              <button
+                key={status}
+                type="button"
+                className="btn secondary small"
+                onClick={() => void setStatus(item, status)}
+                disabled={item.status === status}
+              >
+                {status}
+              </button>
+            ))}
           </div>
         </article>
       ))}
     </div>
-  );
-}
-
-function DiscoveryBriefPanel({
-  mission,
-  onSaved,
-}: {
-  mission: Mission;
-  onSaved: () => Promise<void>;
-}) {
-  const brief = mission.discoveryBrief ?? {
-    approach: "",
-    candidateListTypes: [] as string[],
-    successCriteria: "",
-  };
-  const [approach, setApproach] = useState(brief.approach);
-  const [listTypes, setListTypes] = useState(
-    brief.candidateListTypes.join(", "),
-  );
-  const [successCriteria, setSuccessCriteria] = useState(
-    brief.successCriteria,
-  );
-  const [notes, setNotes] = useState(brief.notes ?? "");
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    const b = mission.discoveryBrief;
-    setApproach(b?.approach ?? "");
-    setListTypes((b?.candidateListTypes ?? []).join(", "));
-    setSuccessCriteria(b?.successCriteria ?? "");
-    setNotes(b?.notes ?? "");
-  }, [mission]);
-
-  async function save(e: FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      const now = new Date().toISOString();
-      await api.updateMission({
-        ...mission,
-        discoveryBrief: {
-          approach,
-          candidateListTypes: listTypes
-            .split(",")
-            .map((t) => t.trim())
-            .filter(Boolean),
-          successCriteria,
-          notes: notes || undefined,
-          producer: "Human",
-          updatedAt: now,
-        },
-        updatedAt: now,
-      });
-      await onSaved();
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <section className="panel" style={{ marginTop: "1rem" }}>
-      <h2 style={{ marginTop: 0 }}>Discovery Brief</h2>
-      <p className="hint">
-        How we attack this region × sector — suitable list types before company deep-check.
-      </p>
-      <form className="form-stack" onSubmit={(e) => void save(e)}>
-        <label>
-          Approach
-          <textarea
-            value={approach}
-            onChange={(e) => setApproach(e.target.value)}
-            placeholder="e.g. Start with KvK + local association; then sector quality marks…"
-            style={{ minHeight: "4rem" }}
-          />
-        </label>
-        <label>
-          Candidate list types (comma-separated)
-          <input
-            value={listTypes}
-            onChange={(e) => setListTypes(e.target.value)}
-            placeholder="registry, local_business_association, quality_mark"
-          />
-        </label>
-        <label>
-          Success criteria
-          <input
-            value={successCriteria}
-            onChange={(e) => setSuccessCriteria(e.target.value)}
-            placeholder="≥5 CARA-accepted lists before company deep-check"
-          />
-        </label>
-        <label>
-          Notes
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            style={{ minHeight: "3rem" }}
-          />
-        </label>
-        <button className="btn secondary small" type="submit" disabled={saving}>
-          {saving ? "Saving…" : "Save discovery brief"}
-        </button>
-      </form>
-    </section>
-  );
-}
-
-function CategoryCoveragePanel({
-  mission,
-  catalogue,
-  planEntries,
-  planVersion,
-}: {
-  mission: Mission;
-  catalogue: Source[];
-  planEntries: SearchPlanEntry[];
-  planVersion: string;
-}) {
-  const rows = useMemo(
-    () =>
-      resolveSourceGaps(
-        catalogue,
-        mission.location,
-        mission.sector,
-        planEntries,
-      ),
-    [catalogue, mission.location, mission.sector, planEntries],
-  );
-
-  return (
-    <div
-      style={{
-        marginBottom: "1.25rem",
-        padding: "0.85rem 1rem",
-        borderRadius: 8,
-        border: "1px solid var(--coverage-check)",
-        background: "var(--coverage-check-soft)",
-      }}
-    >
-      <h3 style={{ margin: "0 0 0.35rem", fontSize: "1rem" }}>
-        Coverage by category
-      </h3>
-      <p className="hint" style={{ marginTop: 0 }}>
-        Check known sources — search plan{" "}
-        <span className="mono">{planVersion}</span>. Only accepted/adjusted
-        count. candidate never counts as covered.
-      </p>
-      {!planEntries.length ? (
-        <div className="empty">No search plan loaded.</div>
-      ) : (
-        <div className="list" style={{ gap: "0.35rem" }}>
-          {rows.map((row) => (
-            <div
-              key={`${row.layer}:${row.category}`}
-              style={{ fontSize: "0.92rem" }}
-            >
-              <div
-                className="row"
-                style={{
-                  justifyContent: "space-between",
-                  alignItems: "baseline",
-                  gap: "0.75rem",
-                }}
-              >
-                <span className="mono">
-                  {row.layer} · {row.category}
-                </span>
-                {row.status === "covered" ? (
-                  <span>
-                    covered · {row.sourceName}{" "}
-                    <span className="muted">({row.matchType}-match)</span>
-                  </span>
-                ) : (
-                  <span style={{ color: "var(--coral)" }}>gap</span>
-                )}
-              </div>
-              {row.nuance_rule ? (
-                <p className="muted" style={{ margin: "0.15rem 0 0.35rem", fontSize: "0.85rem" }}>
-                  {row.nuance_rule}
-                </p>
-              ) : null}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SourceList({
-  items,
-  missionId,
-  onChanged,
-}: {
-  items: Source[];
-  missionId: string;
-  onChanged: () => Promise<void>;
-}) {
-  if (!items.length) return <div className="empty">No sources yet.</div>;
-  return (
-    <div className="list">
-      {items.map((item) => {
-        const reused = item.first_seen_mission !== missionId;
-        return (
-          <article key={item.id} className="item">
-            <header>
-              <h4>
-                {item.name}{" "}
-                <span className="muted">({item.type})</span>
-              </h4>
-              <ProducerBadge producer={item.producer} />
-            </header>
-            {item.reason ? <p>{item.reason}</p> : null}
-            <div className="mission-meta">
-              <StatusChip label={item.category} tone="active" />
-              <StatusChip label={`scope ${item.scope}`} />
-              {item.scope !== "national" && item.region ? (
-                <StatusChip label={item.region} />
-              ) : null}
-              <StatusChip label={item.status} tone="waiting" />
-              {reused ? (
-                <StatusChip label="reused" tone="active" />
-              ) : (
-                <StatusChip label="first seen here" />
-              )}
-              {item.suggestedConfidence != null ? (
-                <StatusChip label={`suggested ${item.suggestedConfidence}`} />
-              ) : null}
-              {item.suggestedWeight != null ? (
-                <StatusChip label={`weight ${item.suggestedWeight}`} />
-              ) : null}
-            </div>
-            {item.url ? <p className="mono">{item.url}</p> : null}
-            {item.evidence?.summary_reasons?.length ? (
-              <ul style={{ margin: "0.5rem 0 0", paddingLeft: "1.1rem" }}>
-                {item.evidence.summary_reasons.map((r) => (
-                  <li key={r} className="muted" style={{ fontSize: "0.9rem" }}>
-                    {r}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            {(item.status === "draft" || item.status === "pending_review") && (
-              <SourceEvidenceForm source={item} onSaved={onChanged} />
-            )}
-          </article>
-        );
-      })}
-    </div>
-  );
-}
-
-function SourceEvidenceForm({
-  source,
-  onSaved,
-}: {
-  source: Source;
-  onSaved: () => Promise<void>;
-}) {
-  const ev = source.evidence;
-  const [domainAge, setDomainAge] = useState(ev?.domain_age ?? "");
-  const [orgAge, setOrgAge] = useState(ev?.org_age ?? "");
-  const [hostInfo, setHostInfo] = useState(ev?.host_info ?? "");
-  const [threshold, setThreshold] = useState(ev?.membership_threshold ?? "unknown");
-  const [consistent, setConsistent] = useState(ev?.content_consistency?.ok ?? true);
-  const [consistentNote, setConsistentNote] = useState(
-    ev?.content_consistency?.note ?? "",
-  );
-  const [reasons, setReasons] = useState(
-    (ev?.summary_reasons ?? []).join("\n"),
-  );
-  const [saving, setSaving] = useState(false);
-
-  async function save(e: FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      const now = new Date().toISOString();
-      await api.updateEntity("sources", {
-        ...source,
-        evidence: {
-          checked_at: now,
-          url: source.url,
-          domain_age: domainAge || undefined,
-          org_age: orgAge || undefined,
-          host_info: hostInfo || undefined,
-          membership_threshold: threshold as
-            | "low"
-            | "medium"
-            | "high"
-            | "unknown",
-          content_consistency: {
-            ok: consistent,
-            note: consistentNote || undefined,
-          },
-          real_world_presence: ev?.real_world_presence,
-          summary_reasons: reasons
-            .split("\n")
-            .map((r) => r.trim())
-            .filter(Boolean),
-        },
-        status:
-          source.status === "draft" ? "pending_review" : source.status,
-        updatedAt: now,
-      });
-      await onSaved();
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <form
-      className="form-stack"
-      onSubmit={(e) => void save(e)}
-      style={{
-        marginTop: "0.75rem",
-        padding: "0.65rem 0.75rem",
-        borderRadius: 6,
-        border: "1px dashed var(--line)",
-      }}
-    >
-      <p className="hint" style={{ margin: 0 }}>
-        Fill evidence → ready for CARA (sources)
-      </p>
-      <div className="row" style={{ gap: "0.75rem", flexWrap: "wrap" }}>
-        <label style={{ flex: 1, minWidth: "8rem" }}>
-          Domain age
-          <input value={domainAge} onChange={(e) => setDomainAge(e.target.value)} />
-        </label>
-        <label style={{ flex: 1, minWidth: "8rem" }}>
-          Org age
-          <input value={orgAge} onChange={(e) => setOrgAge(e.target.value)} />
-        </label>
-      </div>
-      <label>
-        Host info
-        <input value={hostInfo} onChange={(e) => setHostInfo(e.target.value)} />
-      </label>
-      <label>
-        Membership threshold
-        <select
-          value={threshold}
-          onChange={(e) => setThreshold(e.target.value as typeof threshold)}
-        >
-          <option value="low">low</option>
-          <option value="medium">medium</option>
-          <option value="high">high</option>
-          <option value="unknown">unknown</option>
-        </select>
-      </label>
-      <label className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
-        <input
-          type="checkbox"
-          checked={consistent}
-          onChange={(e) => setConsistent(e.target.checked)}
-        />
-        Content consistency OK
-      </label>
-      <label>
-        Consistency note
-        <input
-          value={consistentNote}
-          onChange={(e) => setConsistentNote(e.target.value)}
-        />
-      </label>
-      <label>
-        Summary reasons (one per line)
-        <textarea
-          value={reasons}
-          onChange={(e) => setReasons(e.target.value)}
-          placeholder={"✓ KvK 14 years\n⚠ website only 6 months old"}
-          style={{ minHeight: "3.5rem" }}
-        />
-      </label>
-      <button className="btn secondary small" type="submit" disabled={saving}>
-        {saving ? "Saving…" : "Save evidence → pending_review"}
-      </button>
-    </form>
   );
 }
 
@@ -732,7 +481,10 @@ function JournalForm({
     <form className="form-stack" onSubmit={submit}>
       <label>
         Kind
-        <select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
+        <select
+          value={kind}
+          onChange={(e) => setKind(e.target.value as typeof kind)}
+        >
           <option value="journal">Journal</option>
           <option value="note">Note</option>
           <option value="task">Task</option>
@@ -740,11 +492,19 @@ function JournalForm({
       </label>
       <label>
         Title
-        <input value={title} onChange={(e) => setTitle(e.target.value)} required />
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          required
+        />
       </label>
       <label>
         Body
-        <textarea value={body} onChange={(e) => setBody(e.target.value)} required />
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          required
+        />
       </label>
       <button className="btn" type="submit">
         Save entry
@@ -855,113 +615,13 @@ function HypothesisForm({
       </label>
       <label>
         Rationale
-        <textarea value={rationale} onChange={(e) => setRationale(e.target.value)} />
+        <textarea
+          value={rationale}
+          onChange={(e) => setRationale(e.target.value)}
+        />
       </label>
       <button className="btn" type="submit">
         Add hypothesis
-      </button>
-    </form>
-  );
-}
-
-function LinkSourceForm({
-  missionId,
-  onSaved,
-}: {
-  missionId: string;
-  onSaved: () => Promise<void>;
-}) {
-  const [q, setQ] = useState("");
-  const [candidates, setCandidates] = useState<Source[]>([]);
-  const [selectedId, setSelectedId] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const search = useCallback(async () => {
-    try {
-      setError(null);
-      const items = await api.listLinkableSources(missionId, q);
-      setCandidates(items);
-      if (items.length && !items.some((s) => s.id === selectedId)) {
-        setSelectedId(items[0]!.id);
-      }
-      if (!items.length) setSelectedId("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Search failed");
-    }
-  }, [missionId, q, selectedId]);
-
-  useEffect(() => {
-    void search();
-  }, [missionId]); // initial load only
-
-  async function link(e: FormEvent) {
-    e.preventDefault();
-    if (!selectedId) return;
-    setBusy(true);
-    try {
-      await api.linkSource(missionId, selectedId);
-      setQ("");
-      await onSaved();
-      await search();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Link failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <form className="form-stack" onSubmit={(e) => void link(e)}>
-      <h3 style={{ margin: "0 0 0.5rem", fontSize: "1rem" }}>
-        Link existing source
-      </h3>
-      <p className="hint">
-        Reuse a list from another mission (e.g. KvK, regional association).
-      </p>
-      <label>
-        Search name / category
-        <div className="row" style={{ gap: "0.5rem" }}>
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="KvK, association…"
-            style={{ flex: 1 }}
-          />
-          <button
-            className="btn secondary small"
-            type="button"
-            onClick={() => void search()}
-          >
-            Search
-          </button>
-        </div>
-      </label>
-      <label>
-        Source from other missions
-        <select
-          value={selectedId}
-          onChange={(e) => setSelectedId(e.target.value)}
-          disabled={!candidates.length}
-        >
-          {!candidates.length ? (
-            <option value="">No linkable sources</option>
-          ) : (
-            candidates.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} · {s.category} · w{s.suggestedWeight ?? "—"}
-              </option>
-            ))
-          )}
-        </select>
-      </label>
-      {error ? <div className="error">{error}</div> : null}
-      <button
-        className="btn secondary"
-        type="submit"
-        disabled={busy || !selectedId}
-      >
-        {busy ? "Linking…" : "Link to this mission"}
       </button>
     </form>
   );

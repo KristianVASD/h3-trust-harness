@@ -1,4 +1,5 @@
 import type { ExtractionGuide, Richness, Source, SourceFieldKey } from "@h3-trust/schema";
+import { BarrierCard } from "./BarrierCard";
 
 /** Score bar + field chips for a probed source's richness. */
 export function RichnessBar({
@@ -90,8 +91,16 @@ export function ExtractionGuidePanel({ guide }: { guide: ExtractionGuide }) {
   );
 }
 
-/** Expanded probe detail: richness + guide + evidence reasons. */
-export function SourceProbeDetail({ source }: { source: Source }) {
+/** Expanded probe detail: richness + guide + evidence reasons + barrier. */
+export function SourceProbeDetail({
+  source,
+  missionId,
+  onBarrierDone,
+}: {
+  source: Source;
+  missionId?: string;
+  onBarrierDone?: () => void | Promise<void>;
+}) {
   const reasons = source.evidence?.summary_reasons ?? [];
 
   return (
@@ -111,6 +120,23 @@ export function SourceProbeDetail({ source }: { source: Source }) {
       ) : (
         <p className="muted">No extraction guide yet — run Probe.</p>
       )}
+      {source.accessBarrier && missionId ? (
+        <section>
+          <h4 className="worker-probe-detail-title">Access barrier</h4>
+          <BarrierCard
+            missionId={missionId}
+            source={source}
+            onDone={onBarrierDone}
+          />
+        </section>
+      ) : source.accessBarrier ? (
+        <section>
+          <h4 className="worker-probe-detail-title">Access barrier</h4>
+          <p className="muted">
+            {source.accessBarrier.kind} · {source.accessBarrier.status}
+          </p>
+        </section>
+      ) : null}
       {reasons.length > 0 ? (
         <section>
           <h4 className="worker-probe-detail-title">Probe evidence</h4>

@@ -8,6 +8,7 @@ import {
   CollectionNameSchema,
   DEFAULT_SEARCH_PLAN_VERSION,
   SearchPlanSchema,
+  computeMissionCoverage,
   type CollectionName,
   type Mission,
   type Producer,
@@ -23,6 +24,19 @@ import {
   ProbeRouteError,
   runProbeForMission,
 } from "./omega/probe-route.js";
+import {
+  ExtractRouteError,
+  runExtractForSource,
+} from "./omega/extract-route.js";
+import {
+  BarrierRouteError,
+  declineBarrierForSource,
+  fulfillBarrierForSource,
+} from "./omega/barrier-route.js";
+import {
+  HarvestRouteError,
+  runHarvestForCompany,
+} from "./omega/harvest-route.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const writableRoot = path.resolve(__dirname, "../../../writable");
@@ -167,6 +181,132 @@ app.post("/api/missions/:missionId/omega/probe", async (c) => {
       400,
     );
   }
+});
+
+/**
+ * Phase 6 — Gated extract for one accepted+probed source.
+ * Blocked sources never reach the scraper.
+ */
+app.post(
+  "/api/missions/:missionId/sources/:sourceId/extract",
+  async (c) => {
+    try {
+      const result = await runExtractForSource(
+        store,
+        c.req.param("missionId"),
+        c.req.param("sourceId"),
+      );
+      return c.json(result, 201);
+    } catch (err) {
+      if (err instanceof ExtractRouteError) {
+        return c.json({ error: err.message }, err.status);
+      }
+      return c.json(
+        { error: err instanceof Error ? err.message : "Extract failed" },
+        400,
+      );
+    }
+  },
+);
+
+/** Phase 6 — Human fulfils an Ω-raised access barrier. */
+app.post(
+  "/api/missions/:missionId/sources/:sourceId/barriers/:barrierId/fulfill",
+  async (c) => {
+    const body = await c.req.json();
+    try {
+      const result = await fulfillBarrierForSource(
+        store,
+        c.req.param("missionId"),
+        c.req.param("sourceId"),
+        c.req.param("barrierId"),
+        body.fulfillment ?? body,
+      );
+      return c.json(result);
+    } catch (err) {
+      if (err instanceof BarrierRouteError) {
+        return c.json({ error: err.message }, err.status);
+      }
+      return c.json(
+        { error: err instanceof Error ? err.message : "Fulfill failed" },
+        400,
+      );
+    }
+  },
+);
+
+/** Phase 6 — Human declines a barrier (mandatory reason). */
+app.post(
+  "/api/missions/:missionId/sources/:sourceId/barriers/:barrierId/decline",
+  async (c) => {
+    const body = await c.req.json();
+    try {
+      const result = await declineBarrierForSource(
+        store,
+        c.req.param("missionId"),
+        c.req.param("sourceId"),
+        c.req.param("barrierId"),
+        body,
+      );
+      return c.json(result);
+    } catch (err) {
+      if (err instanceof BarrierRouteError) {
+        return c.json({ error: err.message }, err.status);
+      }
+      return c.json(
+        { error: err instanceof Error ? err.message : "Decline failed" },
+        400,
+      );
+    }
+  },
+);
+
+/**
+ * Phase 7 — Harvest company profile (Can / For / Notable).
+ * Soft-fails with harvest-failed Observation; never raises a barrier.
+ */
+app.post(
+  "/api/missions/:missionId/companies/:companyId/harvest",
+  async (c) => {
+    try {
+      const result = await runHarvestForCompany(
+        store,
+        c.req.param("missionId"),
+        c.req.param("companyId"),
+      );
+      return c.json(result);
+    } catch (err) {
+      if (err instanceof HarvestRouteError) {
+        return c.json({ error: err.message }, err.status);
+      }
+      return c.json(
+        { error: err instanceof Error ? err.message : "Harvest failed" },
+        400,
+      );
+    }
+  },
+);
+
+/**
+ * Phase 8 — Barrier-aware mission coverage (pure, computed on read).
+ */
+app.get("/api/missions/:missionId/coverage", async (c) => {
+  const missionId = c.req.param("missionId");
+  const mission = await store.getMission(missionId);
+  if (!mission) return c.json({ error: "Not found" }, 404);
+  const [sources, companies] = await Promise.all([
+    store.listByMission("sources", missionId),
+    store.listByMission("companies", missionId),
+  ]);
+  const plan = await loadSearchPlan(
+    mission.search_plan_version || DEFAULT_SEARCH_PLAN_VERSION,
+  );
+  const coverage = computeMissionCoverage({
+    sources,
+    companies,
+    planEntries: plan?.entries ?? [],
+  });
+  return c.json(coverage);
 });
 
 /** Link reusable catalogue sources into an existing mission (idempotent). */

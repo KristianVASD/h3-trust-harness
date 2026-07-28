@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AccessBarrierSchema } from "./access-barriers";
 import {
   SourceFieldKeySchema,
   RichnessSchema,
@@ -247,6 +248,8 @@ const sourceObjectSchema = z.object({
   extractionGuide: ExtractionGuideSchema.optional(),
   /** Probe lifecycle. New proposals are unprobed until Job 2 runs. */
   probeStatus: ProbeStatusSchema.default("unprobed"),
+  /** Active access barrier Ω raised on this source (probe). Human resolves it. */
+  accessBarrier: AccessBarrierSchema.optional(),
   /** Legacy owner field — stripped after migrate. */
   missionId: z.string().uuid().optional(),
 });
@@ -331,6 +334,21 @@ export const CompanySchema = z.object({
   kvk_number: z.string().optional(),
   /** Hard gate — not a weighted score. */
   kvk_gate: KvkGateSchema.default("unchecked"),
+  /**
+   * Per-company KvK single-lookup: Ω can suggest it, a human (or the free API later) runs it.
+   * Modelled KvK-specific — not a generic per-company barrier engine.
+   */
+  kvk_manual_check: z
+    .object({
+      requested: z.boolean().default(false),
+      suggested_by: z.literal("OmegaClaw").optional(),
+      checked_by: z.string().optional(),
+      result: z.enum(["pass", "fail", "unknown"]).optional(),
+      checked_at: z.string().datetime().optional(),
+    })
+    .optional(),
+  /** Extra list-row value (specialism / trade focus). */
+  specialism: z.string().optional(),
   source_ids: z.array(z.string().uuid()).default([]),
   list_membership: z.array(z.string()).default([]),
   /** Empty = no hard exclusion. */
@@ -348,6 +366,8 @@ export const CompanySchema = z.object({
    * e.g. ["heritage experience", "colour advice"]
    */
   differentiators: z.array(z.string()).default([]),
+  /** Company website — harvest input; optional until discovered. */
+  website_url: z.string().optional(),
   /** Short website summary (harvested or manual). Descriptive, not trust. */
   profileSnippet: z.string().optional(),
   profileSourceUrl: z.string().optional(),
@@ -535,3 +555,4 @@ export * from "./search-plan";
 export * from "./capability-aliases";
 export * from "./source-richness";
 export * from "./coverage";
+export * from "./access-barriers";

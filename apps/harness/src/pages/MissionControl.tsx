@@ -148,9 +148,9 @@ export function MissionControl() {
       <p className="thesis">
         {isWorker ? (
           <>
-            <strong>Data Worker.</strong> Fill gaps, approve lists, import companies,
-            read trust rankings — a straight path from Painters · Haarlemmermeer to
-            results. No notebook, no graph.
+            <strong>Data Worker.</strong> Brief → Gaps → Probe → Align → Extract →
+            Profile → Coverage → Search — a straight production path. Notebook and
+            reviews stay on Investigation.
           </>
         ) : (
           <>
@@ -168,8 +168,8 @@ export function MissionControl() {
           <h2>{isWorker ? "Jobs" : "Missions"}</h2>
           <p className="hint">
             {isWorker
-              ? "Open a data job. Sources → CARA → Import → Results."
-              : "Open an investigation. No AI required."}
+              ? "Open a data job. Brief → Gaps → Probe → Align → Extract → Profile → Coverage → Search."
+              : "Open an investigation notebook. Production runs in Data Worker."}
           </p>
           {missions.length === 0 ? (
             <div className="empty">

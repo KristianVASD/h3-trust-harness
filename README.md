@@ -25,6 +25,8 @@ pnpm dev
 ```
 
 - Harness UI: http://localhost:5173  
+- Home (welcome): http://localhost:5173/  
+- Mission Control (ops): http://localhost:5173/control  
 - API: http://localhost:8787  
 - API health: http://localhost:8787/api/health  
 
@@ -39,12 +41,13 @@ Sample bulk-import files: [`fixtures/samples/`](fixtures/samples/).
 ## BGI Open Build — 3-Minute Demo
 
 1. `pnpm install && pnpm seed && pnpm dev`
-2. Open http://localhost:5173
+2. Open http://localhost:5173 — read the welcome, then **Mission Control**
 3. Click **Haarlemmermeer · Painters** → **Data Worker**
-4. See: trusted sources, gap board, CARA queue — then Import → Results
-5. On Results: ranked trust scores, list mentions, **Can / For / Notable** company profile tags, human check (Agree / Adjust / Disagree)
-6. Click **Export investigation** → open the JSON → full reasoning trail
-7. Or open **Search** (top bar or Mission Control) → type `painters in Haarlemmermeer` → top-5 ranked answer with Why + one-click CARA
+4. Walk the sidebar: Gaps → Probe → CURAD Align → Extract → **Profile (Harvest)** → Coverage → Search
+5. On Profile: Harvest one company (or batch) → see **Can / For / Notable** fill with an Ω confidence dot
+6. On Search / Results: ranked trust scores, list mentions, profile tags, human check (Agree / Adjust / Disagree)
+7. Click **Export investigation** → open the JSON → full reasoning trail
+8. Or open **Search** (top bar or Mission Control) → type `painters in Haarlemmermeer` → top-5 ranked answer with Why + one-click CARA
 
 This is Trust Discovery: evidence-based, human-validated, AI-ready.
 
@@ -52,11 +55,13 @@ This is Trust Discovery: evidence-based, human-validated, AI-ready.
 
 | Entrance | Path | Job |
 |----------|------|-----|
-| **Data Worker** | `/work/:id/…` | Linear production: sources → import → results (CARA anytime) |
-| **Investigation** | `/missions/:id` | Deep desk: notebook, Situation Room, graph |
+| **Home** | `/` | Welcome — mission, CARA volunteers, partnership |
+| **Data Worker** | `/work/:id/…` | Linear **production**: Brief → Gaps → Probe → Align → Extract → Profile → Coverage → Search |
+| **Investigation** | `/missions/:id` | Deep **notebook + reviews**: Journal / Observations / Hypotheses, Align, Signals, Situation, Memory |
 | **Single Search** | `/search` | One question → ranked answer from existing investigations |
+| **Mission Control** | `/control` | Open / create jobs and investigations |
 
-Switch anytime via Mission Control or the top bar.
+Switch anytime via the top bar.
 
 ---
 
@@ -118,9 +123,13 @@ Mission
 
 ## How to use each screen
 
-### 1. Mission Control — `/`
+### 1. Home — `/`
 
-Start of every investigation.
+Public welcome: why local trust, how a mission works, **become a CARA volunteer**, **partnership contact**. Demo ops live under Mission Control.
+
+### 2. Mission Control — `/control`
+
+Start of every investigation (ops desk).
 
 - See existing missions (after seed: Haarlemmermeer · Painters)
 - Or create a new one: location, country, sector, subsector, goal, notes
@@ -129,45 +138,88 @@ Start of every investigation.
 
 Saves a `Mission` with phase badges (observation, hypothesis, evidence, CARA, …). Early phases are active; company deep-check is stubbed for later.
 
-### 2. Investigation Workspace — `/missions/:id`
+### 3. Investigation desk — `/missions/:id`
 
-Your main research desk (not a chatbot).
+Deep notebook + reviews. **Production** (lists → companies → harvest → readiness) runs in Data Worker; this desk captures reasoning and human alignment.
 
-| Tab | Meaning | How to use |
-|-----|---------|------------|
-| **Journal** | Notes & tasks | Log what you did / what’s next |
-| **Observations** | Facts only | e.g. “Gemeente site links to ondernemersvereniging” + URL. **No score.** |
-| **Hypotheses** | Claims under test | e.g. “Associations beat commercial directories.” Status: Draft → Testing → Validated / **Rejected** / Archived. Rejected stays — that is knowledge. |
-| **Sources** | Candidate trust sources | KvK, Google Business, local association, etc. Each has a **category** (registry, local_business_association, …). Suggested weight is a **suggestion**, not a decision. |
-| **Companies** | Firms from lists / discovery | Filter candidate / target / staged. Hard **kvk_gate** (pass/fail/unchecked). Link sources, list membership, blacklist flags. Bulk-import paste/CSV. Each company can carry a **category** (navigation door) plus harvested/manual **profile dimensions** — see below. |
+**Header:** Investigation eyebrow, mission title, **Open Data Worker** (jumps to the next incomplete worker step), grouped nav:
 
-Right side: forms to **Add** each of those. Every save is stamped **Producer · Human**.
+| Group | Links |
+|-------|--------|
+| Notebook | Workspace |
+| Reviews | Align sources · Align companies |
+| Desk | Signals · Situation · Memory |
 
-Top navigation:
+Coverage strip shows gaps / align queue / trusted / thin profiles / completeness % — each chip links into Worker or Align.
 
-- **CARA Review** — human validation  
-- **Signals** — build explainable confidence  
-- **Situation Room** — ops overview  
-- **Knowledge Graph** — browse the chain  
-- **Export investigation** — download full JSON bundle  
+#### Workspace (notebook)
 
-**Typical first session:** open seed mission → Companies tab → review seed firms → bulk-import a short list → CARA a company.
+| Tab | Meaning |
+|-----|---------|
+| **Journal** | Notes & tasks (tasks can be marked done) |
+| **Observations** | Facts only — no score |
+| **Hypotheses** | Claims under test (status Draft → … → Rejected stays) |
 
-### Company profile (Can / For / Notable)
+Top of Workspace: mission overview (read-only discovery brief + source/company summaries with Worker CTAs). Edit the brief in **Data Worker · Brief**. Export investigation stays here.
+
+#### Other desk tabs
+
+- **Align sources / companies** — CURAD/CARA human checkpoints (same Agree / Adjust / Disagree)
+- **Signals** — explainable confidence deltas
+- **Situation** — where to spend time; links into Worker steps
+- **Memory** (`/graph`) — browse records by kind (not a graph DB)
+
+Legacy `/missions/:id/triage` redirects to **Data Worker · Gaps**.
+
+### Data Worker — `/work/:id/…`
+
+Linear production path for one mission (sidebar steps, each gated by preconditions):
+
+| # | Step | What happens |
+|---|------|----------------|
+| 1 | Brief | Scope + search plan |
+| 2 | Gaps | Open layer×category cells → Ask Ω `discover` |
+| 3 | Probe | Unprobed candidates → richness + extraction guide (+ optional access barrier) |
+| 4 | CURAD · Align | Human Agree / Adjust / Dissent on Ω proposals |
+| 5 | Extract | Gated scrape (or human paste) using the guide; barriers must be fulfilled first |
+| 6 | **Profile** | **Harvest** Can / For / Notable from company websites (stub Ω) |
+| 7 | Coverage | Completeness score + `readyForSearch` (barrier-aware) |
+| 8 | Search | Single Search scoped to this mission |
+
+Profiles are enrichment, not a gate — a company without a harvest is still searchable; Coverage’s `profileCompleteness` just scores lower.
+
+### Company profile (Can / For / Notable) + Harvest
 
 Category alone is too coarse (“painter” says nothing about interior vs spray work, or private vs HOA clients). Companies therefore carry optional descriptive fields — **not** part of the trust score:
 
 | Dimension | Field | Meaning |
 |-----------|-------|---------|
 | Door | `category` | Navigation label (e.g. `painting`) |
+| Website | `website_url` | Harvest input (falls back to `profileSourceUrl` if set) |
 | **Can** | `capabilities` | What they do (free strings, e.g. `interior painting`, `wood-rot repair`) |
 | **For** | `serviceContexts` | Who they serve (`private`, `hoa`, `municipal`, `commercial`, `industrial`) |
 | **Notable** | `differentiators` | What stands out (e.g. `heritage experience`) |
 | Evidence | `profileSnippet` (+ URL / harvested-at / producer) | Short website summary with provenance |
 
-Shown read-only on Companies, Worker Results, and Single Search as teal / blue / purple chips — visually separate from CARA / trust chips. Synonyms can later collapse via [`searchplans/capability_aliases.v1.json`](searchplans/capability_aliases.v1.json). Harvesting (OmegaClaw reading a site → filling these fields) is the intended next producer path; the harness already displays the output.
+Shown read-only on Companies, Worker Results, and Single Search as teal / blue / purple chips — visually separate from CARA / trust chips. Synonyms collapse via [`searchplans/capability_aliases.v1.json`](searchplans/capability_aliases.v1.json).
 
-### 3. Single Search — `/search`
+**Harvest (Data Worker → Profile)** fills those fields via OmegaClaw Job 4:
+
+1. Open `/work/:missionId/profile`
+2. Click **Harvest** on one company (or select several → **Harvest selected**)
+3. API: `POST /api/missions/:missionId/companies/:companyId/harvest` → stub `runOcCommand("harvest")` today (no API key); Phase 9 swaps the adapter body only
+4. Company is upserted with Can / For / Notable + `profileProducer: OmegaClaw`
+5. UI shows a green / amber / red **confidence** dot (`high` / `medium` / `low`)
+
+Rules that keep harvest honest:
+
+- **No website** → still succeeds with a minimal name-only profile and `harvest_confidence: "low"` (not an error)
+- **Hard failure** → writes an `Observation` tagged `harvest-failed`, leaves the company unchanged — a *signal*, never an access barrier
+- **Webpage-trust probe** stays a schema placeholder (`webpageTrustProbe.notes`) — not on the critical path
+
+Smoke: `pnpm --filter @h3-trust/server run omega:smoke` exercises with-URL (medium) and no-URL (low) harvest paths.
+
+### 4. Single Search — `/search`
 
 One question, one ranked answer — reads **existing** investigations only (does not create missions).
 
@@ -178,7 +230,7 @@ One question, one ranked answer — reads **existing** investigations only (does
 
 Links out to full Investigation and Data Worker for the matched mission.
 
-### 4. Signals — `/missions/:id/signals`
+### 5. Signals — `/missions/:id/signals`
 
 The reasoning layer.
 
@@ -190,12 +242,12 @@ The reasoning layer.
 
 Still **not** a final trust score — only a proposal for CARA.
 
-### 5. CARA Review — `/missions/:id/cara` (two checkpoints)
+### 6. CARA Review — `/missions/:id/cara` (two checkpoints)
 
 Human alignment. OmegaClaw must never do this as final authority.
 
 Toggle **CARA (sources)** | **CARA (companies)** — same agree/adjust/disagree mechanism, same mark in every overview.  
-**Check known sources** (Workspace → Sources coverage panel) is a separate mechanical lookup: only `accepted` / `adjusted` sources count as covered.
+**Check known sources** (Data Worker · Gaps / Coverage) is a mechanical lookup: only `accepted` / `adjusted` sources count as covered.
 
 1. Pick an item from the queue  
 2. Read suggested confidence (for companies: average of linked sources)  
@@ -211,7 +263,7 @@ Reuse of a source always inherits a prior human CARA judgement — it never bypa
 
 You can keep working in Workspace while reviews wait — **CARA is not a blocker.** OmegaClaw may continue Jobs 1–4; CARA later locks scores and stores Adjust/Disagree reasons as feedback (see [`OmegaClaw.md`](OmegaClaw.md)).
 
-### 6. Situation Room — `/missions/:id/situation`
+### 7. Situation Room — `/missions/:id/situation`
 
 Operational cockpit:
 
@@ -220,17 +272,13 @@ Operational cockpit:
 
 Use it when you ask: “Where should I spend time next?”
 
-### 7. Knowledge Graph — `/missions/:id/graph`
+### 8. Memory — `/missions/:id/graph`
 
-A simple human graph (not Neo4j).
+Browse investigation records by kind (Mission → Hypothesis → Observation → Source → Company → Review). Click a node for producer + detail. Honest label: not Neo4j — a readable chain for one mission.
 
-Lists nodes by kind: Mission → Hypothesis → Observation → Source → Company → Review. Click a node to see producer, detail, and id.
+### 9. Export
 
-Use it to answer: “How did we get to this judgement?”
-
-### 8. Export
-
-From Workspace → **Export investigation**.
+From Investigation → Workspace → **Export investigation**.
 
 Produces a full bundle (mission, observations, hypotheses, sources, signals, reviews, findings, journal, …), downloads it, and writes under `writable/export/`.
 
@@ -266,7 +314,7 @@ Each record is one JSON file. You can open them in an editor — the platform is
 |------|-------------|-------------------|
 | Mission | create | suggest only |
 | Journal / observations / hypotheses / sources | write | write same shapes |
-| Company profile (Can / For / Notable) | correct / fill | harvest from websites |
+| Company profile (Can / For / Notable) | correct / fill | **harvest** from websites (stub live; real API later) |
 | Signals / suggested confidence | assist | propose |
 | **CARA / final validation** | **yes** | **never** |
 | Pattern promotion | human | propose only |
@@ -294,9 +342,9 @@ If that loop feels natural, the product thesis is working: you ran a trust **inv
 
 ## Status: solid vs thin
 
-**Solid now:** Mission Control, **Single Search**, Data Worker + Investigator desks, Workspace (journal / observations / hypotheses / sources / **companies** + bulk import), Source **category**, company **profile dimensions** (Can / For / Notable + snippet), Signals + explainability, CARA (sources **and** companies), Situation Room, Knowledge Graph, Export (includes companies), Producer on records, seed mission, local FileStore.
+**Solid now:** Mission Control, **Single Search**, Data Worker (8-step production spine including Profile harvest + Coverage), **Investigator desk** (notebook Journal/Obs/Hypotheses + Align + Signals + Situation + Memory), company **profile dimensions** filled by stub Ω harvest, access-barrier fulfill on extract, barrier-aware coverage / `readyForSearch`, Signals + explainability, CARA (sources **and** companies), Export, Producer on records, seed mission, local FileStore, `omega:smoke`.
 
-**Thin / next:** live OmegaClaw jobs per [`OmegaClaw.md`](OmegaClaw.md) (Gap Fill stub → Job 1/2; profile harvest Job 4), capability-filter / CSI query UX, Pattern Library promote UI (schema has `PATTERN_MIN_INVESTIGATIONS = 5`), full Investigation Memory screen, richer Evidence tab, Track B fraud / company deep-check phases.
+**Thin / next:** live MiniMax bodies inside the Ω adapter (Phase 9 flip — contracts already frozen), real webpage-trust probe (schema slot only), capability-filter / CSI query UX, Pattern Library promote UI (schema has `PATTERN_MIN_INVESTIGATIONS = 5`), full Investigation Memory screen, richer Evidence tab, Track B fraud / company deep-check phases.
 
 ---
 

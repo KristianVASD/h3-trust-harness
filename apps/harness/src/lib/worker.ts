@@ -1,5 +1,6 @@
 import {
   computeMissionCoverage,
+  isBlockingBarrier,
   resolveSourceGaps,
   type Company,
   type Mission,
@@ -19,6 +20,12 @@ export function countTrustedLists(sources: Source[]): number {
 
 export function isTrustedSource(source: Source): boolean {
   return source.status === "accepted" || source.status === "adjusted";
+}
+
+export function countBlockingBarriers(sources: Source[]): number {
+  return sources.filter(
+    (s) => s.accessBarrier && isBlockingBarrier(s.accessBarrier),
+  ).length;
 }
 
 export type WorkerStepId =
@@ -152,6 +159,7 @@ export function deriveWorkerStepState(args: {
   const guidedTrusted = countGuidedTrusted(sources);
   const needsProfile = countNeedsProfile(companies);
   const candidateCount = sources.filter((s) => s.status === "candidate").length;
+  const barrierCount = countBlockingBarriers(sources);
 
   const probeEnabled =
     loaded &&
@@ -198,12 +206,14 @@ export function deriveWorkerStepState(args: {
       id: "extract",
       enabled: extractEnabled,
       todoLabel:
-        guidedTrusted > 0
-          ? `${guidedTrusted} guided`
-          : trustedCount > 0
-            ? `${trustedCount} trusted`
-            : "",
-      settled: loaded && companies.length > 0,
+        barrierCount > 0
+          ? `${barrierCount} barrier${barrierCount === 1 ? "" : "s"}`
+          : guidedTrusted > 0
+            ? `${guidedTrusted} guided`
+            : trustedCount > 0
+              ? `${trustedCount} trusted`
+              : "",
+      settled: loaded && companies.length > 0 && barrierCount === 0,
     },
     {
       id: "profile",
@@ -247,4 +257,17 @@ export function deriveWorkerStepState(args: {
     alignQueue,
     unprobedCount,
   };
+}
+
+/** First unsettled enabled worker step — used by Investigator “Open Data Worker” CTA. */
+export function nextIncompleteWorkerStep(args: {
+  mission: Mission | null;
+  sources: Source[];
+  companies: Company[];
+  planEntries: SearchPlanEntry[];
+  catalogue?: Source[];
+}): WorkerStepId {
+  const { steps } = deriveWorkerStepState(args);
+  const next = steps.find((s) => s.enabled && !s.settled);
+  return next?.id ?? "brief";
 }

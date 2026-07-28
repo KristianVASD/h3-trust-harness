@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { SearchPlanEntry } from "./search-plan";
 import type { SourceFieldKey } from "./source-richness";
 import type { ExtractionGuide, ProbeStatus, Richness } from "./source-richness";
+import { isBlockingBarrier, type AccessBarrier } from "./access-barriers";
 
 /** A "cell" = one (layer × category) slot in the search plan. */
 export const TARGET_COMPANIES = 5; // ties to the ≥5 mission-success gate
@@ -24,6 +25,8 @@ export const MissionCoverageSchema = z.object({
   sourcesAccepted: z.number().int().min(0),
   sourcesProbed: z.number().int().min(0),
   sourcesWithGuide: z.number().int().min(0),
+  /** Accepted sources still blocked by an unfulfilled access barrier. */
+  sourcesBlockedByBarrier: z.number().int().min(0),
   companiesExtracted: z.number().int().min(0),
   companiesWithProfile: z.number().int().min(0),
   kvkPassRate: z.number().min(0).max(1),
@@ -44,12 +47,14 @@ export type CoverageMissionSource = {
   extractionGuide?: ExtractionGuide | null;
   sourceFields?: SourceFieldKey[];
   richness?: Richness;
+  accessBarrier?: AccessBarrier;
 };
 
 export type CoverageMissionCompany = {
   capabilities: string[];
   profileSnippet?: string;
   kvk_gate: string;
+  source_ids?: string[];
 };
 
 const ACCEPTED = new Set(["accepted", "adjusted"]);
@@ -78,6 +83,9 @@ export function computeMissionCoverage(args: {
   const sourcesAccepted = accepted.length;
   const sourcesProbed = sources.filter((s) => s.probeStatus === "probed").length;
   const sourcesWithGuide = sources.filter((s) => s.extractionGuide != null).length;
+  const sourcesBlockedByBarrier = accepted.filter(
+    (s) => s.accessBarrier && isBlockingBarrier(s.accessBarrier),
+  ).length;
   const companiesExtracted = companies.length;
   const companiesWithProfile = companies.filter(
     (c) => c.capabilities.length > 0 || (c.profileSnippet ?? "").length > 0,
@@ -125,6 +133,11 @@ export function computeMissionCoverage(args: {
       `need ≥${READY_MIN_COMPANIES} companies (have ${companiesExtracted})`,
     );
   }
+  if (sourcesBlockedByBarrier > 0) {
+    unmet.push(
+      `${sourcesBlockedByBarrier} accepted source(s) blocked by unfulfilled barrier`,
+    );
+  }
   const readyForSearch = unmet.length === 0;
 
   return {
@@ -133,6 +146,7 @@ export function computeMissionCoverage(args: {
     sourcesAccepted,
     sourcesProbed,
     sourcesWithGuide,
+    sourcesBlockedByBarrier,
     companiesExtracted,
     companiesWithProfile,
     kvkPassRate: Number(kvkPassRate.toFixed(3)),
@@ -141,4 +155,44 @@ export function computeMissionCoverage(args: {
     readyReason: readyForSearch ? "ready" : unmet.join("; "),
     breakdown,
   };
+}
+
+/**
+ * Per search result: how complete/confident is THIS suggestion, given the
+ * mission's completeness and this company's own evidence? 0..100.
+ *   0.5 * mission completeness   (the investigation is this far along)
+ * + 0.3 * list coverage          (3+ trusted lists = 1.0)
+ * + 0.2 * kvk factor             (pass 1.0 / unchecked 0.5 / fail 0.0)
+ */
+export function computeResultCoverage(
+  company: { source_ids?: string[]; kvk_gate?: string },
+  mission: Pick<MissionCoverage, "completenessScore">,
+): number {
+  const listScore = Math.min((company.source_ids?.length ?? 0) / 3, 1);
+  const kvkFactor =
+    company.kvk_gate === "pass"
+      ? 1
+      : company.kvk_gate === "fail"
+        ? 0
+        : 0.5;
+  const raw =
+    0.5 * (mission.completenessScore / 100) +
+    0.3 * listScore +
+    0.2 * kvkFactor;
+  return Math.round(Math.min(1, Math.max(0, raw)) * 100);
+}
+
+/** Plain-language why for a coverageConfidence meter. */
+export function explainResultCoverage(
+  company: { source_ids?: string[]; kvk_gate?: string },
+  mission: Pick<MissionCoverage, "completenessScore">,
+): string {
+  const lists = company.source_ids?.length ?? 0;
+  const kvk =
+    company.kvk_gate === "pass"
+      ? "KvK pass"
+      : company.kvk_gate === "fail"
+        ? "KvK fail"
+        : "KvK unchecked";
+  return `mission ${mission.completenessScore}% complete · on ${lists} trusted list${lists === 1 ? "" : "s"} · ${kvk}`;
 }

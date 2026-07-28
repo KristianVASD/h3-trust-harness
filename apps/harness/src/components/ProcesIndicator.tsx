@@ -8,6 +8,11 @@ import {
   type SearchPlan,
   type Source,
 } from "@h3-trust/schema";
+import {
+  countTrustedLists,
+  deriveWorkerStepState,
+  nextIncompleteWorkerStep,
+} from "../lib/worker";
 
 interface Props {
   mission: Mission;
@@ -18,9 +23,15 @@ interface Props {
   searchPlan: SearchPlan | null;
 }
 
+function countNeedsProfileLocal(companies: Company[]): number {
+  return companies.filter(
+    (c) => c.capabilities.length === 0 && !(c.profileSnippet ?? "").trim(),
+  ).length;
+}
+
 /**
- * Persistent process indicator — visible on every Mission page.
- * Reads existing fields only. No new data sources.
+ * Coverage-aware summary strip — counts + next Worker step.
+ * Replaces the old observation → deep_check phase theatre.
  */
 export function ProcesIndicator({
   mission,
@@ -34,20 +45,30 @@ export function ProcesIndicator({
 
   const stats = useMemo(() => {
     const planEntries = searchPlan?.entries ?? [];
-    const coverage = resolveSourceGaps(
+    const derived = deriveWorkerStepState({
+      mission,
+      sources,
+      companies,
+      planEntries,
+      catalogue,
+    });
+    const nextStep = nextIncompleteWorkerStep({
+      mission,
+      sources,
+      companies,
+      planEntries,
+      catalogue,
+    });
+
+    const gapRows = resolveSourceGaps(
       catalogue,
       mission.location,
       mission.sector,
       planEntries,
     );
-    const gapCount = coverage.filter((r) => r.status === "gap").length;
-    const totalCategories = coverage.length;
-
-    const triageQueue = sources.filter((s) => s.status === "candidate").length;
-
-    const caraSourceQueue = sources.filter(
-      (s) => s.status === "draft" || s.status === "pending_review",
-    ).length;
+    const gapCount = gapRows.filter((r) => r.status === "gap").length;
+    const trustedCount = countTrustedLists(sources);
+    const thinProfiles = countNeedsProfileLocal(companies);
 
     const reviewedCompanyIds = new Set(
       reviews.filter((r) => r.targetType === "company").map((r) => r.targetId),
@@ -58,94 +79,72 @@ export function ProcesIndicator({
         !reviewedCompanyIds.has(c.id),
     ).length;
 
-    const activePhase =
-      mission.phases.find((p) => p.status === "active")?.key ?? "observation";
-
-    let nextAction = "No open actions";
-    let nextLink = `/missions/${missionId}`;
-    if (triageQueue > 0) {
-      nextAction = `Triage ${triageQueue} candidate${triageQueue > 1 ? "s" : ""}`;
-      nextLink = `/missions/${missionId}/triage`;
-    } else if (caraSourceQueue > 0) {
-      nextAction = `CARA ${caraSourceQueue} source${caraSourceQueue > 1 ? "s" : ""}`;
-      nextLink = `/missions/${missionId}/cara?target=source`;
-    } else if (caraCompanyQueue > 0) {
-      nextAction = `CARA ${caraCompanyQueue} compan${caraCompanyQueue > 1 ? "ies" : "y"}`;
-      nextLink = `/missions/${missionId}/cara?target=company`;
-    } else if (gapCount > 0) {
-      nextAction = `${gapCount} categor${gapCount > 1 ? "ies" : "y"} still without a source`;
-      nextLink = `/missions/${missionId}/triage`;
-    }
+    const stepLabel =
+      nextStep.charAt(0).toUpperCase() + nextStep.slice(1).replace("-", " ");
 
     return {
       gapCount,
-      totalCategories,
-      triageQueue,
-      caraSourceQueue,
+      totalCategories: gapRows.length,
+      trustedCount,
+      alignQueue: derived.alignQueue,
+      thinProfiles,
       caraCompanyQueue,
-      activePhase,
-      nextAction,
-      nextLink,
+      coverageScore: derived.coverage?.completenessScore ?? null,
+      ready: Boolean(derived.coverage?.readyForSearch),
+      nextStep,
+      nextAction: `Continue in Data Worker · ${stepLabel}`,
+      nextLink: `/work/${missionId}/${nextStep}`,
     };
   }, [mission, sources, catalogue, companies, reviews, searchPlan, missionId]);
 
-  const phaseSteps = [
-    "observation",
-    "hypothesis",
-    "evidence",
-    "cara",
-    "patterns",
-    "companies",
-    "deep_check",
-  ] as const;
-
   return (
     <div className="proces-indicator">
-      <div className="proces-fases">
-        {phaseSteps.map((step) => {
-          const phase = mission.phases.find((p) => p.key === step);
-          const isActive = step === stats.activePhase;
-          const isDone = phase?.status === "done";
-          return (
-            <span
-              key={step}
-              className={`proces-fase ${isActive ? "active" : ""} ${isDone ? "done" : ""}`}
-              title={`${step}: ${phase?.status ?? "waiting"}`}
-            >
-              {isDone ? "✓" : isActive ? "▸" : "·"} {step}
-            </span>
-          );
-        })}
-      </div>
-
       <div className="proces-tellers">
         <NavLink
-          to={`/missions/${missionId}/triage`}
-          className="teller teller-triage"
-          title="Candidate list triage"
+          to={`/work/${missionId}/gaps`}
+          className="teller teller-gaps"
+          title="Open gaps in Data Worker"
         >
-          ☰ {stats.triageQueue} triage
+          {stats.gapCount}/{stats.totalCategories} gaps
         </NavLink>
-
         <NavLink
-          to={`/missions/${missionId}/cara?target=source`}
+          to={`/work/${missionId}/align`}
           className="teller teller-cara-source"
-          title="CARA sources"
+          title="Align queue"
         >
-          ◉ {stats.caraSourceQueue} sources
+          {stats.alignQueue} align
         </NavLink>
-
+        <NavLink
+          to={`/work/${missionId}/brief`}
+          className="teller teller-trusted"
+          title="Trusted lists"
+        >
+          {stats.trustedCount} trusted
+        </NavLink>
+        <NavLink
+          to={`/work/${missionId}/profile`}
+          className="teller teller-profile"
+          title="Thin profiles"
+        >
+          {stats.thinProfiles} thin
+        </NavLink>
         <NavLink
           to={`/missions/${missionId}/cara?target=company`}
           className="teller teller-cara-company"
-          title="CARA companies"
+          title="Company align queue"
         >
-          ◆ {stats.caraCompanyQueue} companies
+          {stats.caraCompanyQueue} co. review
         </NavLink>
-
-        <span className="teller teller-gaps" title="Open categories without a CARA source">
-          {stats.gapCount}/{stats.totalCategories} gaps
-        </span>
+        {stats.coverageScore != null ? (
+          <NavLink
+            to={`/work/${missionId}/coverage`}
+            className="teller teller-coverage"
+            title="Mission coverage"
+          >
+            {stats.coverageScore}%
+            {stats.ready ? " ready" : ""}
+          </NavLink>
+        ) : null}
       </div>
 
       <div className="proces-next">

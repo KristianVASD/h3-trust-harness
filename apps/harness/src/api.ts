@@ -1,10 +1,13 @@
 import type {
+  AccessBarrier,
+  BarrierFulfillment,
   CollectionName,
   Company,
   ExportBundle,
   Hypothesis,
   JournalEntry,
   Mission,
+  MissionCoverage,
   MissionSource,
   Observation,
   SearchPlan,
@@ -58,6 +61,77 @@ export const api = {
         body: JSON.stringify({ sourceId }),
       },
     ),
+  /** Phase 6 — Gated Ω extract for one accepted+probed source. */
+  extractSource: (missionId: string, sourceId: string) =>
+    request<{
+      created: string[];
+      companies: Company[];
+      blocked: Array<{
+        sourceId: string;
+        barrierId: string;
+        kind: string;
+        what_human_does: string;
+      }>;
+      notes?: string;
+    }>(`/missions/${missionId}/sources/${sourceId}/extract`, {
+      method: "POST",
+      body: "{}",
+    }),
+  /** Phase 7 — Harvest company profile (Can / For / Notable). */
+  harvestCompany: (missionId: string, companyId: string) =>
+    request<
+      | {
+          ok: true;
+          company: Company;
+          harvest_confidence?: "high" | "medium" | "low";
+          webpageTrustProbe?: {
+            domain_age?: string;
+            has_real_address?: boolean;
+            has_contact?: boolean;
+            notes?: string;
+          };
+        }
+      | { ok: false; observationId: string; error: string }
+    >(`/missions/${missionId}/companies/${companyId}/harvest`, {
+      method: "POST",
+      body: "{}",
+    }),
+  /** Phase 6 — Human fulfils an access barrier. */
+  fulfillBarrier: (
+    missionId: string,
+    sourceId: string,
+    barrierId: string,
+    fulfillment: BarrierFulfillment,
+  ) =>
+    request<{
+      barrier: AccessBarrier;
+      source: Source;
+      createdCompanyIds: string[];
+      companies: Company[];
+    }>(
+      `/missions/${missionId}/sources/${sourceId}/barriers/${barrierId}/fulfill`,
+      {
+        method: "POST",
+        body: JSON.stringify({ fulfillment }),
+      },
+    ),
+  /** Phase 6 — Human declines a barrier (mandatory reason). */
+  declineBarrier: (
+    missionId: string,
+    sourceId: string,
+    barrierId: string,
+    args: { reason: string; by: string },
+  ) =>
+    request<{ barrier: AccessBarrier; source: Source }>(
+      `/missions/${missionId}/sources/${sourceId}/barriers/${barrierId}/decline`,
+      {
+        method: "POST",
+        body: JSON.stringify(args),
+      },
+    ),
+  /** Phase 8 — Barrier-aware mission coverage. */
+  getCoverage: (missionId: string) =>
+    request<MissionCoverage>(`/missions/${missionId}/coverage`),
   updateMission: (mission: Mission) =>
     request<Mission>(`/missions/${mission.id}`, {
       method: "PUT",

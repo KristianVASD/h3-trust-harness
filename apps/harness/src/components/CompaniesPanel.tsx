@@ -109,12 +109,7 @@ export function CompaniesPanel({
             <button
               key={f}
               type="button"
-              className={`btn secondary small${filter === f ? "" : ""}`}
-              style={
-                filter === f
-                  ? { borderColor: "var(--teal)", fontWeight: 700 }
-                  : undefined
-              }
+              className={`btn secondary small${filter === f ? " active" : ""}`}
               onClick={() => setFilter(f)}
             >
               {f}

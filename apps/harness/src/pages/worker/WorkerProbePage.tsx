@@ -1,6 +1,8 @@
 import { Fragment, useState } from "react";
 import { Link, useOutletContext, useParams } from "react-router-dom";
+import { isBlockingBarrier } from "@h3-trust/schema";
 import { ProducerBadge, StatusChip } from "../../components/Badges";
+import { BarrierStatusChip } from "../../components/worker/BarrierCard";
 import { SourceProbeDetail } from "../../components/worker/SourceProbeDetail";
 import type { MissionData } from "../../hooks/useMissionData";
 import { api } from "../../api";
@@ -8,6 +10,7 @@ import { api } from "../../api";
 /**
  * Probe step — lists unprobed + probed sources.
  * Phase 4: Probe CTA calls runOcCommand("probe") via the server.
+ * Phase 6: barriers raised by stub probe show in detail + table chip.
  */
 export function WorkerProbePage() {
   const { missionId = "" } = useParams();
@@ -20,6 +23,9 @@ export function WorkerProbePage() {
   const unprobed = sources.filter((s) => s.probeStatus !== "probed");
   const probed = sources.filter((s) => s.probeStatus === "probed");
   const anyBusy = batchBusy || busyId != null;
+  const barrierCount = sources.filter(
+    (s) => s.accessBarrier && isBlockingBarrier(s.accessBarrier),
+  ).length;
 
   async function probeOne(sourceId: string) {
     setBusyId(sourceId);
@@ -66,11 +72,12 @@ export function WorkerProbePage() {
         <h2>Probe</h2>
         <p className="hint">
           Learn each source&apos;s shape before extract — Probe writes richness
-          fields + an extraction guide (stub Ω today). Align uses probed
-          candidates, not blind ones.
+          fields + an extraction guide (stub Ω today). Access barriers Ω cannot
+          cross are raised here for a human to fulfil.
         </p>
         <p className="muted">
           {unprobed.length} unprobed · {probed.length} probed
+          {barrierCount > 0 ? ` · ${barrierCount} barrier(s)` : ""}
         </p>
         {unprobed.length > 1 ? (
           <button
@@ -124,6 +131,12 @@ export function WorkerProbePage() {
                             producer={s.producer}
                             status={s.status}
                           />
+                          {s.accessBarrier ? (
+                            <>
+                              {" "}
+                              <BarrierStatusChip barrier={s.accessBarrier} />
+                            </>
+                          ) : null}
                           {s.url ? (
                             <>
                               {" · "}
@@ -203,7 +216,11 @@ export function WorkerProbePage() {
                     {expanded ? (
                       <tr className="worker-probe-detail-row">
                         <td colSpan={6}>
-                          <SourceProbeDetail source={s} />
+                          <SourceProbeDetail
+                            source={s}
+                            missionId={missionId}
+                            onBarrierDone={reload}
+                          />
                         </td>
                       </tr>
                     ) : null}
