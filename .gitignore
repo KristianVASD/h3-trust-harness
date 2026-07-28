@@ -29,6 +29,10 @@ coverage/
 .vite/
 *.tsbuildinfo
 
+# Generated Vercel API bundle (created in build:vercel)
+api/index.js
+api/index.js.map
+
 ##############################
 # Environment & secrets
 ##############################

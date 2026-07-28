@@ -297,6 +297,10 @@ a {
 
 .home-section-action {
   margin-top: 1.1rem !important;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
 }
 
 .home-section--cara {

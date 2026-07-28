@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "pnpm --filter @h3-trust/harness build",
+  "buildCommand": "pnpm --filter @h3-trust/harness build && node scripts/bundle-api.mjs",
   "outputDirectory": "apps/harness/dist",
   "installCommand": "pnpm install",
   "framework": null,
@@ -8,8 +8,7 @@
     { "source": "/api/(.*)", "destination": "/api" }
   ],
   "functions": {
-    "api/index.ts": {
-      "memory": 1024,
+    "api/index.js": {
       "maxDuration": 60,
       "includeFiles": "searchplans/**"
     }

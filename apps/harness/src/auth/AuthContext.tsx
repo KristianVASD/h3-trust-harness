@@ -132,14 +132,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const { data } = await supabase.auth.getSession();
-      if (cancelled) return;
-      setSession(data.session);
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (cancelled) return;
+        setSession(data.session);
 
-      const me = await fetchMe(data.session?.access_token ?? null);
-      if (cancelled) return;
-      applyMe(me);
-      setLoading(false);
+        try {
+          const me = await fetchMe(data.session?.access_token ?? null);
+          if (!cancelled) applyMe(me);
+        } catch {
+          if (!cancelled) {
+            applyMe({
+              authRequired: true,
+              user: null,
+              profile: null,
+            });
+          }
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+
+      if (cancelled || !supabase) return;
 
       const { data: sub } = supabase.auth.onAuthStateChange(
         async (_event, next) => {

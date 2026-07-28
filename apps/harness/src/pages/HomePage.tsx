@@ -24,6 +24,9 @@ export function HomePage() {
             <Link className="btn" to="/search">
               Search trusted companies
             </Link>
+            <Link className="btn secondary" to="/login">
+              Sign in
+            </Link>
             <a className="btn secondary" href="#curad">
               Become a CURAD volunteer
             </a>
@@ -87,6 +90,9 @@ export function HomePage() {
         <p className="home-section-action">
           <Link className="btn" to="/signup">
             Apply as CURAD volunteer
+          </Link>
+          <Link className="btn secondary" to="/login">
+            Already applied? Sign in
           </Link>
         </p>
       </section>
