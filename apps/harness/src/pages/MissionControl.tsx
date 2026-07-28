@@ -4,6 +4,7 @@ import { v4 as uuid } from "uuid";
 import { DEFAULT_SEARCH_PLAN_VERSION, type Mission } from "@h3-trust/schema";
 import { api } from "../api";
 import { ProducerBadge, StatusChip } from "../components/Badges";
+import { useCanInteract } from "../hooks/useCanInteract";
 
 const MODE_KEY = "h3-harness-mode";
 type UiMode = "worker" | "investigator";
@@ -30,6 +31,7 @@ function readMode(): UiMode {
 
 export function MissionControl() {
   const navigate = useNavigate();
+  const { canInteract, isPending, needsLogin } = useCanInteract();
   const [mode, setMode] = useState<UiMode>(readMode);
   const [missions, setMissions] = useState<Mission[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +73,16 @@ export function MissionControl() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!canInteract) {
+      setError(
+        needsLogin
+          ? "Sign in as an approved CURAD volunteer to create missions."
+          : isPending
+            ? "Awaiting admin approval — you cannot create missions yet."
+            : "You cannot create missions with this account.",
+      );
+      return;
+    }
     setSaving(true);
     try {
       const now = new Date().toISOString();
@@ -289,12 +301,14 @@ export function MissionControl() {
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
               />
             </label>
-            <button className="btn" type="submit" disabled={saving}>
+            <button className="btn" type="submit" disabled={saving || !canInteract}>
               {saving
                 ? "Creating…"
-                : isWorker
-                  ? "Start data job"
-                  : "Start investigation"}
+                : !canInteract
+                  ? "Approved CURAD only"
+                  : isWorker
+                    ? "Start data job"
+                    : "Start investigation"}
             </button>
           </form>
         </section>

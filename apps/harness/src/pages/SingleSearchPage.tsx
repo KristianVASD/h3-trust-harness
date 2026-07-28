@@ -15,6 +15,8 @@ import {
 } from "@h3-trust/schema";
 import { api } from "../api";
 import { listReviews } from "../api-extra";
+import { useAuth } from "../auth/AuthContext";
+import { useCanInteract } from "../hooks/useCanInteract";
 import { countTrustedLists } from "../lib/worker";
 import { CompanyProfileTags } from "../components/CompanyProfileTags";
 import { StatusChip } from "../components/Badges";
@@ -239,7 +241,13 @@ interface RankedCompany {
 
 export function SingleSearchPage() {
   const navigate = useNavigate();
+  const { profile } = useAuth();
+  const { canInteract, needsLogin, isPending } = useCanInteract();
   const [missions, setMissions] = useState<Mission[]>([]);
+  const [location, setLocation] = useState("");
+  const [locationReady, setLocationReady] = useState(false);
+  const [geoHint, setGeoHint] = useState<string | null>(null);
+  const [what, setWhat] = useState("");
   const [query, setQuery] = useState("");
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -247,6 +255,8 @@ export function SingleSearchPage() {
   const [error, setError] = useState<string | null>(null);
   const [parsedHint, setParsedHint] = useState<ParsedQuery | null>(null);
   const [noMatchReason, setNoMatchReason] = useState<string | null>(null);
+  const [remaining, setRemaining] = useState<number | null>(null);
+  const [searchUnlimited, setSearchUnlimited] = useState(false);
 
   const [matchedMission, setMatchedMission] = useState<Mission | null>(null);
   const [ranked, setRanked] = useState<RankedCompany[]>([]);
@@ -262,7 +272,37 @@ export function SingleSearchPage() {
       .listMissions()
       .then(setMissions)
       .catch(() => {});
+    void api
+      .searchSession()
+      .then((s) => {
+        setRemaining(s.remaining);
+        setSearchUnlimited(Boolean(s.unlimited));
+      })
+      .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (profile?.preferred_location) {
+      setLocation(profile.preferred_location);
+      setLocationReady(true);
+      return;
+    }
+    if (!navigator.geolocation) {
+      setGeoHint("Share your municipality below (geolocation unavailable).");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      () => {
+        setGeoHint(
+          "We detected a device location — confirm or edit your municipality below (we store a place name, not GPS).",
+        );
+      },
+      () => {
+        setGeoHint("Location access denied — type your municipality.");
+      },
+      { timeout: 8000 },
+    );
+  }, [profile?.preferred_location]);
 
   const exampleQueries = useMemo(() => {
     const seen = new Set<string>();
@@ -283,7 +323,25 @@ export function SingleSearchPage() {
 
   async function onSearch(e: FormEvent) {
     e.preventDefault();
-    if (!query.trim()) return;
+    const loc = location.trim();
+    const sectorPart = what.trim() || query.trim();
+    if (!loc) {
+      setError("Confirm where you are searching first (municipality / place).");
+      return;
+    }
+    if (!sectorPart) {
+      setError("Say what you need (e.g. painters, plumbers).");
+      return;
+    }
+    if (!locationReady) {
+      setError("Confirm your location before searching.");
+      return;
+    }
+
+    const composed = sectorPart.toLowerCase().includes(loc.toLowerCase())
+      ? sectorPart
+      : `${sectorPart} in ${loc}`;
+    setQuery(composed);
 
     setLoading(true);
     setError(null);
@@ -295,7 +353,19 @@ export function SingleSearchPage() {
     setNoMatchReason(null);
 
     try {
-      const parsed = parseQuery(query, missions);
+      const quota = await api.consumeSearch();
+      setRemaining(quota.remaining);
+      setSearchUnlimited(Boolean(quota.unlimited));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Search limit reached";
+      setError(msg);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const parsed = parseQuery(composed, missions);
+      if (!parsed.location) parsed.location = loc;
       setParsedHint(parsed);
 
       // Never silently fall through to the first mission (usually DEMO).
@@ -429,6 +499,16 @@ export function SingleSearchPage() {
   }
 
   async function startInvestigationFromQuery() {
+    if (!canInteract) {
+      setError(
+        needsLogin
+          ? "Sign in as an approved CURAD volunteer to start an investigation."
+          : isPending
+            ? "Awaiting admin approval — you cannot start investigations yet."
+            : "You cannot start investigations with this account.",
+      );
+      return;
+    }
     if (!parsedHint?.location || !parsedHint?.sector) return;
     setCreating(true);
     setError(null);
@@ -473,6 +553,14 @@ export function SingleSearchPage() {
     listScore: number,
     action: "agree" | "adjust" | "disagree",
   ) {
+    if (!canInteract) {
+      setError(
+        isPending
+          ? "Awaiting admin approval — CARA writes stay locked."
+          : "Sign in as an approved CURAD volunteer to record a CARA review.",
+      );
+      return;
+    }
     if (!matchedMission) return;
     if (
       (action === "adjust" || action === "disagree") &&
@@ -537,23 +625,58 @@ export function SingleSearchPage() {
     <div className="single-search">
       {/* Hero */}
       <div className="search-hero">
-        <h1>🔍 Single Search</h1>
+        <h1>Single Search</h1>
         <p className="thesis">
-          One question. One answer. Evidence-based, not popularity-based.
-          Every score has a reason. Every reason has a source.
+          Confirm where you are, say what you need. Evidence-based, not
+          popularity-based. Every score has a reason.
         </p>
+        {!searchUnlimited && remaining != null ? (
+          <p className="muted">
+            Test phase: {remaining} search{remaining === 1 ? "" : "es"} left this
+            session.
+          </p>
+        ) : null}
+      </div>
+
+      <div className="search-where stack">
+        <label>
+          Where are you searching?
+          <input
+            type="text"
+            value={location}
+            onChange={(e) => {
+              setLocation(e.target.value);
+              setLocationReady(false);
+            }}
+            placeholder="Municipality / place (e.g. Haarlemmermeer)"
+          />
+        </label>
+        {geoHint ? <p className="muted">{geoHint}</p> : null}
+        <button
+          type="button"
+          className="btn secondary small"
+          disabled={!location.trim()}
+          onClick={() => setLocationReady(true)}
+        >
+          {locationReady ? "Location confirmed" : "Confirm location"}
+        </button>
       </div>
 
       {/* Search bar */}
       <form className="search-bar" onSubmit={onSearch}>
         <input
           type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder='e.g. "painters in Haarlemmermeer" or "loodgieters in Amstelveen"'
+          value={what}
+          onChange={(e) => setWhat(e.target.value)}
+          placeholder='What do you need? e.g. "painters" or "loodgieters"'
+          disabled={!locationReady}
           autoFocus
         />
-        <button type="submit" className="btn" disabled={loading}>
+        <button
+          type="submit"
+          className="btn"
+          disabled={loading || !locationReady}
+        >
           {loading ? "Searching…" : "Search"}
         </button>
       </form>
@@ -566,7 +689,20 @@ export function SingleSearchPage() {
               key={q}
               type="button"
               className="search-example-chip"
-              onClick={() => setQuery(q)}
+              onClick={() => {
+                const m = missions.find((x) =>
+                  q.toLowerCase().includes(x.location.toLowerCase()),
+                );
+                if (m) {
+                  setLocation(m.location);
+                  setLocationReady(true);
+                }
+                setWhat(
+                  q
+                    .replace(/\s+in\s+.+$/i, "")
+                    .trim(),
+                );
+              }}
             >
               {q}
             </button>
@@ -609,8 +745,13 @@ export function SingleSearchPage() {
               <button
                 type="button"
                 className="btn"
-                disabled={creating}
+                disabled={creating || !canInteract}
                 onClick={() => void startInvestigationFromQuery()}
+                title={
+                  !canInteract
+                    ? "Approved CURAD volunteers only"
+                    : undefined
+                }
               >
                 {creating
                   ? "Starting…"
@@ -857,7 +998,7 @@ export function SingleSearchPage() {
                         <button
                           type="button"
                           className="btn small"
-                          disabled={busy}
+                          disabled={busy || !canInteract}
                           onClick={() =>
                             void submitReview(r.company, r.score, "agree")
                           }
@@ -867,7 +1008,7 @@ export function SingleSearchPage() {
                         <button
                           type="button"
                           className="btn secondary small"
-                          disabled={busy}
+                          disabled={busy || !canInteract}
                           onClick={() => {
                             setAdjustingId(r.company.id);
                             setAdjustScore(String(r.score));
@@ -879,7 +1020,7 @@ export function SingleSearchPage() {
                         <button
                           type="button"
                           className="btn danger small"
-                          disabled={busy}
+                          disabled={busy || !canInteract}
                           onClick={() => {
                             setAdjustingId(r.company.id);
                             setAdjustScore("0");

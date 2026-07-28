@@ -6,6 +6,7 @@ import { createEntity, updateEntity } from "../../api-extra";
 import type { MissionData } from "../../hooks/useMissionData";
 import { ProducerBadge, StatusChip } from "../../components/Badges";
 import { RichnessBar } from "../../components/worker/SourceProbeDetail";
+import { useCanInteract } from "../../hooks/useCanInteract";
 import { TRUSTED_LIST_UNLOCK, countTrustedLists } from "../../lib/worker";
 
 const SCOPES: SourceScope[] = ["national", "regional", "local"];
@@ -37,6 +38,7 @@ function actionLabel(action: Review["action"]): string {
 export function WorkerCaraPage() {
   const { missionId = "" } = useParams();
   const { sources, reviews, reload } = useOutletContext<MissionData>();
+  const { canInteract, isPending } = useCanInteract();
 
   const sourceQueue = useMemo(
     () => sources.filter(isAlignQueueItem).sort(sortAlignQueue),
@@ -503,7 +505,14 @@ export function WorkerCaraPage() {
                         <button
                           className="btn"
                           type="button"
-                          disabled={busy}
+                          disabled={busy || !canInteract}
+                          title={
+                            !canInteract
+                              ? isPending
+                                ? "Pending approval"
+                                : "Approved CURAD only"
+                              : undefined
+                          }
                           onClick={() => {
                             setAdjustMode(false);
                             void submit("agree");
@@ -514,7 +523,7 @@ export function WorkerCaraPage() {
                         <button
                           className="btn secondary"
                           type="button"
-                          disabled={busy}
+                          disabled={busy || !canInteract}
                           onClick={() => {
                             if (!adjustMode) {
                               setAdjustMode(true);
@@ -528,7 +537,7 @@ export function WorkerCaraPage() {
                         <button
                           className="btn danger"
                           type="button"
-                          disabled={busy}
+                          disabled={busy || !canInteract}
                           onClick={() => {
                             setAdjustMode(false);
                             void submit("disagree");

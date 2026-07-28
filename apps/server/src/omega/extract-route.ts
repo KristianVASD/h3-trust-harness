@@ -2,7 +2,7 @@
  * Phase 6 — Gated extract orchestration.
  * Runs runExtractGated, persists Ω companies from unlocked sources only.
  */
-import type { FileStore } from "@h3-trust/store";
+import type { Store } from "@h3-trust/store";
 import type { Company, Mission, Source } from "@h3-trust/schema";
 import type { ExtractOutput } from "@h3-trust/schema/omega";
 import {
@@ -20,7 +20,7 @@ export type ExtractRouteResult = {
 };
 
 export async function runExtractForSource(
-  store: FileStore,
+  store: Store,
   missionId: string,
   sourceId: string,
 ): Promise<ExtractRouteResult> {

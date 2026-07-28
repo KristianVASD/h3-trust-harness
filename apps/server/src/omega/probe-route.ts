@@ -9,7 +9,7 @@ import {
   type SearchPlan,
   type Source,
 } from "@h3-trust/schema";
-import type { FileStore } from "@h3-trust/store";
+import type { Store } from "@h3-trust/store";
 import type { ProbeOutput } from "@h3-trust/schema/omega";
 import {
   buildProbeSourcePatch,
@@ -26,7 +26,7 @@ export type ProbeRouteResult = {
 };
 
 export async function runProbeForMission(
-  store: FileStore,
+  store: Store,
   missionId: string,
   rawBody: unknown,
   loadPlan: (version: string) => Promise<SearchPlan | null>,

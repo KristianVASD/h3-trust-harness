@@ -342,9 +342,39 @@ If that loop feels natural, the product thesis is working: you ran a trust **inv
 
 ## Status: solid vs thin
 
-**Solid now:** Mission Control, **Single Search**, Data Worker (8-step production spine including Profile harvest + Coverage), **Investigator desk** (notebook Journal/Obs/Hypotheses + Align + Signals + Situation + Memory), company **profile dimensions** filled by stub Ω harvest, access-barrier fulfill on extract, barrier-aware coverage / `readyForSearch`, Signals + explainability, CARA (sources **and** companies), Export, Producer on records, seed mission, local FileStore, `omega:smoke`.
+**Solid now:** Mission Control, **Single Search** (location-first + session quota), Data Worker (8-step production spine including Profile harvest + Coverage), **Investigator desk** (notebook Journal/Obs/Hypotheses + Align + Signals + Situation + Memory), company **profile dimensions** filled by stub Ω harvest, access-barrier fulfill on extract, barrier-aware coverage / `readyForSearch`, Signals + explainability, CARA (sources **and** companies), Export, Producer on records, seed mission, local FileStore **or** Supabase PostgresStore, auth shell (admin / pending CURAD / visitor), `omega:smoke`.
 
-**Thin / next:** live MiniMax bodies inside the Ω adapter (Phase 9 flip — contracts already frozen), real webpage-trust probe (schema slot only), capability-filter / CSI query UX, Pattern Library promote UI (schema has `PATTERN_MIN_INVESTIGATIONS = 5`), full Investigation Memory screen, richer Evidence tab, Track B fraud / company deep-check phases.
+**Thin / next:** live MiniMax bodies inside the Ω adapter (Phase 9 flip — contracts already frozen), real webpage-trust probe (schema slot only), capability-filter / CSI query UX, Pattern Library promote UI (schema has `PATTERN_MIN_INVESTIGATIONS = 5`), full Investigation Memory screen, richer Evidence tab, Track B fraud / company deep-check phases, hive promotion layers.
+
+---
+
+## Vercel + Supabase (step 1)
+
+Local default remains `STORE_DRIVER=file` (JSON under `writable/`). Production uses Supabase Postgres via the same `Store` interface.
+
+1. Create a Supabase project and run [`supabase/migrations/20260728_step1_auth_entities.sql`](supabase/migrations/20260728_step1_auth_entities.sql) (see [`supabase/README.md`](supabase/README.md)).
+2. On Vercel, set env: `STORE_DRIVER=postgres`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `AUTH_REQUIRED=true`, `ADMIN_EMAIL`, `CORS_ORIGIN`, plus `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` for the SPA build.
+3. Deploy — `vercel.json` builds the harness SPA and routes `/api/*` to the Hono serverless entry ([`api/index.ts`](api/index.ts)).
+4. Seed once with `STORE_DRIVER=postgres pnpm seed` so `/search` has Haarlemmermeer demo data.
+5. Sign up as CURAD volunteer → admin approves at `/admin/volunteers` → CARA writes unlock.
+
+### Smoke checklist
+
+- [ ] Local `STORE_DRIVER=file` still works without Supabase  
+- [ ] `postgres` seed → search finds Haarlemmermeer demo  
+- [ ] Signup → pending → can browse, cannot POST review  
+- [ ] Admin approves → CARA write lands in `entities`  
+- [ ] Visitor: 6th search in same session returns 429  
+- [ ] Cold Vercel invoke: prior data still present  
+
+### Roles (simple)
+
+| Actor | Search | Browse harness | Write / CARA |
+|-------|--------|----------------|--------------|
+| Visitor (anonymous) | 5 / browser session | limited | no |
+| CURAD pending | yes | yes | no |
+| CURAD approved | unlimited | yes | yes |
+| Admin | unlimited | yes | yes + approve volunteers |
 
 ---
 

@@ -14,7 +14,7 @@ import {
   type Observation,
 } from "@h3-trust/schema";
 import type { HarvestOutput } from "@h3-trust/schema/omega";
-import type { FileStore } from "@h3-trust/store";
+import type { Store } from "@h3-trust/store";
 import { buildHarvestCompanyPatch, runOcCommand } from "./adapter.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -39,7 +39,7 @@ export type HarvestRouteSoftFail = {
 export type HarvestRouteResult = HarvestRouteSuccess | HarvestRouteSoftFail;
 
 export async function runHarvestForCompany(
-  store: FileStore,
+  store: Store,
   missionId: string,
   companyId: string,
 ): Promise<HarvestRouteResult> {

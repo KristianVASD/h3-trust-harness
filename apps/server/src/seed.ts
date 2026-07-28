@@ -9,7 +9,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { FileStore } from "@h3-trust/store";
+import { createStore } from "@h3-trust/store";
 import {
   CompanySchema,
   MissionSourceSchema,
@@ -33,7 +33,7 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const writableRoot = path.resolve(__dirname, "../../../writable");
-const store = new FileStore(writableRoot);
+const store = createStore({ writableRoot });
 
 const workerDemoRaw = JSON.parse(
   readFileSync(path.join(__dirname, "seed-data/worker-demo.json"), "utf8"),
@@ -639,6 +639,7 @@ async function seed() {
     investigations: investigations.length,
     patterns: patterns.length,
   });
+  console.log("Store driver:", process.env.STORE_DRIVER ?? "file");
   console.log("Writable:", writableRoot);
   console.log("Open http://localhost:5173 → Haarlemmermeer · Painters (DEMO)");
 }

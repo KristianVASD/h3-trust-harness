@@ -2097,4 +2097,54 @@ a {
   font-size: 0.85rem;
 }
 
+.pending-banner {
+  margin: 0;
+  padding: 0.65rem 1.25rem;
+  background: #f3e8d3;
+  border-bottom: 1px solid var(--line);
+  color: #3d2f1a;
+  font-size: 0.9rem;
+}
+
+.auth-page {
+  max-width: 28rem;
+  margin: 1.5rem auto;
+  padding: 0 1rem 2rem;
+}
+
+.auth-page .stack,
+.stack {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.auth-page label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.notice {
+  padding: 0.65rem 0.75rem;
+  background: var(--paper-2, #f6f4ef);
+  border: 1px solid var(--line);
+  font-size: 0.9rem;
+}
+
+.card-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  background: var(--paper, #fff);
+}
+
+.search-where {
+  max-width: 40rem;
+  margin: 0 auto 1rem;
+  padding: 0 1rem;
+}
+
 

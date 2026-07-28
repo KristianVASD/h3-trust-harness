@@ -2,7 +2,7 @@
  * Phase 3 — Gaps → discover orchestration.
  * Loads mission context + recent Ω feedback, runs the adapter, persists candidates.
  */
-import type { FileStore } from "@h3-trust/store";
+import type { Store } from "@h3-trust/store";
 import type { Mission, Review, Source } from "@h3-trust/schema";
 import {
   DiscoverGapSchema,
@@ -22,7 +22,7 @@ export type DiscoverRouteResult = {
 };
 
 export async function runDiscoverForMission(
-  store: FileStore,
+  store: Store,
   missionId: string,
   rawGap: unknown,
 ): Promise<DiscoverRouteResult> {

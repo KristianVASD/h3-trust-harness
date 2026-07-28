@@ -1,12 +1,7 @@
 import { Link } from "react-router-dom";
 
-const PARTNER_MAIL =
-  "mailto:partners@h3trust.org?subject=H3%20Trust%20partnership";
-const VOLUNTEER_MAIL =
-  "mailto:cara@h3trust.org?subject=I%20want%20to%20be%20a%20CARA%20volunteer";
-
 /**
- * Public welcome — mission, local trust, CARA volunteers, partnership.
+ * Public welcome — mission, local trust, CURAD volunteers, partnership.
  * Ops desk lives at /control.
  */
 export function HomePage() {
@@ -23,14 +18,14 @@ export function HomePage() {
           </h1>
           <p className="home-lede">
             We investigate which lists and signals actually mean something —
-            then humans (CARA) decide what counts. No black-box scores.
+            then humans decide what counts. No black-box scores.
           </p>
           <div className="home-cta">
             <Link className="btn" to="/search">
               Search trusted companies
             </Link>
-            <a className="btn secondary" href="#cara">
-              Become a CARA volunteer
+            <a className="btn secondary" href="#curad">
+              Become a CURAD volunteer
             </a>
           </div>
         </div>
@@ -56,8 +51,9 @@ export function HomePage() {
             and trade, and how rich are they?
           </li>
           <li>
-            <strong>Align with CARA</strong> — volunteers agree, adjust, or
-            dissent with a reason. Dissent is preserved, not erased.
+            <strong>Align with CURAD</strong> — volunteers record a{" "}
+            <em>CARA</em> act: agree, adjust, or dissent with a reason. Dissent
+            is preserved, not erased.
           </li>
           <li>
             <strong>Search with confidence</strong> — answers come with coverage
@@ -73,21 +69,25 @@ export function HomePage() {
 
       <section
         className="home-section home-section--cara"
-        id="cara"
-        aria-labelledby="home-cara"
+        id="curad"
+        aria-labelledby="home-curad"
       >
-        <h2 id="home-cara">Become a CARA volunteer</h2>
+        <h2 id="home-curad">Become a CURAD volunteer</h2>
         <p>
-          CARA is human alignment — the moment someone looks at an Ω proposal or
-          a trust signal and says <em>agree</em>, <em>adjust</em>, or{" "}
-          <em>dissent</em>. Volunteers keep the harness honest. You do not need
-          to code; you need care for your region and a willingness to leave a
+          <strong>CURAD</strong> is the governance loop — align, feedback,
+          preserve dissent. Each time you agree, adjust, or dissent on a
+          proposal, that act is a <strong>CARA</strong>. You do not need to
+          code; you need care for your region and a willingness to leave a
           reason when you disagree.
         </p>
+        <p>
+          After you sign up, an admin must approve you before you can interact.
+          Until then you can look inside, but writes stay locked.
+        </p>
         <p className="home-section-action">
-          <a className="btn" href={VOLUNTEER_MAIL}>
-            Volunteer for CARA
-          </a>
+          <Link className="btn" to="/signup">
+            Apply as CURAD volunteer
+          </Link>
         </p>
       </section>
 
@@ -98,29 +98,18 @@ export function HomePage() {
       >
         <h2 id="home-partner">Partnership</h2>
         <p>
-          Municipalities, associations, and platforms who want{" "}
-          <strong>local trust infrastructure</strong> — not another review farm —
-          are welcome. Tell us about your region, sector, or data you already
-          hold. We will reply with how a mission could start.
+          Municipalities, associations, and foundations that want a transparent
+          trust layer for local services — talk to us.
         </p>
         <p className="home-section-action">
-          <a className="btn secondary" href={PARTNER_MAIL}>
-            Contact us for partnership
+          <a
+            className="btn secondary"
+            href="mailto:partners@h3trust.org?subject=H3%20Trust%20partnership"
+          >
+            Contact partners@h3trust.org
           </a>
         </p>
       </section>
-
-      <footer className="home-footer">
-        <p>
-          Part of the H3 Trust / BGI Nexus vision. The Harness never decides —
-          people do.
-        </p>
-        <p>
-          <Link to="/control">Mission Control</Link>
-          {" · "}
-          <Link to="/search">Search</Link>
-        </p>
-      </footer>
     </div>
   );
 }

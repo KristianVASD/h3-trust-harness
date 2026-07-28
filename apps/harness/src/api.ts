@@ -13,13 +13,20 @@ import type {
   SearchPlan,
   Source,
 } from "@h3-trust/schema";
+import { getAccessToken } from "./lib/api-auth";
 
 const BASE = "/api";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getAccessToken();
   const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    credentials: "include",
     ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init?.headers ?? {}),
+    },
   });
   if (!res.ok) {
     const text = await res.text();
@@ -28,18 +35,74 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export type SearchSessionState = {
+  sessionId: string;
+  searchCount: number;
+  remaining: number;
+  limit: number;
+  unlimited?: boolean;
+  ok?: boolean;
+  error?: string;
+};
+
 export const api = {
-  health: () => request<{ ok: boolean }>("/health"),
+  health: () =>
+    request<{
+      ok: boolean;
+      storeDriver?: string;
+      authRequired?: boolean;
+    }>("/health"),
+  me: () =>
+    request<{
+      authRequired: boolean;
+      profile: unknown;
+      canWrite?: boolean;
+      isAdmin?: boolean;
+    }>("/me"),
+  updateMe: (patch: {
+    display_name?: string;
+    preferred_location?: string;
+  }) =>
+    request<{ profile: unknown }>("/me", {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  listVolunteers: () =>
+    request<{ volunteers: Array<Record<string, unknown>> }>(
+      "/admin/volunteers",
+    ),
+  approveVolunteer: (id: string) =>
+    request<{ profile: unknown }>(`/admin/volunteers/${id}/approve`, {
+      method: "POST",
+      body: "{}",
+    }),
+  rejectVolunteer: (id: string) =>
+    request<{ profile: unknown }>(`/admin/volunteers/${id}/reject`, {
+      method: "POST",
+      body: "{}",
+    }),
+  searchSession: () =>
+    request<SearchSessionState>("/search/session", {
+      method: "POST",
+      body: "{}",
+    }),
+  consumeSearch: () =>
+    request<SearchSessionState>("/search/consume", {
+      method: "POST",
+      body: "{}",
+    }),
   listMissions: () => request<Mission[]>("/missions"),
   getMission: (id: string) => request<Mission>(`/missions/${id}`),
   createMission: (mission: Mission) =>
-    request<Mission>("/missions", { method: "POST", body: JSON.stringify(mission) }),
+    request<Mission>("/missions", {
+      method: "POST",
+      body: JSON.stringify(mission),
+    }),
   warmStartSources: (missionId: string) =>
     request<{ linked: number; sources: Source[] }>(
       `/missions/${missionId}/sources/warm-start`,
       { method: "POST", body: "{}" },
     ),
-  /** Phase 3 — Ask Ω discover for one gap cell; persists provisional candidates. */
   discoverSources: (
     missionId: string,
     gap: { layer: string; category: string; nuance_rule?: string },
@@ -52,7 +115,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify(gap),
     }),
-  /** Phase 4 — Probe one source; fills richness + extractionGuide. */
   probeSource: (missionId: string, sourceId: string) =>
     request<{ source: Source; output: unknown }>(
       `/missions/${missionId}/omega/probe`,
@@ -61,7 +123,6 @@ export const api = {
         body: JSON.stringify({ sourceId }),
       },
     ),
-  /** Phase 6 — Gated Ω extract for one accepted+probed source. */
   extractSource: (missionId: string, sourceId: string) =>
     request<{
       created: string[];
@@ -77,7 +138,6 @@ export const api = {
       method: "POST",
       body: "{}",
     }),
-  /** Phase 7 — Harvest company profile (Can / For / Notable). */
   harvestCompany: (missionId: string, companyId: string) =>
     request<
       | {
@@ -96,7 +156,6 @@ export const api = {
       method: "POST",
       body: "{}",
     }),
-  /** Phase 6 — Human fulfils an access barrier. */
   fulfillBarrier: (
     missionId: string,
     sourceId: string,
@@ -115,7 +174,6 @@ export const api = {
         body: JSON.stringify({ fulfillment }),
       },
     ),
-  /** Phase 6 — Human declines a barrier (mandatory reason). */
   declineBarrier: (
     missionId: string,
     sourceId: string,
@@ -129,7 +187,6 @@ export const api = {
         body: JSON.stringify(args),
       },
     ),
-  /** Phase 8 — Barrier-aware mission coverage. */
   getCoverage: (missionId: string) =>
     request<MissionCoverage>(`/missions/${missionId}/coverage`),
   updateMission: (mission: Mission) =>
@@ -147,7 +204,6 @@ export const api = {
     request<Hypothesis[]>(`/missions/${missionId}/hypotheses`),
   listSources: (missionId: string) =>
     request<Source[]>(`/missions/${missionId}/sources`),
-  /** Full catalogue — Check known sources / resolveSourceGaps. */
   listAllSources: () => request<Source[]>("/sources"),
   listCompanies: (missionId: string) =>
     request<Company[]>(`/missions/${missionId}/companies`),

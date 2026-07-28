@@ -6,12 +6,12 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ExportBundleSchema } from "@h3-trust/schema";
-import { FileStore } from "@h3-trust/store";
+import { createStore } from "@h3-trust/store";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "../../..");
 const writableRoot = path.resolve(root, "writable");
-const store = new FileStore(writableRoot);
+const store = createStore({ writableRoot });
 
 async function main() {
   const arg = process.argv.slice(2).find((a) => !a.startsWith("-"))

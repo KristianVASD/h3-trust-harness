@@ -9,7 +9,7 @@ import {
   type Company,
   type Source,
 } from "@h3-trust/schema";
-import type { FileStore } from "@h3-trust/store";
+import type { Store } from "@h3-trust/store";
 import {
   buildDeclinedBarrier,
   buildFulfilledBarrier,
@@ -25,7 +25,7 @@ export type FulfillRouteResult = {
 };
 
 export async function fulfillBarrierForSource(
-  store: FileStore,
+  store: Store,
   missionId: string,
   sourceId: string,
   barrierId: string,
@@ -90,7 +90,7 @@ export type DeclineRouteResult = {
 };
 
 export async function declineBarrierForSource(
-  store: FileStore,
+  store: Store,
   missionId: string,
   sourceId: string,
   barrierId: string,

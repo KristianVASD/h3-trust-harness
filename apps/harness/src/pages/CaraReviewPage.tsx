@@ -5,6 +5,7 @@ import type { Company, Review, Source, SourceEvidence } from "@h3-trust/schema";
 import { createEntity, updateEntity } from "../api-extra";
 import type { MissionData } from "../hooks/useMissionData";
 import { ProducerBadge, StatusChip } from "../components/Badges";
+import { useCanInteract } from "../hooks/useCanInteract";
 
 type CaraTarget = "source" | "company";
 
@@ -27,6 +28,7 @@ export function CaraReviewPage() {
   const [searchParams] = useSearchParams();
   const data = useOutletContext<MissionData>();
   const { sources, companies, reviews, reload } = data;
+  const { canInteract, isPending } = useCanInteract();
 
   const urlTarget: CaraTarget =
     searchParams.get("target") === "company" ? "company" : "source";
@@ -297,6 +299,13 @@ export function CaraReviewPage() {
         <strong>Align — two human checkpoints</strong> (CURAD / CARA). Suggested
         confidence is not a decision. Agree = evidence + score look right;
         Adjust/Disagree require a reason.{" "}
+        {!canInteract ? (
+          <strong>
+            {isPending
+              ? "Pending approval — review actions locked."
+              : "Sign in as an approved CURAD volunteer to record CARA."}
+          </strong>
+        ) : null}{" "}
         <span style={{ color: "var(--cara)", fontWeight: 600 }}>
           Align sources
         </span>{" "}
@@ -526,6 +535,7 @@ export function CaraReviewPage() {
               onAdjust={() => void submitSourceReview("adjust")}
               onDisagree={() => void submitSourceReview("disagree")}
               prior={priorReviews}
+              disabled={!canInteract}
             />
           ) : null}
 
@@ -550,6 +560,7 @@ export function CaraReviewPage() {
               onAdjust={() => void submitCompanyReview("adjust")}
               onDisagree={() => void submitCompanyReview("disagree")}
               prior={priorReviews}
+              disabled={!canInteract}
             />
           ) : null}
         </section>
@@ -574,6 +585,7 @@ function JudgementForm({
   onAdjust,
   onDisagree,
   prior,
+  disabled = false,
 }: {
   title: string;
   producer: "Human" | "OmegaClaw" | "ExternalAI" | "ImportedDataset";
@@ -590,6 +602,7 @@ function JudgementForm({
   onAdjust: () => void;
   onDisagree: () => void;
   prior: Review[];
+  disabled?: boolean;
 }) {
   return (
     <>
@@ -627,13 +640,13 @@ function JudgementForm({
           />
         </label>
         <div className="row">
-          <button className="btn" type="button" onClick={onAgree}>
+          <button className="btn" type="button" onClick={onAgree} disabled={disabled}>
             Agree
           </button>
-          <button className="btn secondary" type="button" onClick={onAdjust}>
+          <button className="btn secondary" type="button" onClick={onAdjust} disabled={disabled}>
             Adjust
           </button>
-          <button className="btn danger" type="button" onClick={onDisagree}>
+          <button className="btn danger" type="button" onClick={onDisagree} disabled={disabled}>
             Disagree
           </button>
         </div>

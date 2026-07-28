@@ -1,4 +1,6 @@
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
+import { useAuth } from "./auth/AuthContext";
+import { PendingBanner } from "./components/PendingBanner";
 import { MissionLayout } from "./layouts/MissionLayout";
 import { WorkerLayout } from "./layouts/WorkerLayout";
 import { HomePage } from "./pages/HomePage";
@@ -19,8 +21,50 @@ import { WorkerProfilePage } from "./pages/worker/WorkerProfilePage";
 import { WorkerCoveragePage } from "./pages/worker/WorkerCoveragePage";
 import { WorkerSearchStepPage } from "./pages/worker/WorkerSearchStepPage";
 import { WorkerResultsPage } from "./pages/worker/WorkerResultsPage";
+import { LoginPage } from "./pages/LoginPage";
+import { SignupPage } from "./pages/SignupPage";
+import { SettingsPage } from "./pages/SettingsPage";
+import { AdminVolunteersPage } from "./pages/AdminVolunteersPage";
+
+function AccountNav() {
+  const { session, profile, isAdmin, loading, signOut } = useAuth();
+  if (loading) return null;
+  if (!session) {
+    return (
+      <>
+        <NavLink className="btn secondary small" to="/login">
+          Sign in
+        </NavLink>
+        <NavLink className="btn small" to="/signup">
+          Join CURAD
+        </NavLink>
+      </>
+    );
+  }
+  return (
+    <>
+      {isAdmin && (
+        <NavLink className="btn secondary small" to="/admin/volunteers">
+          Admin
+        </NavLink>
+      )}
+      <NavLink className="btn secondary small" to="/settings">
+        {profile?.display_name || profile?.email || "Account"}
+      </NavLink>
+      <button
+        type="button"
+        className="btn secondary small"
+        onClick={() => void signOut()}
+      >
+        Sign out
+      </button>
+    </>
+  );
+}
 
 export function App() {
+  const { isPending, openMode, canWrite } = useAuth();
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -42,14 +86,20 @@ export function App() {
           <NavLink className="btn secondary small" to="/search">
             Search
           </NavLink>
+          <AccountNav />
         </nav>
       </header>
+
+      <PendingBanner show={isPending && !canWrite && !openMode} />
 
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/control" element={<MissionControl />} />
-
         <Route path="/search" element={<SingleSearchPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/admin/volunteers" element={<AdminVolunteersPage />} />
 
         <Route path="/work/:missionId" element={<WorkerLayout />}>
           <Route index element={<Navigate to="brief" replace />} />
