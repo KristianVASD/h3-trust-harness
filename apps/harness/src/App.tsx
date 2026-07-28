@@ -32,10 +32,10 @@ function AccountNav() {
   if (!session) {
     return (
       <>
-        <NavLink className="btn secondary small" to="/login">
+        <NavLink className="topnav-link" to="/login">
           Sign in
         </NavLink>
-        <NavLink className="btn small" to="/signup">
+        <NavLink className="topnav-link topnav-link--cta" to="/signup">
           Join CURAD
         </NavLink>
       </>
@@ -44,16 +44,16 @@ function AccountNav() {
   return (
     <>
       {isAdmin && (
-        <NavLink className="btn secondary small" to="/admin/volunteers">
+        <NavLink className="topnav-link" to="/admin/volunteers">
           Admin
         </NavLink>
       )}
-      <NavLink className="btn secondary small" to="/settings">
+      <NavLink className="topnav-link topnav-link--account" to="/settings">
         {profile?.display_name || profile?.email || "Account"}
       </NavLink>
       <button
         type="button"
-        className="btn secondary small"
+        className="topnav-link topnav-link--quiet"
         onClick={() => void signOut()}
       >
         Sign out
@@ -76,14 +76,14 @@ export function App() {
             Local trust — humans investigate today, OmegaClaw tomorrow.
           </p>
         </div>
-        <nav className="row">
-          <NavLink className="btn secondary small" to="/" end>
+        <nav className="topnav" aria-label="Primary">
+          <NavLink className="topnav-link" to="/" end>
             Home
           </NavLink>
-          <NavLink className="btn secondary small" to="/control">
+          <NavLink className="topnav-link" to="/control">
             Mission Control
           </NavLink>
-          <NavLink className="btn secondary small" to="/search">
+          <NavLink className="topnav-link" to="/search">
             Search
           </NavLink>
           <AccountNav />

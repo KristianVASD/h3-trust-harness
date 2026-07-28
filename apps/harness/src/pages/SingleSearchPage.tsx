@@ -643,103 +643,125 @@ export function SingleSearchPage() {
   return (
     <div className="single-search">
       {/* Hero */}
-      <div className="search-hero">
+      <header className="search-hero">
+        <p className="search-eyebrow">Evidence-based local search</p>
         <h1>Single Search</h1>
-        <p className="thesis">
-          Search any city worldwide. Results come from finished investigations —
-          if yours is not in the catalogue yet, start one.
+        <p className="search-lede">
+          Ask for a trade in a place. Answers come from finished investigations —
+          trusted lists, human CARA judgement, and a score you can open and
+          challenge. Not ads. Not star ratings.
         </p>
+        <ul className="search-value-row" aria-label="Why this search matters">
+          <li>
+            <strong>Evidence first</strong>
+            <span>Ranked from real registries, associations, and quality marks — not popularity.</span>
+          </li>
+          <li>
+            <strong>Every score has a why</strong>
+            <span>Open the trail: which lists hit, what humans adjusted, what is still thin.</span>
+          </li>
+          <li>
+            <strong>Humans stay in the loop</strong>
+            <span>CURAD volunteers can mark Correct, Adjust, or Wrong — dissent is kept.</span>
+          </li>
+        </ul>
         {!searchUnlimited && remaining != null ? (
-          <p className="muted">
+          <p className="search-quota">
             Test phase: {remaining} search{remaining === 1 ? "" : "es"} left this
             session.
           </p>
         ) : null}
-      </div>
+      </header>
 
-      <div className="search-where stack">
-        <label>
-          Where are you searching?
-          <input
-            type="text"
-            value={location}
-            onChange={(e) => {
-              setLocation(e.target.value);
-              setLocationReady(false);
-            }}
-            placeholder="City / municipality (e.g. Eindhoven, Ann Arbor, Nairobi)"
-          />
-        </label>
-        <label>
-          Country <span className="muted">(optional but helps worldwide)</span>
-          <input
-            type="text"
-            value={country}
-            onChange={(e) => {
-              setCountry(e.target.value);
-              setLocationReady(false);
-            }}
-            placeholder="e.g. Netherlands, United States, Kenya"
-          />
-        </label>
-        {geoHint ? <p className="muted">{geoHint}</p> : null}
-        <button
-          type="button"
-          className="btn secondary small"
-          disabled={!location.trim()}
-          onClick={() => setLocationReady(true)}
-        >
-          {locationReady ? "Location confirmed" : "Confirm location"}
-        </button>
-      </div>
-
-      {/* Search bar */}
-      <form className="search-bar" onSubmit={onSearch}>
-        <input
-          type="text"
-          value={what}
-          onChange={(e) => setWhat(e.target.value)}
-          placeholder='What do you need? e.g. "painters" or "loodgieters"'
-          disabled={!locationReady}
-          autoFocus
-        />
-        <button
-          type="submit"
-          className="btn"
-          disabled={loading || !locationReady}
-        >
-          {loading ? "Searching…" : "Search"}
-        </button>
-      </form>
-
-      {exampleQueries.length ? (
-        <div className="search-examples">
-          <span className="muted">Try:</span>
-          {exampleQueries.map((q) => (
-            <button
-              key={q}
-              type="button"
-              className="search-example-chip"
-              onClick={() => {
-                const m = missions.find((x) =>
-                  q.toLowerCase().includes(x.location.toLowerCase()),
-                );
-                if (m) {
-                  setLocation(m.location);
-                  setLocationReady(true);
-                }
-                setWhat(
-                  q
-                    .replace(/\s+in\s+.+$/i, "")
-                    .trim(),
-                );
+      <section className="search-panel" aria-label="Search">
+        <div className="search-where stack">
+          <p className="search-panel-label">1 · Place</p>
+          <label>
+            Where are you searching?
+            <input
+              type="text"
+              value={location}
+              onChange={(e) => {
+                setLocation(e.target.value);
+                setLocationReady(false);
               }}
-            >
-              {q}
-            </button>
-          ))}
+              placeholder="City / municipality (e.g. Eindhoven, Ann Arbor, Nairobi)"
+            />
+          </label>
+          <label>
+            Country <span className="muted">(optional but helps worldwide)</span>
+            <input
+              type="text"
+              value={country}
+              onChange={(e) => {
+                setCountry(e.target.value);
+                setLocationReady(false);
+              }}
+              placeholder="e.g. Netherlands, United States, Kenya"
+            />
+          </label>
+          {geoHint ? <p className="muted">{geoHint}</p> : null}
+          <button
+            type="button"
+            className={`btn secondary small${locationReady ? " active" : ""}`}
+            disabled={!location.trim()}
+            onClick={() => setLocationReady(true)}
+          >
+            {locationReady ? "Location confirmed" : "Confirm location"}
+          </button>
         </div>
-      ) : null}
+
+        {/* Search bar */}
+        <form className="search-bar" onSubmit={onSearch}>
+          <p className="search-panel-label">2 · Need</p>
+          <div className="search-bar-row">
+            <input
+              type="text"
+              value={what}
+              onChange={(e) => setWhat(e.target.value)}
+              placeholder='What do you need? e.g. "painters" or "loodgieters"'
+              disabled={!locationReady}
+              autoFocus
+            />
+            <button
+              type="submit"
+              className="btn"
+              disabled={loading || !locationReady}
+            >
+              {loading ? "Searching…" : "Search"}
+            </button>
+          </div>
+        </form>
+
+        {exampleQueries.length ? (
+          <div className="search-examples">
+            <span className="muted">Try:</span>
+            {exampleQueries.map((q) => (
+              <button
+                key={q}
+                type="button"
+                className="search-example-chip"
+                onClick={() => {
+                  const m = missions.find((x) =>
+                    q.toLowerCase().includes(x.location.toLowerCase()),
+                  );
+                  if (m) {
+                    setLocation(m.location);
+                    setLocationReady(true);
+                  }
+                  setWhat(
+                    q
+                      .replace(/\s+in\s+.+$/i, "")
+                      .trim(),
+                  );
+                }}
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </section>
 
       {error ? <div className="error">{error}</div> : null}
 
@@ -1075,10 +1097,13 @@ export function SingleSearchPage() {
 
       {/* Footer */}
       <footer className="search-footer">
-        <p className="muted">
-          Single Search reads existing investigations (including seed). It does
-          not invent a new sector — create or fill that mission first, then
-          search it. Every result links back to the full investigation trail.
+        <h2 className="search-footer-title">How Single Search stays honest</h2>
+        <p>
+          It only ranks companies from <strong>existing investigations</strong>{" "}
+          (including the seed mission). It does not invent a new sector or scrape
+          the open web on demand — create or fill that mission first, then search
+          it. Every result links back to the full investigation trail so you can
+          see the lists, the gaps, and the human judgement behind the answer.
         </p>
       </footer>
     </div>

@@ -21,13 +21,13 @@ export function HomePage() {
             then humans decide what counts. No black-box scores.
           </p>
           <div className="home-cta">
-            <Link className="btn" to="/search">
+            <Link className="home-btn home-btn--primary" to="/search">
               Search trusted companies
             </Link>
-            <Link className="btn secondary" to="/login">
+            <Link className="home-btn home-btn--ghost" to="/login">
               Sign in
             </Link>
-            <a className="btn secondary" href="#curad">
+            <a className="home-btn home-btn--ghost" href="#curad">
               Become a CURAD volunteer
             </a>
           </div>
@@ -64,7 +64,7 @@ export function HomePage() {
           </li>
         </ol>
         <p className="home-section-action">
-          <Link className="btn secondary" to="/control">
+          <Link className="home-btn home-btn--outline" to="/control">
             Open the demo harness
           </Link>
         </p>
@@ -88,10 +88,10 @@ export function HomePage() {
           Until then you can look inside, but writes stay locked.
         </p>
         <p className="home-section-action">
-          <Link className="btn" to="/signup">
+          <Link className="home-btn home-btn--solid" to="/signup">
             Apply as CURAD volunteer
           </Link>
-          <Link className="btn secondary" to="/login">
+          <Link className="home-btn home-btn--text" to="/login">
             Already applied? Sign in
           </Link>
         </p>
@@ -109,7 +109,7 @@ export function HomePage() {
         </p>
         <p className="home-section-action">
           <a
-            className="btn secondary"
+            className="home-btn home-btn--outline"
             href="mailto:partners@h3trust.org?subject=H3%20Trust%20partnership"
           >
             Contact partners@h3trust.org
