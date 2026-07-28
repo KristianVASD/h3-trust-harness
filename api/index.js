@@ -1,5 +1,6 @@
 // scripts/vercel-api-entry.ts
 import path5 from "node:path";
+import { Hono as Hono2 } from "hono";
 
 // packages/store/src/file-store.ts
 import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
@@ -2144,8 +2145,8 @@ async function runOcCommand(command, rawInput) {
 }
 
 // apps/server/src/omega/discover-route.ts
-async function runDiscoverForMission(store2, missionId, rawGap) {
-  const mission = await store2.getMission(missionId);
+async function runDiscoverForMission(store, missionId, rawGap) {
+  const mission = await store.getMission(missionId);
   if (!mission) {
     throw new DiscoverRouteError("Mission not found", 404);
   }
@@ -2158,11 +2159,11 @@ async function runDiscoverForMission(store2, missionId, rawGap) {
       400
     );
   }
-  const missionSources = await store2.listByMission("sources", missionId);
+  const missionSources = await store.listByMission("sources", missionId);
   const cellNames = missionSources.filter((s) => s.category === gap.category && s.scope === gap.layer).map((s) => s.name);
   const allNames = missionSources.map((s) => s.name);
   const existingSourceNames = Array.from(/* @__PURE__ */ new Set([...cellNames, ...allNames]));
-  const reviews = await store2.listByMission("reviews", missionId);
+  const reviews = await store.listByMission("reviews", missionId);
   const pendingFeedback = reviews.filter(
     (r) => r.reactsToProducer === "OmegaClaw" && !r.fedBackToOmega
   );
@@ -2183,10 +2184,10 @@ async function runDiscoverForMission(store2, missionId, rawGap) {
   );
   const sources = [];
   for (const draft of drafts) {
-    sources.push(await store2.createSourceInMission(missionId, draft));
+    sources.push(await store.createSourceInMission(missionId, draft));
   }
   for (const review of pendingFeedback) {
-    await store2.upsert("reviews", {
+    await store.upsert("reviews", {
       ...review,
       fedBackToOmega: true,
       updatedAt: (/* @__PURE__ */ new Date()).toISOString()
@@ -2214,8 +2215,8 @@ var DiscoverRouteError = class extends Error {
 
 // apps/server/src/omega/probe-route.ts
 var UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-async function runProbeForMission(store2, missionId, rawBody, loadPlan) {
-  const mission = await store2.getMission(missionId);
+async function runProbeForMission(store, missionId, rawBody, loadPlan) {
+  const mission = await store.getMission(missionId);
   if (!mission) {
     throw new ProbeRouteError("Mission not found", 404);
   }
@@ -2223,7 +2224,7 @@ async function runProbeForMission(store2, missionId, rawBody, loadPlan) {
   if (!UUID_RE.test(sourceId)) {
     throw new ProbeRouteError("sourceId (uuid) required", 400);
   }
-  const missionSources = await store2.listByMission("sources", missionId);
+  const missionSources = await store.listByMission("sources", missionId);
   const source = missionSources.find((s) => s.id === sourceId);
   if (!source) {
     throw new ProbeRouteError("Source not found on this mission", 404);
@@ -2241,7 +2242,7 @@ async function runProbeForMission(store2, missionId, rawBody, loadPlan) {
       fieldUniverse
     });
     const patch = buildProbeSourcePatch(output);
-    const updated = await store2.upsert("sources", {
+    const updated = await store.upsert("sources", {
       ...source,
       ...patch
     });
@@ -2250,7 +2251,7 @@ async function runProbeForMission(store2, missionId, rawBody, loadPlan) {
     if (err instanceof ProbeRouteError) throw err;
     const message = err instanceof Error ? err.message : "Probe failed";
     try {
-      await store2.upsert("sources", {
+      await store.upsert("sources", {
         ...source,
         probeStatus: "probe-failed",
         updatedAt: (/* @__PURE__ */ new Date()).toISOString()
@@ -2288,12 +2289,12 @@ var ProbeRouteError = class extends Error {
 };
 
 // apps/server/src/omega/extract-route.ts
-async function runExtractForSource(store2, missionId, sourceId) {
-  const mission = await store2.getMission(missionId);
+async function runExtractForSource(store, missionId, sourceId) {
+  const mission = await store.getMission(missionId);
   if (!mission) {
     throw new ExtractRouteError("Mission not found", 404);
   }
-  const missionSources = await store2.listByMission("sources", missionId);
+  const missionSources = await store.listByMission("sources", missionId);
   const source = missionSources.find((s) => s.id === sourceId);
   if (!source) {
     throw new ExtractRouteError("Source not found on this mission", 404);
@@ -2304,7 +2305,7 @@ async function runExtractForSource(store2, missionId, sourceId) {
   if (!source.extractionGuide) {
     throw new ExtractRouteError("source not probed (no extraction guide)", 400);
   }
-  const existing = await store2.listByMission("companies", missionId);
+  const existing = await store.listByMission("companies", missionId);
   const existingCompanyNames = existing.map((c) => c.name);
   const result = await runExtractGated(
     {
@@ -2325,7 +2326,7 @@ async function runExtractForSource(store2, missionId, sourceId) {
   const drafts = buildExtractCompanyRecords(result, missionId, source);
   const companies = [];
   for (const draft of drafts) {
-    companies.push(await store2.upsert("companies", draft));
+    companies.push(await store.upsert("companies", draft));
   }
   return {
     created: companies.map((c) => c.id),
@@ -2354,8 +2355,8 @@ var ExtractRouteError = class extends Error {
 };
 
 // apps/server/src/omega/barrier-route.ts
-async function fulfillBarrierForSource(store2, missionId, sourceId, barrierId, rawFulfillment) {
-  const mission = await store2.getMission(missionId);
+async function fulfillBarrierForSource(store, missionId, sourceId, barrierId, rawFulfillment) {
+  const mission = await store.getMission(missionId);
   if (!mission) {
     throw new BarrierRouteError("Mission not found", 404);
   }
@@ -2368,7 +2369,7 @@ async function fulfillBarrierForSource(store2, missionId, sourceId, barrierId, r
       400
     );
   }
-  const missionSources = await store2.listByMission("sources", missionId);
+  const missionSources = await store.listByMission("sources", missionId);
   const source = missionSources.find((s) => s.id === sourceId);
   if (!source) {
     throw new BarrierRouteError("Source not found on this mission", 404);
@@ -2377,7 +2378,7 @@ async function fulfillBarrierForSource(store2, missionId, sourceId, barrierId, r
     throw new BarrierRouteError("barrier not found on source", 404);
   }
   const barrier = buildFulfilledBarrier(source.accessBarrier, fulfillment);
-  const updated = await store2.upsert("sources", {
+  const updated = await store.upsert("sources", {
     ...source,
     accessBarrier: barrier,
     updatedAt: (/* @__PURE__ */ new Date()).toISOString()
@@ -2392,7 +2393,7 @@ async function fulfillBarrierForSource(store2, missionId, sourceId, barrierId, r
   });
   const companies = [];
   for (const draft of drafts) {
-    companies.push(await store2.upsert("companies", draft));
+    companies.push(await store.upsert("companies", draft));
   }
   return {
     barrier,
@@ -2401,8 +2402,8 @@ async function fulfillBarrierForSource(store2, missionId, sourceId, barrierId, r
     companies
   };
 }
-async function declineBarrierForSource(store2, missionId, sourceId, barrierId, rawBody) {
-  const mission = await store2.getMission(missionId);
+async function declineBarrierForSource(store, missionId, sourceId, barrierId, rawBody) {
+  const mission = await store.getMission(missionId);
   if (!mission) {
     throw new BarrierRouteError("Mission not found", 404);
   }
@@ -2415,7 +2416,7 @@ async function declineBarrierForSource(store2, missionId, sourceId, barrierId, r
   if (!by) {
     throw new BarrierRouteError("by (curator id) is required", 400);
   }
-  const missionSources = await store2.listByMission("sources", missionId);
+  const missionSources = await store.listByMission("sources", missionId);
   const source = missionSources.find((s) => s.id === sourceId);
   if (!source) {
     throw new BarrierRouteError("Source not found on this mission", 404);
@@ -2424,7 +2425,7 @@ async function declineBarrierForSource(store2, missionId, sourceId, barrierId, r
     throw new BarrierRouteError("barrier not found on source", 404);
   }
   const barrier = buildDeclinedBarrier(source.accessBarrier, reason, by);
-  const updated = await store2.upsert("sources", {
+  const updated = await store.upsert("sources", {
     ...source,
     accessBarrier: barrier,
     updatedAt: (/* @__PURE__ */ new Date()).toISOString()
@@ -2449,12 +2450,12 @@ var aliasesPath = path3.resolve(
   __dirname,
   "../../../../searchplans/capability_aliases.v1.json"
 );
-async function runHarvestForCompany(store2, missionId, companyId) {
-  const mission = await store2.getMission(missionId);
+async function runHarvestForCompany(store, missionId, companyId) {
+  const mission = await store.getMission(missionId);
   if (!mission) {
     throw new HarvestRouteError("Mission not found", 404);
   }
-  const companies = await store2.listByMission("companies", missionId);
+  const companies = await store.listByMission("companies", missionId);
   const company = companies.find((c) => c.id === companyId);
   if (!company) {
     throw new HarvestRouteError("Company not found on this mission", 404);
@@ -2473,7 +2474,7 @@ async function runHarvestForCompany(store2, missionId, companyId) {
     const patch = buildHarvestCompanyPatch(out, {
       profileSourceUrl: website_url ?? company.profileSourceUrl
     });
-    const updated = await store2.upsert("companies", {
+    const updated = await store.upsert("companies", {
       ...company,
       ...patch
     });
@@ -2498,7 +2499,7 @@ async function runHarvestForCompany(store2, missionId, companyId) {
       evidenceIds: [],
       tags: ["harvest-failed", `company:${companyId}`]
     };
-    await store2.upsert("observations", observation);
+    await store.upsert("observations", observation);
     return {
       ok: false,
       observationId: observation.id,
@@ -2592,11 +2593,16 @@ function isAdmin(auth) {
 function authMiddleware(admin, authRequired) {
   return async (c, next) => {
     c.set("authRequired", authRequired);
-    const auth = await resolveAuthFromRequest(
-      admin,
-      c.req.header("Authorization")
-    );
-    c.set("auth", auth);
+    try {
+      const auth = await resolveAuthFromRequest(
+        admin,
+        c.req.header("Authorization")
+      );
+      c.set("auth", auth);
+    } catch (err) {
+      console.error("[auth] resolve failed", err);
+      c.set("auth", null);
+    }
     await next();
   };
 }
@@ -2691,7 +2697,7 @@ async function consumeSearch(admin, sessionId, memory) {
 
 // apps/server/src/app.ts
 function createApp(options) {
-  const { store: store2, searchPlansRoot: searchPlansRoot2, writableRoot } = options;
+  const { store, searchPlansRoot: searchPlansRoot2, writableRoot } = options;
   const admin = createSupabaseAdmin();
   const authRequired = isAuthRequired();
   const searchMemory = /* @__PURE__ */ new Map();
@@ -2700,6 +2706,21 @@ function createApp(options) {
     "http://127.0.0.1:5173",
     ...process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(",").map((s) => s.trim()) : []
   ];
+  const app2 = new Hono();
+  app2.use(
+    "*",
+    cors({
+      origin: (origin) => {
+        if (!origin) return corsOrigins[0] ?? "*";
+        if (corsOrigins.includes(origin)) return origin;
+        if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin)) return origin;
+        return corsOrigins[0] ?? origin;
+      },
+      credentials: true
+    })
+  );
+  app2.use("*", authMiddleware(admin, authRequired));
+  app2.use("/api/*", requireWrite());
   async function listSearchPlanVersions() {
     try {
       const files = await readdir2(searchPlansRoot2);
@@ -2721,16 +2742,6 @@ function createApp(options) {
       return null;
     }
   }
-  const app2 = new Hono();
-  app2.use(
-    "*",
-    cors({
-      origin: corsOrigins,
-      credentials: true
-    })
-  );
-  app2.use("*", authMiddleware(admin, authRequired));
-  app2.use("/api/*", requireWrite());
   app2.get(
     "/api/health",
     (c) => c.json({
@@ -2738,6 +2749,9 @@ function createApp(options) {
       service: "h3-trust-harness",
       storeDriver: process.env.STORE_DRIVER ?? "file",
       authRequired,
+      hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
+      hasServiceRole: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+      hasAdminEmail: Boolean(process.env.ADMIN_EMAIL),
       writableRoot: writableRoot ?? null
     })
   );
@@ -2870,19 +2884,19 @@ function createApp(options) {
     return c.json(plan);
   });
   app2.get("/api/missions", async (c) => {
-    const missions = await store2.listMissions();
+    const missions = await store.listMissions();
     return c.json(missions);
   });
   app2.get("/api/missions/:id", async (c) => {
-    const mission = await store2.getMission(c.req.param("id"));
+    const mission = await store.getMission(c.req.param("id"));
     if (!mission) return c.json({ error: "Not found" }, 404);
     return c.json(mission);
   });
   app2.post("/api/missions", async (c) => {
     const body = await c.req.json();
-    const mission = await store2.upsertMission(body);
+    const mission = await store.upsertMission(body);
     try {
-      await store2.warmStartMissionSources(mission.id, mission.location);
+      await store.warmStartMissionSources(mission.id, mission.location);
     } catch {
     }
     return c.json(mission, 201);
@@ -2892,11 +2906,11 @@ function createApp(options) {
     if (body.id !== c.req.param("id")) {
       return c.json({ error: "ID mismatch" }, 400);
     }
-    const mission = await store2.upsertMission(body);
+    const mission = await store.upsertMission(body);
     return c.json(mission);
   });
   app2.delete("/api/missions/:id", async (c) => {
-    const ok = await store2.deleteMission(c.req.param("id"));
+    const ok = await store.deleteMission(c.req.param("id"));
     if (!ok) return c.json({ error: "Not found" }, 404);
     return c.json({ ok: true });
   });
@@ -2904,7 +2918,7 @@ function createApp(options) {
     const missionId = c.req.param("missionId");
     const body = await c.req.json();
     try {
-      const result = await runDiscoverForMission(store2, missionId, body);
+      const result = await runDiscoverForMission(store, missionId, body);
       return c.json(result, 201);
     } catch (err) {
       if (err instanceof DiscoverRouteError) {
@@ -2921,7 +2935,7 @@ function createApp(options) {
     const body = await c.req.json();
     try {
       const result = await runProbeForMission(
-        store2,
+        store,
         missionId,
         body,
         loadSearchPlan
@@ -2942,7 +2956,7 @@ function createApp(options) {
     async (c) => {
       try {
         const result = await runExtractForSource(
-          store2,
+          store,
           c.req.param("missionId"),
           c.req.param("sourceId")
         );
@@ -2964,7 +2978,7 @@ function createApp(options) {
       const body = await c.req.json();
       try {
         const result = await fulfillBarrierForSource(
-          store2,
+          store,
           c.req.param("missionId"),
           c.req.param("sourceId"),
           c.req.param("barrierId"),
@@ -2988,7 +3002,7 @@ function createApp(options) {
       const body = await c.req.json();
       try {
         const result = await declineBarrierForSource(
-          store2,
+          store,
           c.req.param("missionId"),
           c.req.param("sourceId"),
           c.req.param("barrierId"),
@@ -3011,7 +3025,7 @@ function createApp(options) {
     async (c) => {
       try {
         const result = await runHarvestForCompany(
-          store2,
+          store,
           c.req.param("missionId"),
           c.req.param("companyId")
         );
@@ -3029,11 +3043,11 @@ function createApp(options) {
   );
   app2.get("/api/missions/:missionId/coverage", async (c) => {
     const missionId = c.req.param("missionId");
-    const mission = await store2.getMission(missionId);
+    const mission = await store.getMission(missionId);
     if (!mission) return c.json({ error: "Not found" }, 404);
     const [sources, companies] = await Promise.all([
-      store2.listByMission("sources", missionId),
-      store2.listByMission("companies", missionId)
+      store.listByMission("sources", missionId),
+      store.listByMission("companies", missionId)
     ]);
     const plan = await loadSearchPlan(
       mission.search_plan_version || DEFAULT_SEARCH_PLAN_VERSION
@@ -3047,10 +3061,10 @@ function createApp(options) {
   });
   app2.post("/api/missions/:missionId/sources/warm-start", async (c) => {
     const missionId = c.req.param("missionId");
-    const mission = await store2.getMission(missionId);
+    const mission = await store.getMission(missionId);
     if (!mission) return c.json({ error: "Not found" }, 404);
     try {
-      const linked = await store2.warmStartMissionSources(
+      const linked = await store.warmStartMissionSources(
         missionId,
         mission.location
       );
@@ -3066,7 +3080,7 @@ function createApp(options) {
     const missionId = c.req.param("missionId");
     const body = await c.req.json();
     try {
-      const saved = await store2.createSourceInMission(missionId, body);
+      const saved = await store.createSourceInMission(missionId, body);
       return c.json(saved, 201);
     } catch (err) {
       return c.json(
@@ -3083,7 +3097,7 @@ function createApp(options) {
       return c.json({ error: "sourceId required" }, 400);
     }
     try {
-      const result = await store2.linkSourceToMission(
+      const result = await store.linkSourceToMission(
         missionId,
         sourceId,
         body.producer ?? "Human"
@@ -3102,18 +3116,18 @@ function createApp(options) {
       return c.json({ error: "excludeMission required" }, 400);
     }
     const q = c.req.query("q") ?? "";
-    const items = await store2.listLinkableSources(excludeMission, q);
+    const items = await store.listLinkableSources(excludeMission, q);
     return c.json(items);
   });
   app2.get("/api/sources", async (c) => {
-    return c.json(await store2.listAllSources());
+    return c.json(await store.listAllSources());
   });
   const missionCollections = CollectionNameSchema.options.filter(
     (name) => name !== "missions" && name !== "patterns" && name !== "sources"
   );
   for (const collection of missionCollections) {
     app2.get(`/api/missions/:missionId/${collection}`, async (c) => {
-      const items = await store2.listByMission(
+      const items = await store.listByMission(
         collection,
         c.req.param("missionId")
       );
@@ -3129,7 +3143,7 @@ function createApp(options) {
       } else if (body.missionId !== missionId) {
         return c.json({ error: "missionId mismatch" }, 400);
       }
-      const saved = await store2.upsert(collection, body);
+      const saved = await store.upsert(collection, body);
       return c.json(saved, 201);
     });
     app2.put(`/api/${collection}/:id`, async (c) => {
@@ -3137,11 +3151,11 @@ function createApp(options) {
       if (body.id !== c.req.param("id")) {
         return c.json({ error: "ID mismatch" }, 400);
       }
-      const saved = await store2.upsert(collection, body);
+      const saved = await store.upsert(collection, body);
       return c.json(saved);
     });
     app2.delete(`/api/${collection}/:id`, async (c) => {
-      const ok = await store2.remove(collection, c.req.param("id"));
+      const ok = await store.remove(collection, c.req.param("id"));
       return c.json({ ok });
     });
   }
@@ -3150,31 +3164,31 @@ function createApp(options) {
     if (body.id !== c.req.param("id")) {
       return c.json({ error: "ID mismatch" }, 400);
     }
-    const saved = await store2.upsert("sources", body);
+    const saved = await store.upsert("sources", body);
     return c.json(saved);
   });
   app2.delete("/api/sources/:id", async (c) => {
-    const ok = await store2.remove("sources", c.req.param("id"));
+    const ok = await store.remove("sources", c.req.param("id"));
     return c.json({ ok });
   });
   app2.get("/api/missions/:missionId/sources", async (c) => {
-    const items = await store2.listByMission(
+    const items = await store.listByMission(
       "sources",
       c.req.param("missionId")
     );
     return c.json(items);
   });
   app2.get("/api/patterns", async (c) => {
-    return c.json(await store2.listPatterns());
+    return c.json(await store.listPatterns());
   });
   app2.post("/api/patterns", async (c) => {
     const body = await c.req.json();
-    const saved = await store2.upsert("patterns", body);
+    const saved = await store.upsert("patterns", body);
     return c.json(saved, 201);
   });
   app2.get("/api/missions/:id/export", async (c) => {
     try {
-      const bundle = await store2.exportBundle(c.req.param("id"));
+      const bundle = await store.exportBundle(c.req.param("id"));
       if (writableRoot) {
         const exportDir = path4.join(writableRoot, "export");
         await mkdir2(exportDir, { recursive: true });
@@ -3197,11 +3211,32 @@ function createApp(options) {
 process.env.STORE_DRIVER ??= "postgres";
 process.env.AUTH_REQUIRED ??= "true";
 var searchPlansRoot = path5.join(process.cwd(), "searchplans");
-var store = createStore({ driver: "postgres" });
-var app = createApp({
-  store,
-  searchPlansRoot
-});
+function buildApp() {
+  try {
+    const store = createStore({ driver: "postgres" });
+    return createApp({
+      store,
+      searchPlansRoot
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[api] failed to boot store/app:", message);
+    const fallback = new Hono2();
+    fallback.all(
+      "*",
+      (c) => c.json(
+        {
+          ok: false,
+          error: message,
+          hint: "Set STORE_DRIVER=postgres, SUPABASE_URL, and SUPABASE_SERVICE_ROLE_KEY on the Vercel project (server env, not only VITE_*)."
+        },
+        500
+      )
+    );
+    return fallback;
+  }
+}
+var app = buildApp();
 var vercel_api_entry_default = app;
 export {
   vercel_api_entry_default as default

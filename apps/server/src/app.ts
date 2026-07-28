@@ -74,6 +74,27 @@ export function createApp(options: CreateAppOptions) {
       : []),
   ];
 
+  const app = new Hono<{ Variables: AppVariables }>();
+
+  app.use(
+    "*",
+    cors({
+      origin: (origin) => {
+        if (!origin) return corsOrigins[0] ?? "*";
+        if (corsOrigins.includes(origin)) return origin;
+        // Allow any Vercel preview/production host without re-deploying CORS_ORIGIN
+        if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin)) return origin;
+        return corsOrigins[0] ?? origin;
+      },
+      credentials: true,
+    }),
+  );
+
+  app.use("*", authMiddleware(admin, authRequired));
+
+  // Mutating routes need write privilege when auth is on
+  app.use("/api/*", requireWrite());
+
   async function listSearchPlanVersions(): Promise<string[]> {
     try {
       const files = await readdir(searchPlansRoot);
@@ -100,27 +121,15 @@ export function createApp(options: CreateAppOptions) {
     }
   }
 
-  const app = new Hono<{ Variables: AppVariables }>();
-
-  app.use(
-    "*",
-    cors({
-      origin: corsOrigins,
-      credentials: true,
-    }),
-  );
-
-  app.use("*", authMiddleware(admin, authRequired));
-
-  // Mutating routes need write privilege when auth is on
-  app.use("/api/*", requireWrite());
-
   app.get("/api/health", (c) =>
     c.json({
       ok: true,
       service: "h3-trust-harness",
       storeDriver: process.env.STORE_DRIVER ?? "file",
       authRequired,
+      hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
+      hasServiceRole: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+      hasAdminEmail: Boolean(process.env.ADMIN_EMAIL),
       writableRoot: writableRoot ?? null,
     }),
   );

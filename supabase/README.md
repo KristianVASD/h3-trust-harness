@@ -9,6 +9,10 @@
 5. Set `STORE_DRIVER=postgres` and `AUTH_REQUIRED=true`.
 6. Set `ADMIN_EMAIL` to your email, then sign up / sign in once — that profile is promoted to `admin` + `approved`.
 
+**Email confirmation:** For the test phase, in Supabase → **Authentication** → **Providers** → **Email**, disable **Confirm email**. Otherwise signup succeeds but login returns 400 until the user confirms.
+
+**Vercel server env (required for `/api`):** `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (not only the `VITE_*` keys). Check `/api/health` — it should show `hasSupabaseUrl` / `hasServiceRole`: true.
+
 ## Seed demo data into Postgres
 
 ```powershell

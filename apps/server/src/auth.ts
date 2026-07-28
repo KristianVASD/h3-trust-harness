@@ -137,11 +137,16 @@ export function authMiddleware(
 ): MiddlewareHandler<{ Variables: AppVariables }> {
   return async (c, next) => {
     c.set("authRequired", authRequired);
-    const auth = await resolveAuthFromRequest(
-      admin,
-      c.req.header("Authorization"),
-    );
-    c.set("auth", auth);
+    try {
+      const auth = await resolveAuthFromRequest(
+        admin,
+        c.req.header("Authorization"),
+      );
+      c.set("auth", auth);
+    } catch (err) {
+      console.error("[auth] resolve failed", err);
+      c.set("auth", null);
+    }
     await next();
   };
 }

@@ -26,7 +26,22 @@ export function LoginPage() {
       await signIn(email.trim(), password);
       navigate(from, { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-in failed");
+      const raw = err instanceof Error ? err.message : "Sign-in failed";
+      const lower = raw.toLowerCase();
+      if (lower.includes("email not confirmed") || lower.includes("confirm")) {
+        setError(
+          "Email not confirmed. In Supabase → Authentication → Providers → Email, turn OFF “Confirm email” for the test phase (or confirm the user in Authentication → Users).",
+        );
+      } else if (
+        lower.includes("invalid login") ||
+        lower.includes("invalid credentials")
+      ) {
+        setError(
+          "Wrong email or password. Use the password from Sign up (there is no default admin password). Reset in Supabase → Authentication → Users if needed.",
+        );
+      } else {
+        setError(raw);
+      }
     } finally {
       setBusy(false);
     }
