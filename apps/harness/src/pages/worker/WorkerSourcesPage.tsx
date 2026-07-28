@@ -41,14 +41,15 @@ export function WorkerSourcesPage() {
   return (
     <div className="worker-step-page">
       <div className="worker-step-intro">
-        <h2>Fill source gaps</h2>
+        <h2>Gaps</h2>
         <p className="hint">
           Add found lists under each category — multiple per category is fine.
-          Keep what is worth rating, then send drafts to CARA. No final decision
-          here; only selection.
+          <strong> Ask Ω</strong> writes provisional candidates (unprobed) onto
+          the board; keep what is worth rating, then send drafts to CURAD · Align.
+          No final decision here; only selection.
         </p>
         <p className="muted">
-          {candidates} candidates · {caraQueue} ready for CARA
+          {candidates} candidates · {caraQueue} ready for align
         </p>
         {sources.length === 0 ? (
           <div className="worker-warm-start">
@@ -83,13 +84,19 @@ export function WorkerSourcesPage() {
       />
 
       <footer className="worker-step-footer">
+        <Link className="btn secondary" to={`/work/${missionId}/brief`}>
+          ← Brief
+        </Link>
+        <Link className="btn secondary" to={`/work/${missionId}/probe`}>
+          Probe →
+        </Link>
         <Link
           className={`btn ${caraQueue > 0 ? "" : "secondary"}`}
-          to={`/work/${missionId}/cara`}
+          to={`/work/${missionId}/align`}
         >
           {caraQueue > 0
-            ? `Continue to CARA (${caraQueue}) →`
-            : "Continue to CARA →"}
+            ? `Continue to Align (${caraQueue}) →`
+            : "Continue to Align →"}
         </Link>
       </footer>
     </div>

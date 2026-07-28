@@ -9,9 +9,14 @@ import { CaraReviewPage } from "./pages/CaraReviewPage";
 import { SignalsPage } from "./pages/SignalsPage";
 import { SituationRoomPage } from "./pages/SituationRoomPage";
 import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
+import { WorkerBriefPage } from "./pages/worker/WorkerBriefPage";
 import { WorkerSourcesPage } from "./pages/worker/WorkerSourcesPage";
+import { WorkerProbePage } from "./pages/worker/WorkerProbePage";
 import { WorkerCaraPage } from "./pages/worker/WorkerCaraPage";
 import { WorkerImportPage } from "./pages/worker/WorkerImportPage";
+import { WorkerProfilePage } from "./pages/worker/WorkerProfilePage";
+import { WorkerCoveragePage } from "./pages/worker/WorkerCoveragePage";
+import { WorkerSearchStepPage } from "./pages/worker/WorkerSearchStepPage";
 import { WorkerResultsPage } from "./pages/worker/WorkerResultsPage";
 
 export function App() {
@@ -43,13 +48,23 @@ export function App() {
         {/* Single Search — standalone, no mission context */}
         <Route path="/search" element={<SingleSearchPage />} />
 
-        {/* Data Worker — linear Sources → CARA → Import → Results */}
+        {/* Data Worker — 8-step spine */}
         <Route path="/work/:missionId" element={<WorkerLayout />}>
-          <Route index element={<Navigate to="sources" replace />} />
-          <Route path="sources" element={<WorkerSourcesPage />} />
-          <Route path="cara" element={<WorkerCaraPage />} />
-          <Route path="import" element={<WorkerImportPage />} />
-          <Route path="results" element={<WorkerResultsPage />} />
+          <Route index element={<Navigate to="brief" replace />} />
+          <Route path="brief" element={<WorkerBriefPage />} />
+          <Route path="gaps" element={<WorkerSourcesPage />} />
+          <Route path="probe" element={<WorkerProbePage />} />
+          <Route path="align" element={<WorkerCaraPage />} />
+          <Route path="extract" element={<WorkerImportPage />} />
+          <Route path="profile" element={<WorkerProfilePage />} />
+          <Route path="coverage" element={<WorkerCoveragePage />} />
+          <Route path="search" element={<WorkerSearchStepPage />} />
+          {/* Full ranking table — off-rail; legacy bookmarks redirect */}
+          <Route path="ranking" element={<WorkerResultsPage />} />
+          <Route path="sources" element={<Navigate to="../gaps" replace />} />
+          <Route path="cara" element={<Navigate to="../align" replace />} />
+          <Route path="import" element={<Navigate to="../extract" replace />} />
+          <Route path="results" element={<Navigate to="../coverage" replace />} />
         </Route>
 
         {/* Investigator — full mission desk */}

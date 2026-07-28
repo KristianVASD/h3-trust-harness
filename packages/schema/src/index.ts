@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+  SourceFieldKeySchema,
+  RichnessSchema,
+  ExtractionGuideSchema,
+  ProbeStatusSchema,
+} from "./source-richness";
 
 /** Who performed this step — golden rule on every writable object. */
 export const ProducerSchema = z.enum([
@@ -233,6 +239,14 @@ const sourceObjectSchema = z.object({
   /** New proposals start as candidate; kept ones move to draft → CARA. */
   status: SourceStatusSchema.default("candidate"),
   notes: z.string().optional(),
+  /** What company-data fields this source holds (probe, Job 2). Drives richness. */
+  sourceFields: z.array(SourceFieldKeySchema).default([]),
+  /** Explainable richness derived from sourceFields (default.v1). */
+  richness: RichnessSchema.optional(),
+  /** How to scrape this source — written by probe (Job 2), read by extract (Job 3). */
+  extractionGuide: ExtractionGuideSchema.optional(),
+  /** Probe lifecycle. New proposals are unprobed until Job 2 runs. */
+  probeStatus: ProbeStatusSchema.default("unprobed"),
   /** Legacy owner field — stripped after migrate. */
   missionId: z.string().uuid().optional(),
 });
@@ -409,6 +423,10 @@ export const ReviewSchema = z.object({
   hypothesisIds: z.array(z.string().uuid()).default([]),
   evidenceIds: z.array(z.string().uuid()).default([]),
   version: z.number().int().positive().default(1),
+  /** When set, this review is reacting to an OmegaClaw provisional proposal. */
+  reactsToProducer: z.literal("OmegaClaw").optional(),
+  /** Flipped when the next Ω run consumes this feedback. */
+  fedBackToOmega: z.boolean().default(false),
 });
 export type Review = z.infer<typeof ReviewSchema>;
 
@@ -515,3 +533,5 @@ export * from "./list-coverage";
 export * from "./resolve-source-gaps";
 export * from "./search-plan";
 export * from "./capability-aliases";
+export * from "./source-richness";
+export * from "./coverage";

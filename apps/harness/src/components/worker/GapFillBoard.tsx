@@ -142,11 +142,7 @@ function SourceProposalDetails({ source }: { source: Source }) {
   );
 }
 
-const OMEGA_STUB_NAMES = [
-  "Regional trade directory (OmegaClaw)",
-  "Local chamber listing (OmegaClaw)",
-  "Sector membership scrape (OmegaClaw)",
-];
+
 
 export function GapFillBoard({
   missionId,
@@ -343,58 +339,29 @@ export function GapFillBoard({
     }
   }
 
-  /** Stub — UI-ready for OmegaClaw; later a real API call. */
-  async function askOmegaClaw(category: SourceCategory, layer: SourceScope) {
+  /** Phase 3 — Ask Ω via server adapter; provisional candidates land with Ω badge. */
+  async function askOmegaClaw(
+    category: SourceCategory,
+    layer: SourceScope,
+    nuance_rule?: string,
+  ) {
     setOmegaBusyCat(category);
     setError(null);
     try {
-      await new Promise((r) => setTimeout(r, 1200));
-      const now = new Date().toISOString();
-      const picks = OMEGA_STUB_NAMES.slice(0, 2);
-      for (const [i, label] of picks.entries()) {
-        await api.createInMission(missionId, "sources", {
-          id: uuid(),
-          producer: "OmegaClaw" as const,
-          first_seen_mission: missionId,
-          reused_in_missions: [],
-          name: `${label} · ${category}`,
-          type: "directory" as const,
-          category,
-          scope: layer,
-          region: layer === "national" ? "" : mission.location,
-          url: `https://example.com/omegaclaw/${category}/${i + 1}`,
-          reason: `OmegaClaw suggestion for ${category} gap (${layer}). Matches mission sector/location heuristics.`,
-          suggestedWeight: 45 + i * 5,
-          suggestedConfidence: 45 + i * 5,
-          signalIds: [],
-          evidenceIds: [],
-          status: "candidate" as const,
-          notes: "Stub proposal — replace with live OmegaClaw later.",
-          evidence: {
-            checked_at: now,
-            url: `https://example.com/omegaclaw/${category}/${i + 1}`,
-            domain_age: i === 0 ? "8+ years" : "2 years",
-            membership_threshold: i === 0 ? "medium" : "low",
-            real_world_presence: {
-              events: i === 0,
-              news: true,
-              linkedin: false,
-            },
-            summary_reasons: [
-              `✓ Fills ${category} / ${layer} gap`,
-              i === 0
-                ? "✓ Directory has named member listings"
-                : "? Thin scrape — verify before keep",
-            ],
-          },
-          createdAt: now,
-          updatedAt: now,
-          v: 1,
-        });
+      const result = await api.discoverSources(missionId, {
+        layer,
+        category,
+        ...(nuance_rule ? { nuance_rule } : {}),
+      });
+      if (!result.sources.length) {
+        const reason =
+          result.skipped.map((s) => s.reason).filter(Boolean).join(" · ") ||
+          "OmegaClaw found no new candidates for this gap.";
+        setError(reason);
       }
       await onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "OmegaClaw stub failed");
+      setError(err instanceof Error ? err.message : "OmegaClaw discover failed");
     } finally {
       setOmegaBusyCat(null);
     }
@@ -519,7 +486,7 @@ export function GapFillBoard({
                             </p>
                           ) : null}
                           <div className="mission-meta" style={{ marginTop: "0.25rem" }}>
-                            <ProducerBadge producer={s.producer} />
+                            <ProducerBadge producer={s.producer} status={s.status} />
                             <StatusChip label={s.status} />
                             {hasEvidencePayload(s.evidence) ? (
                               <StatusChip label="evidence" tone="done" />
@@ -746,7 +713,7 @@ export function GapFillBoard({
                               className="mission-meta"
                               style={{ marginTop: "0.25rem" }}
                             >
-                              <ProducerBadge producer={s.producer} />
+                              <ProducerBadge producer={s.producer} status={s.status} />
                               {s.scope ? <StatusChip label={s.scope} /> : null}
                               {s.region ? <StatusChip label={s.region} /> : null}
                               {hasEvidencePayload(s.evidence) ? (
@@ -859,12 +826,14 @@ export function GapFillBoard({
                         type="button"
                         className="btn secondary small"
                         disabled={busy || omegaBusy}
-                        onClick={() =>
+                        onClick={() => {
+                          const gapRow = rows.find((r) => r.status === "gap");
                           void askOmegaClaw(
                             category as SourceCategory,
                             primaryLayer,
-                          )
-                        }
+                            gapRow?.nuance_rule ?? rows[0]?.nuance_rule,
+                          );
+                        }}
                       >
                         {omegaBusy ? "OmegaClaw thinking…" : "Ask OmegaClaw"}
                       </button>

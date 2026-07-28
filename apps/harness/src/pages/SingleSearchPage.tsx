@@ -433,7 +433,7 @@ export function SingleSearchPage() {
         v: 1,
       };
       await api.createMission(mission);
-      navigate(`/work/${mission.id}/sources`);
+      navigate(`/work/${mission.id}/brief`);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to start investigation",
@@ -482,6 +482,7 @@ export function SingleSearchPage() {
         hypothesisIds: [],
         evidenceIds: [],
         version: 1,
+        fedBackToOmega: false,
         createdAt: now,
         updatedAt: now,
         v: 1,
@@ -594,7 +595,7 @@ export function SingleSearchPage() {
             {matchedMission ? (
               <Link
                 className="btn"
-                to={`/work/${matchedMission.id}/import`}
+                to={`/work/${matchedMission.id}/extract`}
               >
                 Open Data Worker → Import
               </Link>
@@ -643,7 +644,7 @@ export function SingleSearchPage() {
               </Link>
               <Link
                 className="btn secondary small"
-                to={`/work/${matchedMission.id}/sources`}
+                to={`/work/${matchedMission.id}/gaps`}
               >
                 ⚡ Data Worker
               </Link>

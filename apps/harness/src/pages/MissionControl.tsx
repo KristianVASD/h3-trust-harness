@@ -66,7 +66,7 @@ export function MissionControl() {
   }, []);
 
   function missionPath(id: string) {
-    return mode === "worker" ? `/work/${id}/sources` : `/missions/${id}`;
+    return mode === "worker" ? `/work/${id}/brief` : `/missions/${id}`;
   }
 
   async function onSubmit(e: FormEvent) {
@@ -210,7 +210,7 @@ export function MissionControl() {
                   ) : (
                     <Link
                       className="btn small"
-                      to={`/work/${m.id}/sources`}
+                      to={`/work/${m.id}/brief`}
                     >
                       ⚡ Data Worker
                     </Link>

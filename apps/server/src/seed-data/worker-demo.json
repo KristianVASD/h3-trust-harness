@@ -21,6 +21,20 @@
       "evidenceIds": [],
       "status": "accepted",
       "notes": "Gold standard for company existence.",
+      "sourceFields": ["name", "website", "address", "kvk"],
+      "richness": {
+        "score": 60,
+        "present": ["name", "website", "address", "kvk"],
+        "formula": "default.v1"
+      },
+      "extractionGuide": {
+        "listPattern": "search-form",
+        "fields": ["name", "website", "address", "kvk"],
+        "pagination": false,
+        "regionFilter": "postcode / plaats",
+        "notes": "Official registry search; kvk number is authoritative."
+      },
+      "probeStatus": "probed",
       "evidence": {
         "checked_at": "2026-07-18T10:00:00.000Z",
         "url": "https://www.kvk.nl",
@@ -293,6 +307,19 @@
       "evidenceIds": [],
       "status": "accepted",
       "notes": "Well-regarded national association.",
+      "sourceFields": ["name", "website", "address", "phone", "specialism", "tier"],
+      "richness": {
+        "score": 65,
+        "present": ["name", "website", "address", "phone", "specialism", "tier"],
+        "formula": "default.v1"
+      },
+      "extractionGuide": {
+        "listPattern": "directory",
+        "fields": ["name", "website", "address", "phone", "specialism"],
+        "pagination": true,
+        "notes": "Member directory; tier/membership grade visible but optional for scrape."
+      },
+      "probeStatus": "probed",
       "evidence": {
         "checked_at": "2026-07-18T10:00:00.000Z",
         "url": "https://nederlandseschildersbond.nl",
@@ -338,6 +365,20 @@
       "evidenceIds": [],
       "status": "accepted",
       "notes": "The leading quality mark for painters in the Netherlands.",
+      "sourceFields": ["name", "website", "address", "phone", "email", "specialism", "tier"],
+      "richness": {
+        "score": 75,
+        "present": ["name", "website", "address", "phone", "email", "specialism", "tier"],
+        "formula": "default.v1"
+      },
+      "extractionGuide": {
+        "listPattern": "cards",
+        "fields": ["name", "website", "address", "phone", "email", "specialism", "tier"],
+        "pagination": true,
+        "regionFilter": "province / plaats filter",
+        "notes": "Quality-mark member cards with certified tier labels."
+      },
+      "probeStatus": "probed",
       "evidence": {
         "checked_at": "2026-07-18T10:00:00.000Z",
         "url": "https://www.betereschilder.nl",

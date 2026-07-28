@@ -32,7 +32,7 @@ export function MissionLayout() {
             {mission ? <p className="muted mission-goal">{mission.goal}</p> : null}
           </div>
           <div className="row" style={{ gap: "0.35rem", flexWrap: "wrap" }}>
-            <NavLink className="btn small" to={`/work/${missionId}/sources`}>
+            <NavLink className="btn small" to={`/work/${missionId}/brief`}>
               ⚡ Data Worker
             </NavLink>
             <NavLink className={navClass} end to={`/missions/${missionId}`}>

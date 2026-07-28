@@ -15,6 +15,14 @@ import {
   type Source,
 } from "@h3-trust/schema";
 import { FileStore } from "@h3-trust/store";
+import {
+  DiscoverRouteError,
+  runDiscoverForMission,
+} from "./omega/discover-route.js";
+import {
+  ProbeRouteError,
+  runProbeForMission,
+} from "./omega/probe-route.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const writableRoot = path.resolve(__dirname, "../../../writable");
@@ -112,6 +120,53 @@ app.delete("/api/missions/:id", async (c) => {
   const ok = await store.deleteMission(c.req.param("id"));
   if (!ok) return c.json({ error: "Not found" }, 404);
   return c.json({ ok: true });
+});
+
+/**
+ * Phase 3 — Ask Ω on one open gap cell.
+ * Runs runOcCommand("discover"), persists provisional candidates, returns skipped.
+ */
+app.post("/api/missions/:missionId/omega/discover", async (c) => {
+  const missionId = c.req.param("missionId");
+  const body = await c.req.json();
+  try {
+    const result = await runDiscoverForMission(store, missionId, body);
+    return c.json(result, 201);
+  } catch (err) {
+    if (err instanceof DiscoverRouteError) {
+      return c.json({ error: err.message }, err.status);
+    }
+    return c.json(
+      { error: err instanceof Error ? err.message : "Discover failed" },
+      400,
+    );
+  }
+});
+
+/**
+ * Phase 4 — Probe one source.
+ * Runs runOcCommand("probe"), merges richness + extractionGuide onto the Source.
+ */
+app.post("/api/missions/:missionId/omega/probe", async (c) => {
+  const missionId = c.req.param("missionId");
+  const body = await c.req.json();
+  try {
+    const result = await runProbeForMission(
+      store,
+      missionId,
+      body,
+      loadSearchPlan,
+    );
+    return c.json(result);
+  } catch (err) {
+    if (err instanceof ProbeRouteError) {
+      return c.json({ error: err.message }, err.status);
+    }
+    return c.json(
+      { error: err instanceof Error ? err.message : "Probe failed" },
+      400,
+    );
+  }
 });
 
 /** Link reusable catalogue sources into an existing mission (idempotent). */

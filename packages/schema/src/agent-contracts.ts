@@ -8,7 +8,15 @@ export type AgentProducer = "OmegaClaw";
 export interface AgentJobStub {
   id: string;
   missionId: string;
-  kind: "discover_sources" | "propose_hypotheses" | "collect_evidence";
+  kind:
+    | "discover_sources"
+    | "propose_hypotheses"
+    | "collect_evidence"
+    | "discover"
+    | "probe"
+    | "extract"
+    | "harvest"
+    | "refresh";
   status: "queued" | "running" | "done" | "failed";
   producer: AgentProducer;
   createdAt: string;

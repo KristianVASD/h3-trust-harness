@@ -36,6 +36,28 @@ export const api = {
       `/missions/${missionId}/sources/warm-start`,
       { method: "POST", body: "{}" },
     ),
+  /** Phase 3 — Ask Ω discover for one gap cell; persists provisional candidates. */
+  discoverSources: (
+    missionId: string,
+    gap: { layer: string; category: string; nuance_rule?: string },
+  ) =>
+    request<{
+      sources: Source[];
+      skipped: Array<{ reason: string }>;
+      output: { producer: string; candidates: unknown[] };
+    }>(`/missions/${missionId}/omega/discover`, {
+      method: "POST",
+      body: JSON.stringify(gap),
+    }),
+  /** Phase 4 — Probe one source; fills richness + extractionGuide. */
+  probeSource: (missionId: string, sourceId: string) =>
+    request<{ source: Source; output: unknown }>(
+      `/missions/${missionId}/omega/probe`,
+      {
+        method: "POST",
+        body: JSON.stringify({ sourceId }),
+      },
+    ),
   updateMission: (mission: Mission) =>
     request<Mission>(`/missions/${mission.id}`, {
       method: "PUT",

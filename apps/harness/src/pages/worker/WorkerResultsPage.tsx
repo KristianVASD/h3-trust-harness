@@ -156,6 +156,7 @@ export function WorkerResultsPage() {
         hypothesisIds: [],
         evidenceIds: [],
         version: 1,
+        fedBackToOmega: false,
         createdAt: now,
         updatedAt: now,
         v: 1,
@@ -220,8 +221,8 @@ export function WorkerResultsPage() {
             Import a CSV against a trusted list to build the trust ranking.
           </p>
           <div className="row" style={{ justifyContent: "center", marginTop: "1rem" }}>
-            <Link className="btn" to={`/work/${missionId}/import`}>
-              ← Import data
+            <Link className="btn" to={`/work/${missionId}/extract`}>
+              ← Extract data
             </Link>
           </div>
         </div>
@@ -414,11 +415,14 @@ export function WorkerResultsPage() {
       )}
 
       <footer className="worker-step-footer">
-        <Link className="btn secondary" to={`/work/${missionId}/import`}>
-          ← Import
+        <Link className="btn secondary" to={`/work/${missionId}/extract`}>
+          ← Extract
         </Link>
-        <Link className="btn secondary" to={`/work/${missionId}/sources`}>
-          Back to Sources
+        <Link className="btn secondary" to={`/work/${missionId}/coverage`}>
+          Coverage
+        </Link>
+        <Link className="btn secondary" to={`/work/${missionId}/gaps`}>
+          Back to Gaps
         </Link>
         <Link className="btn secondary" to={`/missions/${missionId}`}>
           ← Investigation

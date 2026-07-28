@@ -130,14 +130,14 @@ export function SituationRoomPage() {
           />
         </div>
         <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
-          <Link className="btn small" to={`/work/${missionId}/sources`}>
-            ⚡ Open Data Worker
+          <Link className="btn small" to={`/work/${missionId}/brief`}>
+            Open Data Worker
           </Link>
-          <Link className="btn secondary small" to={`/work/${missionId}/cara`}>
-            CARA queue
+          <Link className="btn secondary small" to={`/work/${missionId}/align`}>
+            Align queue
           </Link>
-          <Link className="btn secondary small" to={`/work/${missionId}/results`}>
-            Results
+          <Link className="btn secondary small" to={`/work/${missionId}/ranking`}>
+            Ranking
           </Link>
         </div>
       </section>
@@ -195,17 +195,17 @@ export function SituationRoomPage() {
             <Issue
               label="Source candidates (triage)"
               count={metrics.sourceCandidates}
-              to={`/work/${missionId}/sources`}
+              to={`/work/${missionId}/gaps`}
             />
             <Issue
               label="Needs human review (sources)"
               count={metrics.pending}
-              to={`/work/${missionId}/cara`}
+              to={`/work/${missionId}/align`}
             />
             <Issue
               label="Trusted lists (accepted/adjusted)"
               count={metrics.trusted}
-              to={`/work/${missionId}/cara`}
+              to={`/work/${missionId}/align`}
             />
             <Issue
               label="Company candidates"

@@ -12,6 +12,7 @@
     "seed": "pnpm --filter @h3-trust/server seed",
     "fixtures:write": "pnpm --filter @h3-trust/server fixtures:write",
     "fixtures:load": "pnpm --filter @h3-trust/server fixtures:load",
+    "omega:smoke": "pnpm --filter @h3-trust/server omega:smoke",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint .",
     "format": "prettier --write ."

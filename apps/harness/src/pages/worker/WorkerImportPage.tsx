@@ -102,25 +102,26 @@ export function WorkerImportPage() {
   return (
     <div className="worker-step-page">
       <div className="worker-step-intro">
-        <h2>Link data source</h2>
+        <h2>Extract</h2>
         <p className="hint">
-          Upload or paste a company list and attach it to a CARA-approved source.
-          Only trusted lists count toward trust ratings.
+          Upload or paste a company list and attach it to a CARA-approved source
+          (manual extract until Ω extract wires in Phase 6). Only trusted lists
+          count toward trust ratings.
         </p>
       </div>
 
       {!unlocked ? (
         <div className="empty worker-empty-hero worker-locked">
           <p>
-            Import locked — need {TRUSTED_LIST_UNLOCK} trusted lists
-            ({trustedCount} so far).
+            Extract locked — need {TRUSTED_LIST_UNLOCK} trusted lists (
+            {trustedCount} so far).
           </p>
           <p className="muted">
-            Approve more sources in CARA, then come back to attach CSVs.
+            Approve more sources in Align, then come back to attach CSVs.
           </p>
           <div className="row" style={{ justifyContent: "center", marginTop: "1rem" }}>
-            <Link className="btn" to={`/work/${missionId}/cara`}>
-              ← Back to CARA
+            <Link className="btn" to={`/work/${missionId}/align`}>
+              ← Back to Align
             </Link>
           </div>
         </div>
@@ -130,7 +131,7 @@ export function WorkerImportPage() {
           {doneMsg ? (
             <div className="thesis" style={{ borderColor: "var(--teal)" }}>
               {doneMsg}{" "}
-              <Link to={`/work/${missionId}/results`}>View results →</Link>
+              <Link to={`/work/${missionId}/profile`}>View profiles →</Link>
             </div>
           ) : null}
 
@@ -182,21 +183,21 @@ export function WorkerImportPage() {
             <button className="btn" type="submit" disabled={busy || !previewCount}>
               {busy
                 ? "Importing…"
-                : `Import ${previewCount || ""} candidates`}
+                : `Extract ${previewCount || ""} candidates`}
             </button>
           </form>
         </section>
       )}
 
       <footer className="worker-step-footer">
-        <Link className="btn secondary" to={`/work/${missionId}/cara`}>
-          ← CARA
+        <Link className="btn secondary" to={`/work/${missionId}/align`}>
+          ← Align
         </Link>
         <Link
           className={`btn ${companies.length ? "" : "secondary"}`}
-          to={`/work/${missionId}/results`}
+          to={`/work/${missionId}/profile`}
         >
-          View results →
+          Profile →
         </Link>
       </footer>
     </div>
