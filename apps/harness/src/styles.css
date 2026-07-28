@@ -632,6 +632,37 @@ a {
   margin-top: 0.6rem;
 }
 
+.demand-panel {
+  margin-bottom: 1.5rem;
+}
+
+.demand-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.demand-card {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  background: var(--white);
+}
+
+.demand-card h3 {
+  margin: 0 0 0.2rem;
+  font-size: 1rem;
+}
+
+.demand-card-actions {
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
 .chip {
   display: inline-flex;
   align-items: center;

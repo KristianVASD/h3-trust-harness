@@ -272,6 +272,28 @@ export function SingleSearchPage() {
   const [adjustingId, setAdjustingId] = useState<string | null>(null);
   const [adjustScore, setAdjustScore] = useState("70");
   const [reason, setReason] = useState("");
+  const [demandSaved, setDemandSaved] = useState(false);
+
+  function logDemand(input: {
+    what: string;
+    location: string;
+    country?: string;
+    parsed_sector?: string;
+    matched_mission_id?: string;
+    outcome:
+      | "hit"
+      | "no_match"
+      | "empty_companies"
+      | "ambiguous"
+      | "quota_blocked";
+  }) {
+    void api
+      .logSearchDemand(input)
+      .then(() => setDemandSaved(true))
+      .catch(() => {
+        /* demand log must never block search UX */
+      });
+  }
 
   useEffect(() => {
     void api
@@ -348,6 +370,7 @@ export function SingleSearchPage() {
     setLoading(true);
     setError(null);
     setSearched(true);
+    setDemandSaved(false);
     setMatchedMission(null);
     setRanked([]);
     setTrustedCount(0);
@@ -367,6 +390,12 @@ export function SingleSearchPage() {
       } catch {
         /* plain text */
       }
+      logDemand({
+        what: sectorPart,
+        location: loc,
+        country: countryPart || undefined,
+        outcome: "quota_blocked",
+      });
       setError(msg);
       setLoading(false);
       return;
@@ -389,6 +418,13 @@ export function SingleSearchPage() {
           ...new Set(candidates.map((m) => normalizeLabel(m.subsector))),
         ];
         if (subsectors.length > 1) {
+          logDemand({
+            what: sectorPart,
+            location: loc,
+            country: countryPart || undefined,
+            parsed_sector: parsed.sector,
+            outcome: "ambiguous",
+          });
           setNoMatchReason(
             `Several investigations exist in ${parsed.location}. Add a trade (e.g. painters, plumbers) so we pick the right one.`,
           );
@@ -403,10 +439,17 @@ export function SingleSearchPage() {
               `${m.location}${m.country ? `, ${m.country}` : ""} · ${m.subsector.replace(/\s*\([^)]*\)\s*/g, "").trim()}`,
           )
           .filter((v, i, arr) => arr.indexOf(v) === i);
+        logDemand({
+          what: sectorPart,
+          location: loc,
+          country: countryPart || undefined,
+          parsed_sector: parsed.sector,
+          outcome: "no_match",
+        });
         setNoMatchReason(
           available.length
-            ? `No finished investigation for “${sectorPart}” in ${loc}${countryPart ? ` (${countryPart})` : ""} yet. That is not a geo-block — the public catalogue only has: ${available.join("; ")}. Start a new investigation for this place (any country).`
-            : `No investigations in the catalogue yet. Start one for ${loc}${countryPart ? ` (${countryPart})` : ""} — worldwide places are welcome.`,
+            ? `No finished investigation for “${sectorPart}” in ${loc}${countryPart ? ` (${countryPart})` : ""} yet. That is not a geo-block — the public catalogue only has: ${available.join("; ")}. Your need is saved for CURAD — start a new investigation for this place (any country).`
+            : `No investigations in the catalogue yet. Your need for ${loc}${countryPart ? ` (${countryPart})` : ""} is saved — worldwide places are welcome.`,
         );
         return;
       }
@@ -425,8 +468,15 @@ export function SingleSearchPage() {
       const rankedMissions = rankMissionsForQuery(bundles, parsed);
       const best = rankedMissions[0];
       if (!best) {
+        logDemand({
+          what: sectorPart,
+          location: loc,
+          country: countryPart || undefined,
+          parsed_sector: parsed.sector,
+          outcome: "no_match",
+        });
         setNoMatchReason(
-          `No finished investigation for “${sectorPart}” in ${loc} yet. Start a new one — any country is allowed.`,
+          `No finished investigation for “${sectorPart}” in ${loc} yet. Your need is saved — start a new one (any country).`,
         );
         return;
       }
@@ -494,9 +544,26 @@ export function SingleSearchPage() {
       setRanked(results.slice(0, 5));
 
       if (!results.length) {
+        logDemand({
+          what: sectorPart,
+          location: loc,
+          country: countryPart || undefined,
+          parsed_sector: parsed.sector,
+          matched_mission_id: best.mission.id,
+          outcome: "empty_companies",
+        });
         setNoMatchReason(
           `Matched “${best.mission.location} · ${best.mission.subsector}” but it has no companies yet. Open the Data Worker to import or discover companies.`,
         );
+      } else {
+        logDemand({
+          what: sectorPart,
+          location: loc,
+          country: countryPart || undefined,
+          parsed_sector: parsed.sector,
+          matched_mission_id: best.mission.id,
+          outcome: "hit",
+        });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search failed");
@@ -671,9 +738,9 @@ export function SingleSearchPage() {
       </header>
 
       <section className="search-panel" aria-label="Search">
-        <form className="search-bar" onSubmit={onSearch}>
-          <p className="search-panel-label">1 · Need</p>
-          <div className="search-bar-row">
+        <form className="search-compose" onSubmit={onSearch}>
+          <div className="search-need">
+            <p className="search-panel-label">1 · Need</p>
             <input
               type="text"
               value={what}
@@ -681,67 +748,70 @@ export function SingleSearchPage() {
               placeholder='What do you need? e.g. "painters" or "loodgieters"'
               autoFocus
             />
-            <button type="submit" className="btn" disabled={loading}>
+          </div>
+
+          {exampleQueries.length ? (
+            <div className="search-examples">
+              <span className="muted">Try:</span>
+              {exampleQueries.map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  className="search-example-chip"
+                  onClick={() => {
+                    const m = missions.find((x) =>
+                      q.toLowerCase().includes(x.location.toLowerCase()),
+                    );
+                    if (m) {
+                      setLocation(m.location);
+                      if (m.country) setCountry(m.country);
+                    }
+                    setWhat(q.replace(/\s+in\s+.+$/i, "").trim());
+                  }}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="search-where stack">
+            <p className="search-panel-label">2 · Place</p>
+            <div className="search-place-row">
+              <label className="search-place-main">
+                Where?
+                <input
+                  type="text"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="City / municipality"
+                />
+              </label>
+              <label className="search-place-country">
+                Country <span className="muted">optional</span>
+                <input
+                  type="text"
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  placeholder="e.g. Netherlands"
+                />
+              </label>
+            </div>
+            {placeLabel ? (
+              <p className="search-place-confirmed" role="status">
+                Searching in <strong>{placeLabel}</strong>
+              </p>
+            ) : geoHint ? (
+              <p className="muted search-place-hint">{geoHint}</p>
+            ) : null}
+          </div>
+
+          <div className="search-submit">
+            <button type="submit" className="btn search-submit-btn" disabled={loading}>
               {loading ? "Searching…" : "Search"}
             </button>
           </div>
         </form>
-
-        {exampleQueries.length ? (
-          <div className="search-examples">
-            <span className="muted">Try:</span>
-            {exampleQueries.map((q) => (
-              <button
-                key={q}
-                type="button"
-                className="search-example-chip"
-                onClick={() => {
-                  const m = missions.find((x) =>
-                    q.toLowerCase().includes(x.location.toLowerCase()),
-                  );
-                  if (m) {
-                    setLocation(m.location);
-                    if (m.country) setCountry(m.country);
-                  }
-                  setWhat(q.replace(/\s+in\s+.+$/i, "").trim());
-                }}
-              >
-                {q}
-              </button>
-            ))}
-          </div>
-        ) : null}
-
-        <div className="search-where stack">
-          <p className="search-panel-label">2 · Place</p>
-          <div className="search-place-row">
-            <label className="search-place-main">
-              Where?
-              <input
-                type="text"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                placeholder="City / municipality"
-              />
-            </label>
-            <label className="search-place-country">
-              Country <span className="muted">optional</span>
-              <input
-                type="text"
-                value={country}
-                onChange={(e) => setCountry(e.target.value)}
-                placeholder="e.g. Netherlands"
-              />
-            </label>
-          </div>
-          {placeLabel ? (
-            <p className="search-place-confirmed" role="status">
-              Searching in <strong>{placeLabel}</strong>
-            </p>
-          ) : geoHint ? (
-            <p className="muted search-place-hint">{geoHint}</p>
-          ) : null}
-        </div>
       </section>
 
       {error ? <div className="error">{error}</div> : null}
@@ -757,6 +827,12 @@ export function SingleSearchPage() {
             </strong>
           </p>
           {noMatchReason ? <p className="muted">{noMatchReason}</p> : null}
+          {demandSaved ? (
+            <p className="search-demand-saved" role="status">
+              Demand saved worldwide — no login needed. CURAD sees this need in
+              Mission Control.
+            </p>
+          ) : null}
           {parsedHint && (parsedHint.location || parsedHint.sector) ? (
             <p className="muted mono" style={{ fontSize: "0.85rem" }}>
               Looking for:{" "}

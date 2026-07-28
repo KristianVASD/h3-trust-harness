@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { v4 as uuid } from "uuid";
 import { DEFAULT_SEARCH_PLAN_VERSION, type Mission } from "@h3-trust/schema";
-import { api } from "../api";
+import { api, type SearchDemandAggregate } from "../api";
 import { ProducerBadge, StatusChip } from "../components/Badges";
 import { useCanInteract } from "../hooks/useCanInteract";
 
@@ -29,11 +29,24 @@ function readMode(): UiMode {
   return "worker";
 }
 
+function formatWhen(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  } catch {
+    return iso;
+  }
+}
+
 export function MissionControl() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { canInteract, isPending, needsLogin } = useCanInteract();
   const [mode, setMode] = useState<UiMode>(readMode);
   const [missions, setMissions] = useState<Mission[]>([]);
+  const [demands, setDemands] = useState<SearchDemandAggregate[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -57,7 +70,12 @@ export function MissionControl() {
   async function load() {
     try {
       setError(null);
-      setMissions(await api.listMissions());
+      const [missionList, demandFeed] = await Promise.all([
+        api.listMissions(),
+        api.listSearchDemands(300),
+      ]);
+      setMissions(missionList);
+      setDemands(demandFeed.aggregates);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load missions");
     }
@@ -67,8 +85,38 @@ export function MissionControl() {
     void load();
   }, []);
 
+  useEffect(() => {
+    const location = searchParams.get("location");
+    const country = searchParams.get("country");
+    const subsector = searchParams.get("subsector") || searchParams.get("what");
+    if (!location && !subsector && !country) return;
+    setForm((f) => ({
+      ...f,
+      location: location?.trim() || f.location,
+      country: country?.trim() || f.country,
+      subsector: subsector?.trim() || f.subsector,
+      goal: `Find trustworthy ${(subsector || f.subsector).toLowerCase()} in ${location || f.location}${country ? ` (${country})` : ""} and validate source reliability.`,
+      notes: "Prefilled from worldwide search demand.",
+    }));
+  }, [searchParams]);
+
   function missionPath(id: string) {
     return mode === "worker" ? `/work/${id}/brief` : `/missions/${id}`;
+  }
+
+  function applyDemand(d: SearchDemandAggregate) {
+    setForm({
+      location: d.location,
+      country: d.country || "Unspecified",
+      sector: "Home Maintenance",
+      subsector: d.what,
+      goal: `Find trustworthy ${d.what.toLowerCase()} in ${d.location}${d.country ? ` (${d.country})` : ""} and validate source reliability.`,
+      notes: `From search demand · ${d.count}× asked · last ${formatWhen(d.lastAt)}`,
+    });
+    document.getElementById("new-mission-form")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
   }
 
   async function onSubmit(e: FormEvent) {
@@ -134,6 +182,10 @@ export function MissionControl() {
   }
 
   const isWorker = mode === "worker";
+  const openDemand = demands.filter(
+    (d) => (d.outcomes.no_match ?? 0) + (d.outcomes.empty_companies ?? 0) > 0,
+  );
+  const demandList = openDemand.length ? openDemand : demands;
 
   return (
     <div>
@@ -175,6 +227,60 @@ export function MissionControl() {
 
       {error ? <div className="error">{error}</div> : null}
 
+      <section className="panel demand-panel" aria-labelledby="demand-heading">
+        <h2 id="demand-heading">Worldwide search demand</h2>
+        <p className="hint">
+          Every Single Search is logged — including anonymous no-hits. Use this
+          feed to open investigations where people actually ask.
+        </p>
+        {demandList.length === 0 ? (
+          <div className="empty">
+            No search demand yet. As soon as someone searches worldwide, it
+            appears here.
+          </div>
+        ) : (
+          <div className="demand-list">
+            {demandList.slice(0, 40).map((d) => {
+              const misses =
+                (d.outcomes.no_match ?? 0) + (d.outcomes.empty_companies ?? 0);
+              const hits = d.outcomes.hit ?? 0;
+              return (
+                <article key={d.key} className="demand-card">
+                  <div className="demand-card-main">
+                    <h3>
+                      {d.location}
+                      {d.country ? `, ${d.country}` : ""} · {d.what}
+                    </h3>
+                    <p className="muted">
+                      {d.count}× asked · last {formatWhen(d.lastAt)}
+                      {misses ? ` · ${misses} unmet` : ""}
+                      {hits ? ` · ${hits} hits` : ""}
+                    </p>
+                  </div>
+                  <div className="row demand-card-actions">
+                    {d.matchedMissionId ? (
+                      <Link
+                        className="btn secondary small"
+                        to={missionPath(d.matchedMissionId)}
+                      >
+                        Open mission
+                      </Link>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="btn small"
+                      onClick={() => applyDemand(d)}
+                    >
+                      Prefill new job
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
       <div className="grid-missions">
         <section className="panel">
           <h2>{isWorker ? "Jobs" : "Missions"}</h2>
@@ -186,7 +292,7 @@ export function MissionControl() {
           {missions.length === 0 ? (
             <div className="empty">
               {isWorker
-                ? "No jobs yet. Start one with Painters · Haarlemmermeer defaults."
+                ? "No jobs yet. Start one from demand above or the form."
                 : "No missions yet. Create one to begin."}
             </div>
           ) : (
@@ -242,11 +348,11 @@ export function MissionControl() {
           )}
         </section>
 
-        <section className="panel">
+        <section className="panel" id="new-mission-form">
           <h2>{isWorker ? "New data job" : "New mission"}</h2>
           <p className="hint">
             {isWorker
-              ? "Defaults to Painters · Haarlemmermeer — change if you need another region × sector."
+              ? "Prefill from worldwide demand, or start Painters · Haarlemmermeer defaults."
               : "Mission Control — start research, not a chat."}
           </p>
           <form className="form-stack" onSubmit={onSubmit}>

@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
+import { randomUUID } from "node:crypto";
 import type { Context, MiddlewareHandler, Next } from "hono";
 
 export type ProfileRole = "admin" | "curad_volunteer";
@@ -174,6 +175,7 @@ export function requireWrite(): MiddlewareHandler<{ Variables: AppVariables }> {
       path === "/api/me" ||
       path === "/api/search/session" ||
       path === "/api/search/consume" ||
+      path === "/api/search/demand" ||
       path.startsWith("/api/admin/")
     ) {
       return next();
@@ -293,6 +295,185 @@ export async function consumeSearch(
     searchCount: next,
     remaining: Math.max(0, SEARCH_LIMIT - next),
   };
+}
+
+export type SearchDemandOutcome =
+  | "hit"
+  | "no_match"
+  | "empty_companies"
+  | "ambiguous"
+  | "quota_blocked";
+
+export type SearchDemand = {
+  id: string;
+  session_id: string | null;
+  user_id: string | null;
+  what: string;
+  location: string;
+  country: string | null;
+  parsed_sector: string | null;
+  matched_mission_id: string | null;
+  outcome: SearchDemandOutcome;
+  created_at: string;
+};
+
+export type SearchDemandAggregate = {
+  key: string;
+  what: string;
+  location: string;
+  country: string | null;
+  count: number;
+  lastAt: string;
+  outcomes: Partial<Record<SearchDemandOutcome, number>>;
+  matchedMissionId: string | null;
+};
+
+const OUTCOMES = new Set<SearchDemandOutcome>([
+  "hit",
+  "no_match",
+  "empty_companies",
+  "ambiguous",
+  "quota_blocked",
+]);
+
+export function normalizeSearchDemandInput(body: unknown): {
+  what: string;
+  location: string;
+  country: string | null;
+  parsed_sector: string | null;
+  matched_mission_id: string | null;
+  outcome: SearchDemandOutcome;
+} | null {
+  if (!body || typeof body !== "object") return null;
+  const b = body as Record<string, unknown>;
+  const what = String(b.what ?? "").trim();
+  const location = String(b.location ?? "").trim();
+  const outcomeRaw = String(b.outcome ?? "").trim() as SearchDemandOutcome;
+  if (!what || !location || !OUTCOMES.has(outcomeRaw)) return null;
+  const country = String(b.country ?? "").trim() || null;
+  const parsed_sector = String(b.parsed_sector ?? "").trim() || null;
+  const matched_mission_id =
+    String(b.matched_mission_id ?? "").trim() || null;
+  return {
+    what: what.slice(0, 200),
+    location: location.slice(0, 200),
+    country: country ? country.slice(0, 120) : null,
+    parsed_sector: parsed_sector ? parsed_sector.slice(0, 200) : null,
+    matched_mission_id: matched_mission_id
+      ? matched_mission_id.slice(0, 80)
+      : null,
+    outcome: outcomeRaw,
+  };
+}
+
+export async function recordSearchDemand(
+  admin: SupabaseClient | null,
+  memory: SearchDemand[],
+  input: {
+    session_id: string | null;
+    user_id: string | null;
+    what: string;
+    location: string;
+    country: string | null;
+    parsed_sector: string | null;
+    matched_mission_id: string | null;
+    outcome: SearchDemandOutcome;
+  },
+): Promise<SearchDemand> {
+  const row: SearchDemand = {
+    id: randomUUID(),
+    session_id: input.session_id,
+    user_id: input.user_id,
+    what: input.what,
+    location: input.location,
+    country: input.country,
+    parsed_sector: input.parsed_sector,
+    matched_mission_id: input.matched_mission_id,
+    outcome: input.outcome,
+    created_at: new Date().toISOString(),
+  };
+
+  if (admin) {
+    const { data, error } = await admin
+      .from("search_demands")
+      .insert({
+        session_id: row.session_id,
+        user_id: row.user_id,
+        what: row.what,
+        location: row.location,
+        country: row.country,
+        parsed_sector: row.parsed_sector,
+        matched_mission_id: row.matched_mission_id,
+        outcome: row.outcome,
+      })
+      .select("*")
+      .single();
+    if (!error && data) return data as SearchDemand;
+    // Fall through to memory if table missing / insert failed
+    console.error("[search_demands] insert failed", error?.message);
+  }
+
+  memory.unshift(row);
+  if (memory.length > 500) memory.length = 500;
+  return row;
+}
+
+export async function listSearchDemands(
+  admin: SupabaseClient | null,
+  memory: SearchDemand[],
+  limit = 200,
+): Promise<SearchDemand[]> {
+  const capped = Math.min(Math.max(limit, 1), 500);
+  if (admin) {
+    const { data, error } = await admin
+      .from("search_demands")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(capped);
+    if (!error && data) return data as SearchDemand[];
+    console.error("[search_demands] list failed", error?.message);
+  }
+  return memory.slice(0, capped);
+}
+
+export function aggregateSearchDemands(
+  demands: SearchDemand[],
+): SearchDemandAggregate[] {
+  const map = new Map<string, SearchDemandAggregate>();
+  for (const d of demands) {
+    const what = (d.parsed_sector || d.what).trim();
+    const location = d.location.trim();
+    const country = d.country?.trim() || null;
+    const key = `${normalizeKey(location)}|${normalizeKey(country ?? "")}|${normalizeKey(what)}`;
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, {
+        key,
+        what,
+        location,
+        country,
+        count: 1,
+        lastAt: d.created_at,
+        outcomes: { [d.outcome]: 1 },
+        matchedMissionId: d.matched_mission_id,
+      });
+      continue;
+    }
+    existing.count += 1;
+    existing.outcomes[d.outcome] = (existing.outcomes[d.outcome] ?? 0) + 1;
+    if (d.created_at > existing.lastAt) {
+      existing.lastAt = d.created_at;
+      if (d.matched_mission_id) existing.matchedMissionId = d.matched_mission_id;
+    }
+  }
+  return [...map.values()].sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    return b.lastAt.localeCompare(a.lastAt);
+  });
+}
+
+function normalizeKey(s: string): string {
+  return s.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
 export type { Context, Next };

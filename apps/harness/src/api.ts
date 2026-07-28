@@ -50,6 +50,35 @@ export type SearchSessionState = {
   error?: string;
 };
 
+export type SearchDemandRow = {
+  id: string;
+  session_id: string | null;
+  user_id: string | null;
+  what: string;
+  location: string;
+  country: string | null;
+  parsed_sector: string | null;
+  matched_mission_id: string | null;
+  outcome:
+    | "hit"
+    | "no_match"
+    | "empty_companies"
+    | "ambiguous"
+    | "quota_blocked";
+  created_at: string;
+};
+
+export type SearchDemandAggregate = {
+  key: string;
+  what: string;
+  location: string;
+  country: string | null;
+  count: number;
+  lastAt: string;
+  outcomes: Partial<Record<SearchDemandRow["outcome"], number>>;
+  matchedMissionId: string | null;
+};
+
 export const api = {
   health: () =>
     request<{
@@ -96,6 +125,28 @@ export const api = {
       method: "POST",
       body: "{}",
     }),
+  logSearchDemand: (body: {
+    what: string;
+    location: string;
+    country?: string;
+    parsed_sector?: string;
+    matched_mission_id?: string;
+    outcome:
+      | "hit"
+      | "no_match"
+      | "empty_companies"
+      | "ambiguous"
+      | "quota_blocked";
+  }) =>
+    request<{ ok: boolean; demand: SearchDemandRow }>("/search/demand", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  listSearchDemands: (limit = 200) =>
+    request<{
+      demands: SearchDemandRow[];
+      aggregates: SearchDemandAggregate[];
+    }>(`/search/demands?limit=${limit}`),
   listMissions: () => request<Mission[]>("/missions"),
   getMission: (id: string) => request<Mission>(`/missions/${id}`),
   createMission: (mission: Mission) =>

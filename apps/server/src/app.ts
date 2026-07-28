@@ -41,6 +41,7 @@ import {
   SEARCH_COOKIE,
   SEARCH_LIMIT,
   SEARCH_SESSION_HEADER,
+  aggregateSearchDemands,
   authMiddleware,
   canWrite,
   consumeSearch,
@@ -49,9 +50,13 @@ import {
   isAdmin,
   isAuthRequired,
   isValidSearchSessionId,
+  listSearchDemands,
+  normalizeSearchDemandInput,
+  recordSearchDemand,
   requireWrite,
   type AppVariables,
   type Profile,
+  type SearchDemand,
 } from "./auth.js";
 
 export type CreateAppOptions = {
@@ -67,6 +72,7 @@ export function createApp(options: CreateAppOptions) {
   const admin = createSupabaseAdmin();
   const authRequired = isAuthRequired();
   const searchMemory = new Map<string, number>();
+  const searchDemandMemory: SearchDemand[] = [];
 
   const corsOrigins = options.corsOrigins ?? [
     "http://localhost:5173",
@@ -300,6 +306,35 @@ export function createApp(options: CreateAppOptions) {
       return c.json({ ...result, limit: SEARCH_LIMIT }, 429);
     }
     return c.json({ ...result, limit: SEARCH_LIMIT, unlimited: false });
+  });
+
+  /** Log every worldwide search demand (anonymous allowed). */
+  app.post("/api/search/demand", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    const parsed = normalizeSearchDemandInput(body);
+    if (!parsed) {
+      return c.json(
+        { error: "Invalid demand — need what, location, and outcome." },
+        400,
+      );
+    }
+    const { sessionId } = resolveSearchSessionId(c);
+    attachSearchSessionCookie(c, sessionId);
+    const auth = c.get("auth");
+    const demand = await recordSearchDemand(admin, searchDemandMemory, {
+      session_id: sessionId,
+      user_id: auth?.user.id ?? null,
+      ...parsed,
+    });
+    return c.json({ ok: true, demand }, 201);
+  });
+
+  /** Worldwide search demand feed for Mission Control. */
+  app.get("/api/search/demands", async (c) => {
+    const limitRaw = Number(c.req.query("limit") ?? 200);
+    const demands = await listSearchDemands(admin, searchDemandMemory, limitRaw);
+    const aggregates = aggregateSearchDemands(demands);
+    return c.json({ demands, aggregates });
   });
 
   // ---- Search plans ------------------------------------------------------
