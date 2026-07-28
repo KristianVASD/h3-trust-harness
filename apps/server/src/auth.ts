@@ -25,8 +25,18 @@ export type AppVariables = {
   authRequired: boolean;
 };
 
-const SEARCH_LIMIT = 5;
+const SEARCH_LIMIT = Number(process.env.SEARCH_SESSION_LIMIT ?? 5) || 5;
 const SEARCH_COOKIE = "h3_search_session";
+const SEARCH_SESSION_HEADER = "x-h3-search-session";
+
+const SESSION_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isValidSearchSessionId(value: string | undefined | null): boolean {
+  if (!value) return false;
+  const v = value.trim();
+  return SESSION_ID_RE.test(v) || /^h3-[a-z0-9-]+$/i.test(v);
+}
 
 export function createSupabaseAdmin(): SupabaseClient | null {
   const url = process.env.SUPABASE_URL ?? "";
@@ -205,7 +215,7 @@ export function requireLoginForMissionReads(): MiddlewareHandler<{
   };
 }
 
-export { SEARCH_LIMIT, SEARCH_COOKIE };
+export { SEARCH_LIMIT, SEARCH_COOKIE, SEARCH_SESSION_HEADER };
 
 export async function ensureSearchSession(
   admin: SupabaseClient | null,

@@ -40,6 +40,7 @@ import {
 import {
   SEARCH_COOKIE,
   SEARCH_LIMIT,
+  SEARCH_SESSION_HEADER,
   authMiddleware,
   canWrite,
   consumeSearch,
@@ -47,6 +48,7 @@ import {
   ensureSearchSession,
   isAdmin,
   isAuthRequired,
+  isValidSearchSessionId,
   requireWrite,
   type AppVariables,
   type Profile,
@@ -87,6 +89,11 @@ export function createApp(options: CreateAppOptions) {
         return corsOrigins[0] ?? origin;
       },
       credentials: true,
+      allowHeaders: [
+        "Content-Type",
+        "Authorization",
+        "X-H3-Search-Session",
+      ],
     }),
   );
 
@@ -235,17 +242,37 @@ export function createApp(options: CreateAppOptions) {
 
   // ---- Anonymous search session ------------------------------------------
 
-  app.post("/api/search/session", async (c) => {
-    let sessionId = getCookie(c, SEARCH_COOKIE);
-    if (!sessionId) {
-      sessionId = randomUUID();
-      setCookie(c, SEARCH_COOKIE, sessionId, {
-        httpOnly: true,
-        sameSite: "Lax",
-        path: "/",
-        maxAge: 60 * 60 * 24 * 7,
-      });
+  function resolveSearchSessionId(c: {
+    req: { header: (name: string) => string | undefined };
+  }): { sessionId: string; isNew: boolean } {
+    const fromHeader = c.req.header(SEARCH_SESSION_HEADER)?.trim();
+    if (isValidSearchSessionId(fromHeader)) {
+      return { sessionId: fromHeader!, isNew: false };
     }
+    const fromCookie = getCookie(c as never, SEARCH_COOKIE)?.trim();
+    if (isValidSearchSessionId(fromCookie)) {
+      return { sessionId: fromCookie!, isNew: false };
+    }
+    return { sessionId: randomUUID(), isNew: true };
+  }
+
+  function attachSearchSessionCookie(
+    c: Parameters<typeof setCookie>[0],
+    sessionId: string,
+  ) {
+    setCookie(c, SEARCH_COOKIE, sessionId, {
+      httpOnly: true,
+      // HTTPS on Vercel; local dev relies on X-H3-Search-Session header
+      secure: process.env.VERCEL === "1",
+      sameSite: "Lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    });
+  }
+
+  app.post("/api/search/session", async (c) => {
+    const { sessionId } = resolveSearchSessionId(c);
+    attachSearchSessionCookie(c, sessionId);
     const state = await ensureSearchSession(admin, sessionId, searchMemory);
     return c.json({
       ...state,
@@ -254,16 +281,8 @@ export function createApp(options: CreateAppOptions) {
   });
 
   app.post("/api/search/consume", async (c) => {
-    let sessionId = getCookie(c, SEARCH_COOKIE);
-    if (!sessionId) {
-      sessionId = randomUUID();
-      setCookie(c, SEARCH_COOKIE, sessionId, {
-        httpOnly: true,
-        sameSite: "Lax",
-        path: "/",
-        maxAge: 60 * 60 * 24 * 7,
-      });
-    }
+    const { sessionId } = resolveSearchSessionId(c);
+    attachSearchSessionCookie(c, sessionId);
     // Logged-in approved users are not quota-limited
     const auth = c.get("auth");
     if (canWrite(auth, authRequired)) {

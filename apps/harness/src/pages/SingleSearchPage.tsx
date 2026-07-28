@@ -359,7 +359,14 @@ export function SingleSearchPage() {
       setRemaining(quota.remaining);
       setSearchUnlimited(Boolean(quota.unlimited));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Search limit reached";
+      const raw = err instanceof Error ? err.message : "Search limit reached";
+      let msg = raw;
+      try {
+        const parsed = JSON.parse(raw) as { error?: string };
+        if (parsed?.error) msg = parsed.error;
+      } catch {
+        /* plain text */
+      }
       setError(msg);
       setLoading(false);
       return;

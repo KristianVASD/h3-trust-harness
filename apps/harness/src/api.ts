@@ -14,6 +14,10 @@ import type {
   Source,
 } from "@h3-trust/schema";
 import { getAccessToken } from "./lib/api-auth";
+import {
+  SEARCH_SESSION_HEADER,
+  getSearchSessionId,
+} from "./lib/search-session";
 
 const BASE = "/api";
 
@@ -24,6 +28,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      [SEARCH_SESSION_HEADER]: getSearchSessionId(),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers ?? {}),
     },
