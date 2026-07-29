@@ -182,10 +182,18 @@ export function MissionControl() {
   }
 
   const isWorker = mode === "worker";
-  const openDemand = demands.filter(
-    (d) => (d.outcomes.no_match ?? 0) + (d.outcomes.empty_companies ?? 0) > 0,
-  );
-  const demandList = openDemand.length ? openDemand : demands;
+  const demandList = [...demands].sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    return b.lastAt.localeCompare(a.lastAt);
+  });
+  const sortedMissions = [...missions].sort((a, b) => {
+    const ad = a.demandCount ?? 0;
+    const bd = b.demandCount ?? 0;
+    if (bd !== ad) return bd - ad;
+    const al = a.lastSearchedAt ?? a.updatedAt;
+    const bl = b.lastSearchedAt ?? b.updatedAt;
+    return bl.localeCompare(al);
+  });
 
   return (
     <div>
@@ -230,19 +238,21 @@ export function MissionControl() {
       <section className="panel demand-panel" aria-labelledby="demand-heading">
         <h2 id="demand-heading">Worldwide search demand</h2>
         <p className="hint">
-          Every Single Search is logged — including anonymous no-hits. Use this
-          feed to open investigations where people actually ask.
+          Every Single Search is logged and opens or bumps a mission — including
+          anonymous visitors. No login required to record the need.
         </p>
         {demandList.length === 0 ? (
           <div className="empty">
             No search demand yet. As soon as someone searches worldwide, it
-            appears here.
+            appears here and under Jobs.
           </div>
         ) : (
           <div className="demand-list">
             {demandList.slice(0, 40).map((d) => {
               const misses =
-                (d.outcomes.no_match ?? 0) + (d.outcomes.empty_companies ?? 0);
+                (d.outcomes.no_match ?? 0) +
+                (d.outcomes.empty_companies ?? 0) +
+                (d.outcomes.quota_blocked ?? 0);
               const hits = d.outcomes.hit ?? 0;
               return (
                 <article key={d.key} className="demand-card">
@@ -253,8 +263,8 @@ export function MissionControl() {
                     </h3>
                     <p className="muted">
                       {d.count}× asked · last {formatWhen(d.lastAt)}
-                      {misses ? ` · ${misses} unmet` : ""}
-                      {hits ? ` · ${hits} hits` : ""}
+                      {misses ? ` · ${misses} unmet/blocked` : ""}
+                      {hits ? ` · ${hits} catalogue hits` : ""}
                     </p>
                   </div>
                   <div className="row demand-card-actions">
@@ -286,17 +296,17 @@ export function MissionControl() {
           <h2>{isWorker ? "Jobs" : "Missions"}</h2>
           <p className="hint">
             {isWorker
-              ? "Open a data job. Brief → Gaps → Probe → Align → Extract → Profile → Coverage → Search."
+              ? "Jobs include missions opened from worldwide search demand (sorted by demand)."
               : "Open an investigation notebook. Production runs in Data Worker."}
           </p>
-          {missions.length === 0 ? (
+          {sortedMissions.length === 0 ? (
             <div className="empty">
               {isWorker
                 ? "No jobs yet. Start one from demand above or the form."
                 : "No missions yet. Create one to begin."}
             </div>
           ) : (
-            missions.map((m) => (
+            sortedMissions.map((m) => (
               <div key={m.id} className="mission-card" style={{ position: "relative" }}>
                 <Link to={missionPath(m.id)} style={{ display: "block" }}>
                   <h3>
@@ -307,6 +317,15 @@ export function MissionControl() {
                     <ProducerBadge producer={m.producer} />
                     <StatusChip label={m.country} />
                     <StatusChip label={m.sector} />
+                    {m.origin === "search_demand" ? (
+                      <StatusChip label="from search" tone="active" />
+                    ) : null}
+                    {(m.demandCount ?? 0) > 0 ? (
+                      <StatusChip
+                        label={`${m.demandCount}× demand`}
+                        tone="active"
+                      />
+                    ) : null}
                     {m.phases
                       .filter((p) => p.status === "active")
                       .map((p) => (

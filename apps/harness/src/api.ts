@@ -138,7 +138,12 @@ export const api = {
       | "ambiguous"
       | "quota_blocked";
   }) =>
-    request<{ ok: boolean; demand: SearchDemandRow }>("/search/demand", {
+    request<{
+      ok: boolean;
+      demand: SearchDemandRow;
+      mission: Mission | null;
+      missionCreated?: boolean;
+    }>("/search/demand", {
       method: "POST",
       body: JSON.stringify(body),
     }),

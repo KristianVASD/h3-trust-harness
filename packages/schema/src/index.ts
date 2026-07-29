@@ -74,6 +74,11 @@ export const MissionSchema = z.object({
     }),
   ),
   producer: ProducerSchema,
+  /** How this mission entered the catalogue. */
+  origin: z.enum(["human", "search_demand"]).optional(),
+  /** Worldwide Single Search hits for this place × trade. */
+  demandCount: z.number().int().nonnegative().optional(),
+  lastSearchedAt: IsoDateSchema.optional(),
   createdAt: IsoDateSchema,
   updatedAt: IsoDateSchema,
   v: z.number().int().positive().default(1),

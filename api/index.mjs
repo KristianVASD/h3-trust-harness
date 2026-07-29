@@ -351,6 +351,11 @@ var MissionSchema = z6.object({
     })
   ),
   producer: ProducerSchema,
+  /** How this mission entered the catalogue. */
+  origin: z6.enum(["human", "search_demand"]).optional(),
+  /** Worldwide Single Search hits for this place × trade. */
+  demandCount: z6.number().int().nonnegative().optional(),
+  lastSearchedAt: IsoDateSchema.optional(),
   createdAt: IsoDateSchema,
   updatedAt: IsoDateSchema,
   v: z6.number().int().positive().default(1)
@@ -1546,7 +1551,7 @@ function createStore(options = {}) {
 }
 
 // apps/server/src/app.ts
-import { randomUUID as randomUUID4 } from "node:crypto";
+import { randomUUID as randomUUID5 } from "node:crypto";
 import { readdir as readdir2, readFile as readFile3, mkdir as mkdir2, writeFile as writeFile2 } from "node:fs/promises";
 import path4 from "node:path";
 import { Hono } from "hono";
@@ -2527,8 +2532,16 @@ var HarvestRouteError = class extends Error {
 
 // apps/server/src/auth.ts
 import { createClient as createClient2 } from "@supabase/supabase-js";
-var SEARCH_LIMIT = 5;
+import { randomUUID as randomUUID4 } from "node:crypto";
+var SEARCH_LIMIT = Number(process.env.SEARCH_SESSION_LIMIT ?? 5) || 5;
 var SEARCH_COOKIE = "h3_search_session";
+var SEARCH_SESSION_HEADER = "x-h3-search-session";
+var SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+function isValidSearchSessionId(value) {
+  if (!value) return false;
+  const v = value.trim();
+  return SESSION_ID_RE.test(v) || /^h3-[a-z0-9-]+$/i.test(v);
+}
 function createSupabaseAdmin() {
   const url = process.env.SUPABASE_URL ?? "";
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -2613,7 +2626,7 @@ function requireWrite() {
       return next();
     }
     const path6 = c.req.path;
-    if (path6 === "/api/me" || path6 === "/api/search/session" || path6 === "/api/search/consume" || path6.startsWith("/api/admin/")) {
+    if (path6 === "/api/me" || path6 === "/api/search/session" || path6 === "/api/search/consume" || path6 === "/api/search/demand" || path6.startsWith("/api/admin/")) {
       return next();
     }
     const authRequired = c.get("authRequired");
@@ -2694,13 +2707,224 @@ async function consumeSearch(admin, sessionId, memory) {
     remaining: Math.max(0, SEARCH_LIMIT - next)
   };
 }
+var OUTCOMES = /* @__PURE__ */ new Set([
+  "hit",
+  "no_match",
+  "empty_companies",
+  "ambiguous",
+  "quota_blocked"
+]);
+function normalizeSearchDemandInput(body) {
+  if (!body || typeof body !== "object") return null;
+  const b = body;
+  const what = String(b.what ?? "").trim();
+  const location = String(b.location ?? "").trim();
+  const outcomeRaw = String(b.outcome ?? "").trim();
+  if (!what || !location || !OUTCOMES.has(outcomeRaw)) return null;
+  const country = String(b.country ?? "").trim() || null;
+  const parsed_sector = String(b.parsed_sector ?? "").trim() || null;
+  const matched_mission_id = String(b.matched_mission_id ?? "").trim() || null;
+  return {
+    what: what.slice(0, 200),
+    location: location.slice(0, 200),
+    country: country ? country.slice(0, 120) : null,
+    parsed_sector: parsed_sector ? parsed_sector.slice(0, 200) : null,
+    matched_mission_id: matched_mission_id ? matched_mission_id.slice(0, 80) : null,
+    outcome: outcomeRaw
+  };
+}
+async function recordSearchDemand(admin, memory, input) {
+  const row = {
+    id: randomUUID4(),
+    session_id: input.session_id,
+    user_id: input.user_id,
+    what: input.what,
+    location: input.location,
+    country: input.country,
+    parsed_sector: input.parsed_sector,
+    matched_mission_id: input.matched_mission_id,
+    outcome: input.outcome,
+    created_at: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  if (admin) {
+    const { data, error } = await admin.from("search_demands").insert({
+      session_id: row.session_id,
+      user_id: row.user_id,
+      what: row.what,
+      location: row.location,
+      country: row.country,
+      parsed_sector: row.parsed_sector,
+      matched_mission_id: row.matched_mission_id,
+      outcome: row.outcome
+    }).select("*").single();
+    if (!error && data) return data;
+    if (error) {
+      console.error("[search_demands] insert failed", error.message);
+      const retry = await admin.from("search_demands").insert({
+        session_id: row.session_id,
+        user_id: null,
+        what: row.what,
+        location: row.location,
+        country: row.country,
+        parsed_sector: row.parsed_sector,
+        matched_mission_id: row.matched_mission_id,
+        outcome: row.outcome
+      }).select("*").single();
+      if (!retry.error && retry.data) return retry.data;
+      console.error("[search_demands] retry failed", retry.error?.message);
+    }
+  }
+  memory.unshift(row);
+  if (memory.length > 500) memory.length = 500;
+  return row;
+}
+async function listSearchDemands(admin, memory, limit = 200) {
+  const capped = Math.min(Math.max(limit, 1), 500);
+  if (admin) {
+    const { data, error } = await admin.from("search_demands").select("*").order("created_at", { ascending: false }).limit(capped);
+    if (!error && data) return data;
+    console.error("[search_demands] list failed", error?.message);
+  }
+  return memory.slice(0, capped);
+}
+function aggregateSearchDemands(demands) {
+  const map = /* @__PURE__ */ new Map();
+  for (const d of demands) {
+    const what = (d.parsed_sector || d.what).trim();
+    const location = d.location.trim();
+    const country = d.country?.trim() || null;
+    const key = `${normalizeKey(location)}|${normalizeKey(country ?? "")}|${normalizeKey(what)}`;
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, {
+        key,
+        what,
+        location,
+        country,
+        count: 1,
+        lastAt: d.created_at,
+        outcomes: { [d.outcome]: 1 },
+        matchedMissionId: d.matched_mission_id
+      });
+      continue;
+    }
+    existing.count += 1;
+    existing.outcomes[d.outcome] = (existing.outcomes[d.outcome] ?? 0) + 1;
+    if (d.created_at > existing.lastAt) {
+      existing.lastAt = d.created_at;
+      if (d.matched_mission_id) existing.matchedMissionId = d.matched_mission_id;
+    }
+  }
+  return [...map.values()].sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    return b.lastAt.localeCompare(a.lastAt);
+  });
+}
+function normalizeKey(s) {
+  return s.toLowerCase().replace(/\s+/g, " ").trim();
+}
 
 // apps/server/src/app.ts
+function normPlace(value) {
+  return value.toLowerCase().replace(/\([^)]*\)/g, " ").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+}
+function titleCaseTrade(value) {
+  return value.replace(/\([^)]*\)/g, "").trim().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+function findMissionForDemand(missions, input) {
+  if (input.matched_mission_id) {
+    const byId = missions.find((m) => m.id === input.matched_mission_id);
+    if (byId) return byId;
+  }
+  const loc = normPlace(input.location);
+  const country = input.country ? normPlace(input.country) : "";
+  const what = normPlace(input.what);
+  let best = null;
+  for (const m of missions) {
+    const mLoc = normPlace(m.location);
+    const mCountry = normPlace(m.country);
+    const mSector = normPlace(`${m.subsector} ${m.sector}`);
+    let score = 0;
+    if (mLoc === loc || mLoc.includes(loc) || loc.includes(mLoc)) score += 2;
+    else continue;
+    if (mSector.includes(what) || what.includes(normPlace(m.subsector))) {
+      score += 2;
+    } else continue;
+    if (country && (mCountry === country || mCountry.includes(country) || country.includes(mCountry))) {
+      score += 1;
+    }
+    if (!best || score > best.score) best = { mission: m, score };
+  }
+  return best && best.score >= 4 ? best.mission : null;
+}
+async function ensureMissionFromSearchDemand(store, input) {
+  const missions = await store.listMissions();
+  const existing = findMissionForDemand(missions, input);
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  if (existing) {
+    const demandCount = (existing.demandCount ?? 0) + 1;
+    const updated = {
+      ...existing,
+      demandCount,
+      lastSearchedAt: now,
+      updatedAt: now,
+      notes: `Search demand \xB7 ${demandCount}\xD7 \xB7 last ${now}`
+    };
+    await store.upsertMission(updated);
+    return { mission: updated, created: false };
+  }
+  const subsector = titleCaseTrade(input.what);
+  const country = input.country?.trim() || "Unspecified";
+  const created = {
+    id: randomUUID5(),
+    location: input.location.trim(),
+    country,
+    sector: "Home Maintenance",
+    subsector,
+    goal: `Find trustworthy ${subsector.toLowerCase()} in ${input.location.trim()}${country !== "Unspecified" ? ` (${country})` : ""} and validate source reliability.`,
+    notes: `Search demand \xB7 1\xD7 \xB7 last ${now}`,
+    search_plan_version: DEFAULT_SEARCH_PLAN_VERSION,
+    discoveryBrief: {
+      approach: "Opened from worldwide Single Search demand. Warm-start reusable lists; fill local/sector gaps.",
+      candidateListTypes: [
+        "registry",
+        "local_business_association",
+        "branch_association"
+      ],
+      successCriteria: "\u22655 CARA-accepted/adjusted lists before company deep-check",
+      producer: "Human",
+      updatedAt: now
+    },
+    phases: [
+      { key: "observation", status: "active" },
+      { key: "hypothesis", status: "waiting" },
+      { key: "evidence", status: "waiting" },
+      { key: "cara", status: "waiting" },
+      { key: "patterns", status: "waiting" },
+      { key: "companies", status: "waiting" },
+      { key: "deep_check", status: "waiting" }
+    ],
+    producer: "Human",
+    origin: "search_demand",
+    demandCount: 1,
+    lastSearchedAt: now,
+    createdAt: now,
+    updatedAt: now,
+    v: 1
+  };
+  await store.upsertMission(created);
+  try {
+    await store.warmStartMissionSources(created.id, created.location);
+  } catch {
+  }
+  return { mission: created, created: true };
+}
 function createApp(options) {
   const { store, searchPlansRoot: searchPlansRoot2, writableRoot } = options;
   const admin = createSupabaseAdmin();
   const authRequired = isAuthRequired();
   const searchMemory = /* @__PURE__ */ new Map();
+  const searchDemandMemory = [];
   const corsOrigins = options.corsOrigins ?? [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -2716,7 +2940,12 @@ function createApp(options) {
         if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin)) return origin;
         return corsOrigins[0] ?? origin;
       },
-      credentials: true
+      credentials: true,
+      allowHeaders: [
+        "Content-Type",
+        "Authorization",
+        "X-H3-Search-Session"
+      ]
     })
   );
   app2.use("*", authMiddleware(admin, authRequired));
@@ -2828,17 +3057,30 @@ function createApp(options) {
     if (error) return c.json({ error: error.message }, 400);
     return c.json({ profile: data });
   });
-  app2.post("/api/search/session", async (c) => {
-    let sessionId = getCookie(c, SEARCH_COOKIE);
-    if (!sessionId) {
-      sessionId = randomUUID4();
-      setCookie(c, SEARCH_COOKIE, sessionId, {
-        httpOnly: true,
-        sameSite: "Lax",
-        path: "/",
-        maxAge: 60 * 60 * 24 * 7
-      });
+  function resolveSearchSessionId(c) {
+    const fromHeader = c.req.header(SEARCH_SESSION_HEADER)?.trim();
+    if (isValidSearchSessionId(fromHeader)) {
+      return { sessionId: fromHeader, isNew: false };
     }
+    const fromCookie = getCookie(c, SEARCH_COOKIE)?.trim();
+    if (isValidSearchSessionId(fromCookie)) {
+      return { sessionId: fromCookie, isNew: false };
+    }
+    return { sessionId: randomUUID5(), isNew: true };
+  }
+  function attachSearchSessionCookie(c, sessionId) {
+    setCookie(c, SEARCH_COOKIE, sessionId, {
+      httpOnly: true,
+      // HTTPS on Vercel; local dev relies on X-H3-Search-Session header
+      secure: process.env.VERCEL === "1",
+      sameSite: "Lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7
+    });
+  }
+  app2.post("/api/search/session", async (c) => {
+    const { sessionId } = resolveSearchSessionId(c);
+    attachSearchSessionCookie(c, sessionId);
     const state = await ensureSearchSession(admin, sessionId, searchMemory);
     return c.json({
       ...state,
@@ -2846,16 +3088,8 @@ function createApp(options) {
     });
   });
   app2.post("/api/search/consume", async (c) => {
-    let sessionId = getCookie(c, SEARCH_COOKIE);
-    if (!sessionId) {
-      sessionId = randomUUID4();
-      setCookie(c, SEARCH_COOKIE, sessionId, {
-        httpOnly: true,
-        sameSite: "Lax",
-        path: "/",
-        maxAge: 60 * 60 * 24 * 7
-      });
-    }
+    const { sessionId } = resolveSearchSessionId(c);
+    attachSearchSessionCookie(c, sessionId);
     const auth = c.get("auth");
     if (canWrite(auth, authRequired)) {
       const state = await ensureSearchSession(admin, sessionId, searchMemory);
@@ -2872,6 +3106,57 @@ function createApp(options) {
       return c.json({ ...result, limit: SEARCH_LIMIT }, 429);
     }
     return c.json({ ...result, limit: SEARCH_LIMIT, unlimited: false });
+  });
+  app2.post("/api/search/demand", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    const parsed = normalizeSearchDemandInput(body);
+    if (!parsed) {
+      return c.json(
+        { error: "Invalid demand \u2014 need what, location, and outcome." },
+        400
+      );
+    }
+    const { sessionId } = resolveSearchSessionId(c);
+    attachSearchSessionCookie(c, sessionId);
+    const auth = c.get("auth");
+    let mission = null;
+    let missionCreated = false;
+    try {
+      const ensured = await ensureMissionFromSearchDemand(store, {
+        what: parsed.what,
+        location: parsed.location,
+        country: parsed.country,
+        matched_mission_id: parsed.matched_mission_id
+      });
+      mission = ensured.mission;
+      missionCreated = ensured.created;
+    } catch (err) {
+      console.error(
+        "[search_demands] ensure mission failed",
+        err instanceof Error ? err.message : err
+      );
+    }
+    const demand = await recordSearchDemand(admin, searchDemandMemory, {
+      session_id: sessionId,
+      user_id: auth?.user.id ?? null,
+      ...parsed,
+      matched_mission_id: parsed.matched_mission_id || mission?.id || null
+    });
+    return c.json(
+      {
+        ok: true,
+        demand,
+        mission,
+        missionCreated
+      },
+      201
+    );
+  });
+  app2.get("/api/search/demands", async (c) => {
+    const limitRaw = Number(c.req.query("limit") ?? 200);
+    const demands = await listSearchDemands(admin, searchDemandMemory, limitRaw);
+    const aggregates = aggregateSearchDemands(demands);
+    return c.json({ demands, aggregates });
   });
   app2.get("/api/searchplans", async (c) => {
     const versions = await listSearchPlanVersions();

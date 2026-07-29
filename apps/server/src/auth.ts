@@ -409,8 +409,26 @@ export async function recordSearchDemand(
       .select("*")
       .single();
     if (!error && data) return data as SearchDemand;
-    // Fall through to memory if table missing / insert failed
-    console.error("[search_demands] insert failed", error?.message);
+    // Retry without user_id (FK / auth edge cases must not drop demand)
+    if (error) {
+      console.error("[search_demands] insert failed", error.message);
+      const retry = await admin
+        .from("search_demands")
+        .insert({
+          session_id: row.session_id,
+          user_id: null,
+          what: row.what,
+          location: row.location,
+          country: row.country,
+          parsed_sector: row.parsed_sector,
+          matched_mission_id: row.matched_mission_id,
+          outcome: row.outcome,
+        })
+        .select("*")
+        .single();
+      if (!retry.error && retry.data) return retry.data as SearchDemand;
+      console.error("[search_demands] retry failed", retry.error?.message);
+    }
   }
 
   memory.unshift(row);

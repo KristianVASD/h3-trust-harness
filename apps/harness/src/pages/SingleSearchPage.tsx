@@ -287,11 +287,27 @@ export function SingleSearchPage() {
       | "ambiguous"
       | "quota_blocked";
   }) {
-    void api
+    return api
       .logSearchDemand(input)
-      .then(() => setDemandSaved(true))
-      .catch(() => {
-        /* demand log must never block search UX */
+      .then(async (res) => {
+        setDemandSaved(true);
+        if (res.mission) {
+          setMissions((prev) => {
+            const without = prev.filter((m) => m.id !== res.mission!.id);
+            return [res.mission!, ...without];
+          });
+        } else {
+          try {
+            setMissions(await api.listMissions());
+          } catch {
+            /* ignore refresh failure */
+          }
+        }
+        return res;
+      })
+      .catch((err) => {
+        console.error("[search] demand capture failed", err);
+        return null;
       });
   }
 
@@ -377,6 +393,40 @@ export function SingleSearchPage() {
     setParsedHint(null);
     setNoMatchReason(null);
 
+    const parsed = parseQuery(composed, missions);
+    parsed.location = loc;
+    parsed.country = countryPart || parsed.country;
+    if (!parsed.sector) parsed.sector = sectorPart;
+    setParsedHint(parsed);
+
+    let candidates = missions.filter((m) => missionMatchesQuery(m, parsed));
+    let earlyOutcome:
+      | "hit"
+      | "no_match"
+      | "ambiguous"
+      | "empty_companies"
+      | "quota_blocked" = candidates.length ? "hit" : "no_match";
+
+    if (parsed.location && !what.trim() && !parsed.sector) {
+      const subsectors = [
+        ...new Set(candidates.map((m) => normalizeLabel(m.subsector))),
+      ];
+      if (subsectors.length > 1) {
+        earlyOutcome = "ambiguous";
+      }
+    }
+
+    // Persist demand + open/bump mission BEFORE quota — never lose a worldwide need.
+    await logDemand({
+      what: sectorPart,
+      location: loc,
+      country: countryPart || undefined,
+      parsed_sector: parsed.sector,
+      matched_mission_id:
+        earlyOutcome === "hit" ? candidates[0]?.id : undefined,
+      outcome: earlyOutcome === "ambiguous" ? "ambiguous" : earlyOutcome,
+    });
+
     try {
       const quota = await api.consumeSearch();
       setRemaining(quota.remaining);
@@ -385,15 +435,16 @@ export function SingleSearchPage() {
       const raw = err instanceof Error ? err.message : "Search limit reached";
       let msg = raw;
       try {
-        const parsed = JSON.parse(raw) as { error?: string };
-        if (parsed?.error) msg = parsed.error;
+        const parsedErr = JSON.parse(raw) as { error?: string };
+        if (parsedErr?.error) msg = parsedErr.error;
       } catch {
         /* plain text */
       }
-      logDemand({
+      await logDemand({
         what: sectorPart,
         location: loc,
         country: countryPart || undefined,
+        parsed_sector: parsed.sector,
         outcome: "quota_blocked",
       });
       setError(msg);
@@ -402,34 +453,22 @@ export function SingleSearchPage() {
     }
 
     try {
-      const parsed = parseQuery(composed, missions);
-      // Confirmed place fields win — any city/country worldwide, not only seeded ones.
-      parsed.location = loc;
-      parsed.country = countryPart || parsed.country;
-      // Free-text trade if no alias matched (BGI: not limited to NL trades).
-      if (!parsed.sector) parsed.sector = sectorPart;
-      setParsedHint(parsed);
+      // Refresh candidates after demand capture may have created a mission.
+      candidates = missions.filter((m) => missionMatchesQuery(m, parsed));
+      // Also match against just-captured mission via fresh list
+      try {
+        const latest = await api.listMissions();
+        setMissions(latest);
+        candidates = latest.filter((m) => missionMatchesQuery(m, parsed));
+      } catch {
+        /* use local list */
+      }
 
-      let candidates = missions.filter((m) => missionMatchesQuery(m, parsed));
-
-      // Location-only ambiguity across different subsectors → ask for sector.
-      if (parsed.location && !what.trim() && !parsed.sector) {
-        const subsectors = [
-          ...new Set(candidates.map((m) => normalizeLabel(m.subsector))),
-        ];
-        if (subsectors.length > 1) {
-          logDemand({
-            what: sectorPart,
-            location: loc,
-            country: countryPart || undefined,
-            parsed_sector: parsed.sector,
-            outcome: "ambiguous",
-          });
-          setNoMatchReason(
-            `Several investigations exist in ${parsed.location}. Add a trade (e.g. painters, plumbers) so we pick the right one.`,
-          );
-          return;
-        }
+      if (earlyOutcome === "ambiguous") {
+        setNoMatchReason(
+          `Several investigations exist in ${parsed.location}. Add a trade (e.g. painters, plumbers) so we pick the right one.`,
+        );
+        return;
       }
 
       if (!candidates.length) {
@@ -439,17 +478,10 @@ export function SingleSearchPage() {
               `${m.location}${m.country ? `, ${m.country}` : ""} · ${m.subsector.replace(/\s*\([^)]*\)\s*/g, "").trim()}`,
           )
           .filter((v, i, arr) => arr.indexOf(v) === i);
-        logDemand({
-          what: sectorPart,
-          location: loc,
-          country: countryPart || undefined,
-          parsed_sector: parsed.sector,
-          outcome: "no_match",
-        });
         setNoMatchReason(
           available.length
-            ? `No finished investigation for “${sectorPart}” in ${loc}${countryPart ? ` (${countryPart})` : ""} yet. That is not a geo-block — the public catalogue only has: ${available.join("; ")}. Your need is saved for CURAD — start a new investigation for this place (any country).`
-            : `No investigations in the catalogue yet. Your need for ${loc}${countryPart ? ` (${countryPart})` : ""} is saved — worldwide places are welcome.`,
+            ? `No finished companies for “${sectorPart}” in ${loc}${countryPart ? ` (${countryPart})` : ""} yet — a mission is open in Mission Control from this search. Catalogue also has: ${available.join("; ")}.`
+            : `A mission for ${loc}${countryPart ? ` (${countryPart})` : ""} · ${sectorPart} is now open in Mission Control. CURAD can fill sources next.`,
         );
         return;
       }
@@ -468,15 +500,8 @@ export function SingleSearchPage() {
       const rankedMissions = rankMissionsForQuery(bundles, parsed);
       const best = rankedMissions[0];
       if (!best) {
-        logDemand({
-          what: sectorPart,
-          location: loc,
-          country: countryPart || undefined,
-          parsed_sector: parsed.sector,
-          outcome: "no_match",
-        });
         setNoMatchReason(
-          `No finished investigation for “${sectorPart}” in ${loc} yet. Your need is saved — start a new one (any country).`,
+          `Mission opened for “${sectorPart}” in ${loc}. Fill it from Mission Control / Data Worker.`,
         );
         return;
       }
@@ -544,7 +569,7 @@ export function SingleSearchPage() {
       setRanked(results.slice(0, 5));
 
       if (!results.length) {
-        logDemand({
+        await logDemand({
           what: sectorPart,
           location: loc,
           country: countryPart || undefined,
@@ -555,15 +580,6 @@ export function SingleSearchPage() {
         setNoMatchReason(
           `Matched “${best.mission.location} · ${best.mission.subsector}” but it has no companies yet. Open the Data Worker to import or discover companies.`,
         );
-      } else {
-        logDemand({
-          what: sectorPart,
-          location: loc,
-          country: countryPart || undefined,
-          parsed_sector: parsed.sector,
-          matched_mission_id: best.mission.id,
-          outcome: "hit",
-        });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search failed");
@@ -829,8 +845,8 @@ export function SingleSearchPage() {
           {noMatchReason ? <p className="muted">{noMatchReason}</p> : null}
           {demandSaved ? (
             <p className="search-demand-saved" role="status">
-              Demand saved worldwide — no login needed. CURAD sees this need in
-              Mission Control.
+              Saved worldwide — a mission is open in Mission Control (no login
+              needed to record the need).
             </p>
           ) : null}
           {parsedHint && (parsedHint.location || parsedHint.sector) ? (
