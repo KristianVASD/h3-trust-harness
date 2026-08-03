@@ -5,32 +5,32 @@
     {
       "layer": "national",
       "category": "registry",
-      "nuance_rule": "Chamber of commerce / trade register is hard identity, not a soft trust signal. Presence weighs heavily; absence is a hard gap, not a nuance."
+      "nuance_rule": "Chamber of commerce / trade register is hard identity, not a soft trust signal. Presence weighs heavily; absence is a hard gap, not a nuance. Prefer the searchable register / company lookup URL (listUrl) over the org homepage; record filterHints (e.g. SBI codes) when the list is scoped by trade."
     },
     {
       "layer": "national",
       "category": "sector_qualification",
-      "nuance_rule": "Sector qualifications (VCA, accredited training employer, sector-specific registers). Check that the list is current and that membership has a real barrier — free signup is not a quality mark."
+      "nuance_rule": "Sector qualifications (VCA, accredited training employer, sector-specific registers). Prefer the searchable register of recognised employers over the umbrella org's marketing site. Check that the list is current and that membership has a real barrier — free signup is not a quality mark. Record listUrl + filterHints (trade codes)."
     },
     {
       "layer": "national",
       "category": "quality_mark",
-      "nuance_rule": "Only weigh quality marks if the organisation itself is traceable and serious. Membership threshold (low/medium/high) determines how much weight the list may carry."
+      "nuance_rule": "Only weigh quality marks if the organisation itself is traceable and serious. Membership threshold (low/medium/high) determines how much weight the list may carry. Prefer the public certified-company search / member finder as listUrl, not the keurmerk about page."
     },
     {
       "layer": "national",
       "category": "branch_association",
-      "nuance_rule": "National trade association: useful for discovery and soft trust. Check that it publishes real member lists, not marketing only."
+      "nuance_rule": "National trade association: useful for discovery and soft trust. Prefer the member finder / vind-een-bedrijf URL (listUrl) over the association homepage. Marketing-only sites with no public member list do not fill this gap."
     },
     {
       "layer": "national",
       "category": "labor_market_presence",
-      "nuance_rule": "Internships, traineeships and national job boards. Presence shows the firm is visible as an employer — weak as trust alone, stronger when consistent with registry age and local presence."
+      "nuance_rule": "Internships, traineeships and national job/employer boards. Prefer the operational vacancy or recognised-employer search (e.g. Stagemarkt, Leerbanenmarkt, SBB zoeken) as listUrl — not the umbrella authority homepage. Record trade filter codes in filterHints. Presence shows the firm is visible as an employer — weak as trust alone, stronger when consistent with registry age and local presence."
     },
     {
       "layer": "regional",
       "category": "labor_market_presence",
-      "nuance_rule": "Regional job sources: same category as national, different scope. A regional vacancy strengthens locality; an Indeed ad with no regional anchor stays weak."
+      "nuance_rule": "Regional job sources: same category as national, different scope. Prefer the regional search/list surface (listUrl) with a clear location filter. A regional vacancy strengthens locality; an Indeed ad with no regional anchor stays weak."
     },
     {
       "layer": "regional",
@@ -40,22 +40,22 @@
     {
       "layer": "local",
       "category": "local_business_association",
-      "nuance_rule": "Local business association: strong locality source when the member list is public and multi-year. A one-off sponsor page without a member list barely counts."
+      "nuance_rule": "Local business association: strong locality source when the member list is public and multi-year. Prefer /leden or member-directory listUrl over the association homepage. A one-off sponsor page without a member list barely counts."
     },
     {
       "layer": "local",
       "category": "sponsorship",
-      "nuance_rule": "Sponsoring sports clubs/events: soft locality. Only weigh when it is repeated and traceable — a logo on a shirt with no other signals is cosmetic."
+      "nuance_rule": "Sponsoring sports clubs/events: soft locality. Only weigh when it is repeated and traceable — a logo on a shirt with no other signals is cosmetic. Prefer platform cascade (sponsor SaaS → club business club → /leden listUrl) over naming a club alone."
     },
     {
       "layer": "local",
       "category": "networking_group",
-      "nuance_rule": "BNI and similar networking groups: membership shows social embedding, not craft skill. Barrier and presence of real people weigh more than the group name."
+      "nuance_rule": "BNI and similar networking groups: membership shows social embedding, not craft skill. Barrier and presence of real people weigh more than the group name. Prefer a public member roster URL as listUrl."
     },
     {
       "layer": "local",
       "category": "municipal_initiative",
-      "nuance_rule": "Municipal or local government initiatives (business desk, local company lists). Strong when the government curates; weak when it is an open signup form with no checks."
+      "nuance_rule": "Municipal or local government initiatives (business desk, local company lists). Strong when the government curates; weak when it is an open signup form with no checks. Prefer the curated company list/search URL as listUrl."
     }
   ]
 }

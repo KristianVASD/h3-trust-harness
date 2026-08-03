@@ -6,12 +6,15 @@ import {
   SourceEvidenceSchema,
   ServiceContextSchema,
   KvkGateSchema,
+  SampleCompanySchema,
 } from "./index";
 import { AccessBarrierSchema } from "./access-barriers";
 import {
   SourceFieldKeySchema,
   RichnessSchema,
   ExtractionGuideSchema,
+  ListRenderTypeSchema,
+  SourceDepthSchema,
 } from "./source-richness";
 
 /**
@@ -69,6 +72,13 @@ export const DiscoverCandidateSchema = z.object({
   scope: SourceScopeSchema.optional(),
   region: z.string().optional(),
   url: z.string().optional(),
+  /** Concrete list/search URL — required for list_ready depth. */
+  listUrl: z.string().optional(),
+  discoveredVia: z.string().optional(),
+  listRenderType: ListRenderTypeSchema.optional(),
+  filterHints: z.string().optional(),
+  depth: SourceDepthSchema.optional(),
+  memberListPublic: z.boolean().optional(),
   reason: z.string().optional(),
   suggestedWeight: z.number().min(0).max(100).optional(),
   suggestedConfidence: z.number().min(0).max(100).optional(),
@@ -102,6 +112,11 @@ export const ProbeOutputSchema = z.object({
   extractionGuide: ExtractionGuideSchema,
   suggestedConfidence: z.number().min(0).max(100).optional(),
   evidence: SourceEvidenceSchema,
+  /**
+   * 1–3 real company names proving the list is extractable.
+   * Prefer this or a blocks-extract accessBarrier — not essay-only success.
+   */
+  sampleCompanies: z.array(SampleCompanySchema).optional(),
   /** Ω raises this when the list needs a human to unlock. Harness stores it on the Source. */
   accessBarrier: AccessBarrierSchema.optional(),
 });

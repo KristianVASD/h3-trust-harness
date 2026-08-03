@@ -87,10 +87,33 @@ export function buildDiscoverSourceRecords(
       continue;
     }
 
+    const listUrl = candidate.listUrl?.trim() || undefined;
+    const homepage = candidate.url?.trim() || undefined;
+    // Prefer the list/search surface as primary url when provided.
+    const primaryUrl = listUrl || homepage;
+    const depth =
+      candidate.depth ??
+      (listUrl || candidate.filterHints || candidate.memberListPublic
+        ? "list_ready"
+        : homepage
+          ? "shallow"
+          : undefined);
+
     const summaryReasons = [
       candidate.reason?.trim(),
       candidate.confidence_in_existence
         ? `? Existence confidence: ${candidate.confidence_in_existence}`
+        : null,
+      depth === "shallow"
+        ? "? Depth shallow — authority/brand page; hop to list surface before extract"
+        : depth === "list_ready"
+          ? "✓ Depth list_ready — company list/search surface reported"
+          : null,
+      candidate.discoveredVia
+        ? `? Discovered via: ${candidate.discoveredVia}`
+        : null,
+      candidate.filterHints
+        ? `? Filter hints: ${candidate.filterHints}`
         : null,
     ].filter((r): r is string => Boolean(r));
 
@@ -107,7 +130,13 @@ export function buildDiscoverSourceRecords(
       category: candidate.category ?? "digital_presence",
       scope: candidate.scope ?? "regional",
       region: candidate.region ?? "",
-      url: candidate.url,
+      url: primaryUrl,
+      listUrl,
+      discoveredVia: candidate.discoveredVia,
+      listRenderType: candidate.listRenderType,
+      filterHints: candidate.filterHints,
+      depth,
+      memberListPublic: candidate.memberListPublic,
       reason: candidate.reason,
       suggestedWeight: candidate.suggestedWeight,
       suggestedConfidence: candidate.suggestedConfidence,
@@ -115,7 +144,7 @@ export function buildDiscoverSourceRecords(
       evidenceIds: [],
       evidence: {
         checked_at: now,
-        url: candidate.url,
+        url: primaryUrl,
         summary_reasons: summaryReasons.length
           ? summaryReasons
           : ["Ω provisional candidate — awaiting probe"],
@@ -147,18 +176,37 @@ export function buildProbeSourcePatch(probe: ProbeOutput): {
   producer: "OmegaClaw";
   updatedAt: string;
   accessBarrier?: AccessBarrier;
+  depth?: "list_ready" | "shallow";
 } {
   assertGuideSubsetOfFields(probe.extractionGuide.fields, probe.sourceFields);
+
+  const samples =
+    probe.sampleCompanies ?? probe.evidence.sample_companies ?? undefined;
+  const evidence = {
+    ...probe.evidence,
+    ...(samples?.length ? { sample_companies: samples } : {}),
+  };
+
+  const hasSamples = (evidence.sample_companies?.length ?? 0) > 0;
+  const blocked =
+    probe.accessBarrier != null && isBlockingBarrier(probe.accessBarrier);
+  const depth: "list_ready" | "shallow" | undefined = hasSamples
+    ? "list_ready"
+    : blocked
+      ? undefined
+      : "shallow";
+
   return {
     sourceFields: probe.sourceFields,
     richness: probe.richness,
     extractionGuide: probe.extractionGuide,
     probeStatus: "probed",
     suggestedConfidence: probe.suggestedConfidence,
-    evidence: probe.evidence,
+    evidence,
     producer: "OmegaClaw",
     updatedAt: nowIso(),
     ...(probe.accessBarrier ? { accessBarrier: probe.accessBarrier } : {}),
+    ...(depth ? { depth } : {}),
   };
 }
 

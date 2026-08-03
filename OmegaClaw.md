@@ -166,16 +166,42 @@ scope must equal the gap layer. regional/local → region = mission location; na
 status will be set to candidate by the harness. Do not claim acceptance.
 suggestedWeight is a proposal (soft sources ≤ 90; hard identity registry ≤ 95).
 
+DEFINITION OF DONE — LIST SURFACE REQUIRED:
+found=true only when you can name a concrete listUrl (member list, searchable register,
+vacancy board, or finder) that can yield company names for THIS sector × location.
+Brand / about / marketing homepages alone are NOT enough → found=false (or report the
+authority with depth="shallow" only if you also raise accessBarrier / explain the missing hop).
+Prefer listUrl as the operational URL; put the parent org on discoveredVia (and optionally url).
+Set depth: "list_ready" when listUrl (or equivalent search URL) is real; otherwise "shallow".
+Record filterHints when the list needs trade/region codes (e.g. SBI, SBB opleiding codes).
+
 DISCOVERY PATTERN — PLATFORM CASCADE:
 When a gap has no direct list source, search for PLATFORMS that power such lists
 (sponsor management tools, business club software, directory engines). If found,
 enumerate their clients in the target region and treat each client's public page
 as a candidate source. Report the platform as discoveredVia on each source.
 
+DISCOVERY PATTERN — AUTHORITY → DATA SURFACE:
+If you find a recognising body, regulator, keurmerk umbrella, or training authority
+(e.g. SBB, KvK, national quality-mark orgs), do NOT stop at the corporate homepage.
+Follow one hop to the operational register / search / member finder / vacancy board
+where companies appear (e.g. SBB → zoeken-mijn.s-bb.nl / Stagemarkt / Leerbanenmarkt).
+Prefer that URL as listUrl. Put the parent on discoveredVia.
+If only the parent exists and no public company surface is reachable for this trade,
+return found=false (authority-only is not a filled gap).
+
+GOLD EXEMPLARS (match this depth):
+1) SponsorVisie → Business Club SV Hoofddorp → listUrl=/leden, listRenderType=images,
+   discoveredVia=sponsorvisie.nl
+2) SBB (erkend leerbedrijf) → listUrl=zoeken-mijn.s-bb.nl (or Stagemarkt/Leerbanenmarkt),
+   filterHints="painter codes 25589 / 1786 / 27005", discoveredVia=s-bb.nl — NOT s-bb.nl alone
+3) Trade association homepage → member finder / vind-een-bedrijf URL with region filter,
+   not the about page
+
 LIST RENDER TYPE:
 For each source, set listRenderType: "text" | "images" | "js-app" | "pdf".
 If "images" or "js-app", do NOT mark found=false only because a text agent cannot
-read the list — mark found=true, set listRenderType, and raise accessBarrier
+read the list — mark found=true, set listRenderType, depth=list_ready, and raise accessBarrier
 noting that a vision / browser step is needed for extract.
 
 OUTPUT: strict JSON only (see contract). No markdown.
@@ -192,16 +218,21 @@ Manual / offline agents may also return the Qwen-compatible `{ "gaps": [ { layer
   "discovered_sources": [
     {
       "found": true,
-      "name": "Nederlandse Schilders Bond",
-      "type": "association",
-      "category": "branch_association",
+      "name": "SBB Erkend Leerbedrijf (Schilder)",
+      "type": "directory",
+      "category": "labor_market_presence",
       "scope": "national",
       "region": "",
-      "url": "https://www.schildersbond.nl",
-      "reason": "National painters association with a searchable member list.",
-      "suggestedWeight": 75,
-      "suggestedConfidence": 70,
-      "nuance_applied": "Confirmed public member list, not marketing-only.",
+      "url": "https://www.s-bb.nl",
+      "listUrl": "https://zoeken-mijn.s-bb.nl",
+      "discoveredVia": "https://www.s-bb.nl",
+      "filterHints": "painter codes 25589 (Schilder), 1786 (Gezel schilder), 27005 (Decoratie- en restauratieschilder)",
+      "depth": "list_ready",
+      "listRenderType": "js-app",
+      "reason": "Recognised training workplaces via SBB public search — stability signal, not a quality mark. Recognition valid 4 years.",
+      "suggestedWeight": 55,
+      "suggestedConfidence": 75,
+      "nuance_applied": "Used zoeken-mijn list surface + trade filters, not s-bb.nl homepage alone.",
       "confidence_in_existence": "high"
     },
     {
@@ -218,7 +249,7 @@ Manual / offline agents may also return the Qwen-compatible `{ "gaps": [ { layer
 }
 ```
 
-**Harness:** each `found: true` → `Source` with `status: "candidate"`, `producer: "OmegaClaw"`. Store observations separately. **Do not wait for CARA.**
+**Harness:** each `found: true` → `Source` with `status: "candidate"`, `producer: "OmegaClaw"`. Store `listUrl`, `discoveredVia`, `filterHints`, `depth`, `listRenderType` on the Source when present. Shallow discoveries (homepage only) import with a warning. Store observations separately. **Do not wait for CARA.**
 
 Envelope-only fields (`found`, `nuance_applied`, `confidence_in_existence`) stay on the agent response schema — not on `SourceSchema`.
 
@@ -268,6 +299,14 @@ summary_reasons must use ✓ / ✗ / ? prefixes.
 
 This is a SUGGESTION for later CARA — not a final score.
 
+DEFINITION OF DONE — PROOF OR BARRIER:
+Essay-only success is a FAILURE. You MUST either:
+  (a) return sampleCompanies: 1–3 real company names visible on the list/search for this
+      mission (optional note), plus extractionGuide, OR
+  (b) raise accessBarrier with severity "blocks-extract" explaining what blocks you.
+If the source is still only a parent homepage (depth shallow), hop once to listUrl /
+register / search / leden and correct listUrl + filterHints. Prefer list_ready depth.
+
 ACCESS BARRIERS: if the list requires a human action to access (apply for a key,
   email the org, member login, captcha, paywall, a PDF behind a form, a rate limit),
   you MUST fill `accessBarrier` with kind/severity/what_omega_needs/what_human_does
@@ -304,12 +343,21 @@ OUTPUT: strict JSON only. No markdown.
       "facebook": true,
       "notes": "Regular networking in Hoofddorp."
     },
+    "sample_companies": [
+      { "name": "Voorbeeld Schilders BV", "note": "listed under onderhoud" },
+      { "name": "Lokale Afbouw Hoofddorp" }
+    ],
     "summary_reasons": [
       "✓ Multi-year organisation with public member list",
       "✓ Real events and regional news mentions",
+      "✓ Sample companies visible on list",
       "? Medium barrier — fee + KvK, no peer vetting"
     ]
   },
+  "sampleCompanies": [
+    { "name": "Voorbeeld Schilders BV", "note": "listed under onderhoud" },
+    { "name": "Lokale Afbouw Hoofddorp" }
+  ],
   "suggestedConfidence": 72,
   "suggestedWeight": 65,
   "opinion": "Solid local supporting source; not a primary sector association.",
@@ -318,7 +366,7 @@ OUTPUT: strict JSON only. No markdown.
 }
 ```
 
-**Harness:** write `evidence`, scores; optional Signal / Observation rows. May move status `candidate` → `draft` or `pending_review` for human convenience. **Pipeline continues without CARA.** CARA later Agree/Adjust/Disagree locks score and status.
+**Harness:** write `evidence`, scores; optional Signal / Observation rows. May move status `candidate` → `draft` or `pending_review` for human convenience. Probe imports without `sampleCompanies` and without a `blocks-extract` barrier get a warning. **Pipeline continues without CARA.** CARA later Agree/Adjust/Disagree locks score and status.
 
 ---
 

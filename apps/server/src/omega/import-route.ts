@@ -5,6 +5,7 @@
 import { v4 as uuid } from "uuid";
 import {
   computeRichness,
+  isBlockingBarrier,
   type AccessBarrier,
   type BarrierKind,
   type Company,
@@ -108,6 +109,11 @@ type DiscoverExtras = {
   accessBarrier?: AccessBarrier;
   discoveredVia?: string;
   listRenderType?: string;
+  listUrl?: string;
+  filterHints?: string;
+  depth?: "shallow" | "list_ready";
+  /** Homepage / parent when listUrl is the primary surface. */
+  orgUrl?: string;
 };
 
 export async function runOmegaImport(
@@ -308,6 +314,23 @@ function pushDiscoverItem(
   const reason = str(s.reason) || str(s.motivation);
   const type = asType(s.type) ?? inferType(category);
 
+  const listUrl = str(s.listUrl);
+  const orgUrl = str(s.url);
+  const filterHints = str(s.filterHints) || str(s.filter_hints);
+  const via = str(s.discoveredVia);
+  const render = str(s.listRenderType);
+  const explicitDepth = asDepth(s.depth);
+
+  // Prefer list/search surface as primary url; keep brand homepage in extras.
+  const primaryUrl = listUrl || orgUrl;
+  const inferredDepth =
+    explicitDepth ??
+    (listUrl || filterHints
+      ? "list_ready"
+      : primaryUrl
+        ? "shallow"
+        : undefined);
+
   candidates.push({
     found: true,
     name,
@@ -315,12 +338,25 @@ function pushDiscoverItem(
     category,
     scope,
     region: str(s.region) ?? (scope === "national" ? "" : undefined),
-    url: str(s.url) || str(s.listUrl),
+    url: primaryUrl,
+    listUrl: listUrl || undefined,
+    discoveredVia: via || undefined,
+    listRenderType: asListRenderType(render) || undefined,
+    filterHints: filterHints || undefined,
+    depth: inferredDepth,
+    memberListPublic:
+      typeof s.memberListPublic === "boolean" ? s.memberListPublic : undefined,
     reason,
     suggestedWeight: num(s.suggestedWeight),
     suggestedConfidence: num(s.suggestedConfidence),
     confidence_in_existence: asConfidence(s.confidence_in_existence),
   });
+
+  if (inferredDepth === "shallow") {
+    warnings.push(
+      `Shallow discovery for "${name}": no listUrl/filterHints — prefer the register/search/leden surface (set listUrl + discoveredVia).`,
+    );
+  }
 
   const extras: DiscoverExtras = {};
   const threshold = asThreshold(s.membershipBarrier ?? s.membership_threshold);
@@ -328,10 +364,12 @@ function pushDiscoverItem(
   if (typeof s.memberListPublic === "boolean") {
     extras.memberListPublic = s.memberListPublic;
   }
-  const via = str(s.discoveredVia);
   if (via) extras.discoveredVia = via;
-  const render = str(s.listRenderType);
   if (render) extras.listRenderType = render;
+  if (listUrl) extras.listUrl = listUrl;
+  if (orgUrl && listUrl && orgUrl !== listUrl) extras.orgUrl = orgUrl;
+  if (filterHints) extras.filterHints = filterHints;
+  if (inferredDepth) extras.depth = inferredDepth;
   const barrier = coerceAccessBarrier(s.accessBarrier);
   if (barrier) extras.accessBarrier = barrier;
 
@@ -360,6 +398,16 @@ function enrichDiscoverSource(
   if (extras.discoveredVia) {
     reasons.push(`? Discovered via: ${extras.discoveredVia}`);
   }
+  if (extras.filterHints) {
+    reasons.push(`? Filter hints: ${extras.filterHints}`);
+  }
+  if (extras.depth === "shallow") {
+    reasons.push(
+      "? Depth shallow — hop to list/search surface before treating as extractable",
+    );
+  } else if (extras.depth === "list_ready") {
+    reasons.push("✓ Depth list_ready");
+  }
   evidence.summary_reasons = reasons.length
     ? reasons
     : evidence.summary_reasons ?? [];
@@ -369,11 +417,25 @@ function enrichDiscoverSource(
   if (extras.listRenderType) {
     noteParts.push(`listRenderType: ${extras.listRenderType}`);
   }
+  if (extras.orgUrl) noteParts.push(`orgUrl: ${extras.orgUrl}`);
+  if (extras.filterHints) noteParts.push(`filters: ${extras.filterHints}`);
 
   return {
     ...draft,
     evidence,
     notes: noteParts.join(" · "),
+    ...(extras.listUrl ? { listUrl: extras.listUrl } : {}),
+    ...(extras.discoveredVia ? { discoveredVia: extras.discoveredVia } : {}),
+    ...(extras.listRenderType
+      ? {
+          listRenderType: extras.listRenderType as Source["listRenderType"],
+        }
+      : {}),
+    ...(extras.filterHints ? { filterHints: extras.filterHints } : {}),
+    ...(extras.depth ? { depth: extras.depth } : {}),
+    ...(typeof extras.memberListPublic === "boolean"
+      ? { memberListPublic: extras.memberListPublic }
+      : {}),
     ...(extras.accessBarrier ? { accessBarrier: extras.accessBarrier } : {}),
   };
 }
@@ -403,6 +465,16 @@ async function importProbe(
 
     try {
       const probe = normalizeProbeItem(item, missionId, match);
+      const hasSamples =
+        (probe.sampleCompanies?.length ?? 0) > 0 ||
+        (probe.evidence.sample_companies?.length ?? 0) > 0;
+      const blocked =
+        probe.accessBarrier != null && isBlockingBarrier(probe.accessBarrier);
+      if (!hasSamples && !blocked) {
+        warnings.push(
+          `Probe for "${match.name}" has no sampleCompanies and no blocks-extract barrier — essay-only evidence; prefer 1–3 real names or raise a barrier.`,
+        );
+      }
       const patch = buildProbeSourcePatch(probe);
       const updated = await store.upsert("sources", { ...match, ...patch });
       // refresh local list for subsequent matches
@@ -588,6 +660,37 @@ function normalizeProbeItem(
       inv.membership_threshold,
   );
 
+  const sampleCompanies = coerceSampleCompanies(
+    item.sampleCompanies ??
+      item.sample_companies ??
+      inv.sampleCompanies ??
+      inv.knownSponsorsVerified ??
+      inv.sample_companies,
+  );
+
+  const filterHints =
+    str(
+      (item.extractionGuide as { filterHints?: unknown } | undefined)
+        ?.filterHints,
+    ) ||
+    str(item.filterHints) ||
+    str(source.filterHints);
+
+  const listUrl =
+    str(memberList?.url) ||
+    str(item.listUrl) ||
+    source.listUrl ||
+    source.url;
+
+  if (sampleCompanies?.length) {
+    summary.push(
+      `✓ Sample companies: ${sampleCompanies
+        .slice(0, 3)
+        .map((c) => c.name)
+        .join(", ")}`,
+    );
+  }
+
   const draft: ProbeOutput = {
     producer: "OmegaClaw",
     missionId,
@@ -598,22 +701,53 @@ function normalizeProbeItem(
       listPattern: listPattern as ProbeOutput["extractionGuide"]["listPattern"],
       fields: guideFields.filter((f) => fields.includes(f)),
       pagination: false,
+      ...(filterHints ? { filterHints } : {}),
       notes: str(item.nuanceRuleApplied) || str(item.notes),
     },
     suggestedConfidence:
       num(item.suggestedConfidence) ?? num(source.suggestedConfidence) ?? 60,
     evidence: {
       checked_at: new Date().toISOString(),
-      url: source.url || str(item.url),
+      url: listUrl || source.url || str(item.url),
       membership_threshold: threshold ?? "unknown",
       summary_reasons: summary,
       domain_age: str(inv.domainAge),
       org_age: str(inv.orgAge),
+      ...(sampleCompanies?.length
+        ? { sample_companies: sampleCompanies }
+        : {}),
     },
+    ...(sampleCompanies?.length ? { sampleCompanies } : {}),
     ...(barrier ? { accessBarrier: barrier } : {}),
   };
 
   return ProbeOutputSchema.parse(draft);
+}
+
+function coerceSampleCompanies(
+  raw: unknown,
+): Array<{ name: string; note?: string }> | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const out: Array<{ name: string; note?: string }> = [];
+  for (const row of raw) {
+    if (typeof row === "string" && row.trim()) {
+      out.push({ name: row.trim() });
+      continue;
+    }
+    if (row && typeof row === "object") {
+      const o = row as Record<string, unknown>;
+      const name = str(o.name);
+      if (!name) continue;
+      const note =
+        str(o.note) ||
+        str(o.tier) ||
+        str(o.duration) ||
+        str(o.source) ||
+        undefined;
+      out.push(note ? { name, note } : { name });
+    }
+  }
+  return out.length ? out.slice(0, 5) : undefined;
 }
 
 /* ------------------------------ extract ---------------------------------- */
@@ -983,6 +1117,20 @@ function asType(v: unknown): SourceType | null {
 function asThreshold(v: unknown): MembershipThreshold | undefined {
   const s = str(v);
   return s && THRESHOLDS.has(s) ? (s as MembershipThreshold) : undefined;
+}
+
+function asDepth(v: unknown): "shallow" | "list_ready" | undefined {
+  const s = str(v);
+  if (s === "shallow" || s === "list_ready") return s;
+  return undefined;
+}
+
+function asListRenderType(
+  v: unknown,
+): "text" | "images" | "js-app" | "pdf" | undefined {
+  const s = str(v);
+  if (s === "text" || s === "images" || s === "js-app" || s === "pdf") return s;
+  return undefined;
 }
 
 function asConfidence(

@@ -66,6 +66,22 @@ export const ListPatternSchema = z.enum([
 ]);
 export type ListPattern = z.infer<typeof ListPatternSchema>;
 
+/** How the member list is rendered in the browser (discovery / probe). */
+export const ListRenderTypeSchema = z.enum([
+  "text",
+  "images",
+  "js-app",
+  "pdf",
+]);
+export type ListRenderType = z.infer<typeof ListRenderTypeSchema>;
+
+/**
+ * Discovery depth: shallow = authority/brand page only;
+ * list_ready = concrete company list or searchable register for this mission.
+ */
+export const SourceDepthSchema = z.enum(["shallow", "list_ready"]);
+export type SourceDepth = z.infer<typeof SourceDepthSchema>;
+
 /**
  * Extraction guide — written by PROBE (Job 2), consumed by EXTRACT (Job 3).
  * `fields` MUST be a subset of the source's `sourceFields` (you can only
@@ -79,6 +95,11 @@ export const ExtractionGuideSchema = z.object({
   pagination: z.boolean().default(false),
   /** How the page scopes to the mission location (postcode box, dropdown…). */
   regionFilter: z.string().optional(),
+  /**
+   * Trade / sector filters for the list or search (e.g. SBB painter codes,
+   * SBI 4334). Discovery may seed this; probe refines it.
+   */
+  filterHints: z.string().optional(),
   notes: z.string().optional(),
 });
 export type ExtractionGuide = z.infer<typeof ExtractionGuideSchema>;

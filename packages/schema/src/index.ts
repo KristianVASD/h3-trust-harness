@@ -5,6 +5,8 @@ import {
   RichnessSchema,
   ExtractionGuideSchema,
   ProbeStatusSchema,
+  ListRenderTypeSchema,
+  SourceDepthSchema,
 } from "./source-richness";
 
 /** Who performed this step — golden rule on every writable object. */
@@ -195,6 +197,12 @@ export type RealWorldPresence = z.infer<typeof RealWorldPresenceSchema>;
  * Structured evidence on a Source — what CARA (sources) reacts to.
  * Distinct from the mission-scoped Evidence collection (observation snippets).
  */
+export const SampleCompanySchema = z.object({
+  name: z.string().min(1),
+  note: z.string().optional(),
+});
+export type SampleCompany = z.infer<typeof SampleCompanySchema>;
+
 export const SourceEvidenceSchema = z.object({
   checked_at: IsoDateSchema.optional(),
   url: z.string().optional(),
@@ -210,6 +218,11 @@ export const SourceEvidenceSchema = z.object({
     .optional(),
   real_world_presence: RealWorldPresenceSchema.optional(),
   summary_reasons: z.array(z.string()).default([]),
+  /**
+   * Probe proof of extractability — 1–3 real company names from the list.
+   * Essay-only probes without samples or a blocks-extract barrier are shallow.
+   */
+  sample_companies: z.array(SampleCompanySchema).optional(),
 });
 export type SourceEvidence = z.infer<typeof SourceEvidenceSchema>;
 
@@ -235,6 +248,27 @@ const sourceObjectSchema = z.object({
   /** Region label for regional/local sources; ignored when scope is national. */
   region: z.string().default(""),
   url: z.string().optional(),
+  /**
+   * Concrete company list / search URL (preferred over brand homepage).
+   * Job 1 should set this for found:true; url may still hold the parent/org page.
+   */
+  listUrl: z.string().optional(),
+  /** Platform or parent authority that led to this list surface. */
+  discoveredVia: z.string().optional(),
+  /** How names appear on the list page (text scrape vs vision/browser). */
+  listRenderType: ListRenderTypeSchema.optional(),
+  /**
+   * Trade/sector/location filter hints for the list (e.g. SBB codes, SBI).
+   * Seeded at discovery; refined on probe into extractionGuide.filterHints.
+   */
+  filterHints: z.string().optional(),
+  /**
+   * shallow = authority/brand only; list_ready = companies can leave this URL.
+   * Import may infer when OmegaClaw omits it.
+   */
+  depth: SourceDepthSchema.optional(),
+  /** Whether a public member/company list was reported at discovery. */
+  memberListPublic: z.boolean().optional(),
   reason: z.string().optional(),
   suggestedWeight: z.number().min(0).max(100).optional(),
   suggestedConfidence: z.number().min(0).max(100).optional(),
