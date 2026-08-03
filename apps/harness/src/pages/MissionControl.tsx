@@ -186,9 +186,27 @@ export function MissionControl() {
     if (b.count !== a.count) return b.count - a.count;
     return b.lastAt.localeCompare(a.lastAt);
   });
+
+  function demandCountForMission(m: Mission): number {
+    const fromAgg = demands.find((d) => {
+      if (d.matchedMissionId && d.matchedMissionId === m.id) return true;
+      const samePlace =
+        d.location.trim().toLowerCase() === m.location.trim().toLowerCase();
+      const sameCountry =
+        (d.country || "").trim().toLowerCase() ===
+        (m.country || "").trim().toLowerCase();
+      const trade = m.subsector.replace(/\s*\([^)]*\)\s*/g, "").trim();
+      const want = d.what.trim().toLowerCase();
+      const sameTrade =
+        trade.toLowerCase() === want || trade.toLowerCase().includes(want);
+      return samePlace && sameCountry && sameTrade;
+    });
+    return fromAgg?.count ?? m.demandCount ?? 0;
+  }
+
   const sortedMissions = [...missions].sort((a, b) => {
-    const ad = a.demandCount ?? 0;
-    const bd = b.demandCount ?? 0;
+    const ad = demandCountForMission(a);
+    const bd = demandCountForMission(b);
     if (bd !== ad) return bd - ad;
     const al = a.lastSearchedAt ?? a.updatedAt;
     const bl = b.lastSearchedAt ?? b.updatedAt;
@@ -238,8 +256,8 @@ export function MissionControl() {
       <section className="panel demand-panel" aria-labelledby="demand-heading">
         <h2 id="demand-heading">Worldwide search demand</h2>
         <p className="hint">
-          Every Single Search is logged and opens or bumps a mission — including
-          anonymous visitors. No login required to record the need.
+          Each Single Search counts once and opens or bumps a mission —
+          including anonymous visitors. No login required to record the need.
         </p>
         {demandList.length === 0 ? (
           <div className="empty">
@@ -306,7 +324,9 @@ export function MissionControl() {
                 : "No missions yet. Create one to begin."}
             </div>
           ) : (
-            sortedMissions.map((m) => (
+            sortedMissions.map((m) => {
+              const asks = demandCountForMission(m);
+              return (
               <div key={m.id} className="mission-card" style={{ position: "relative" }}>
                 <Link to={missionPath(m.id)} style={{ display: "block" }}>
                   <h3>
@@ -320,9 +340,9 @@ export function MissionControl() {
                     {m.origin === "search_demand" ? (
                       <StatusChip label="from search" tone="active" />
                     ) : null}
-                    {(m.demandCount ?? 0) > 0 ? (
+                    {asks > 0 ? (
                       <StatusChip
-                        label={`${m.demandCount}× demand`}
+                        label={`${asks}× demand`}
                         tone="active"
                       />
                     ) : null}
@@ -363,7 +383,8 @@ export function MissionControl() {
                   </button>
                 </div>
               </div>
-            ))
+              );
+            })
           )}
         </section>
 

@@ -280,23 +280,24 @@ export function SingleSearchPage() {
     country?: string;
     parsed_sector?: string;
     matched_mission_id?: string;
-    outcome:
+    outcome?:
       | "hit"
       | "no_match"
       | "empty_companies"
       | "ambiguous"
       | "quota_blocked";
+    ensureOnly?: boolean;
   }) {
     return api
       .logSearchDemand(input)
       .then(async (res) => {
-        setDemandSaved(true);
+        if (!input.ensureOnly) setDemandSaved(true);
         if (res.mission) {
           setMissions((prev) => {
             const without = prev.filter((m) => m.id !== res.mission!.id);
             return [res.mission!, ...without];
           });
-        } else {
+        } else if (!input.ensureOnly) {
           try {
             setMissions(await api.listMissions());
           } catch {
@@ -400,7 +401,7 @@ export function SingleSearchPage() {
     setParsedHint(parsed);
 
     let candidates = missions.filter((m) => missionMatchesQuery(m, parsed));
-    let earlyOutcome:
+    let outcome:
       | "hit"
       | "no_match"
       | "ambiguous"
@@ -412,19 +413,38 @@ export function SingleSearchPage() {
         ...new Set(candidates.map((m) => normalizeLabel(m.subsector))),
       ];
       if (subsectors.length > 1) {
-        earlyOutcome = "ambiguous";
+        outcome = "ambiguous";
       }
     }
 
-    // Persist demand + open/bump mission BEFORE quota — never lose a worldwide need.
+    let matchedMissionId =
+      outcome === "hit" ? candidates[0]?.id : undefined;
+    let demandLogged = false;
+
+    const commitDemand = async (
+      finalOutcome: typeof outcome,
+      missionId?: string,
+    ) => {
+      if (demandLogged) return;
+      demandLogged = true;
+      await logDemand({
+        what: sectorPart,
+        location: loc,
+        country: countryPart || undefined,
+        parsed_sector: parsed.sector,
+        matched_mission_id: missionId ?? matchedMissionId,
+        outcome: finalOutcome,
+      });
+    };
+
+    // Open/find mission without counting — one ask is recorded after the final outcome.
     await logDemand({
       what: sectorPart,
       location: loc,
       country: countryPart || undefined,
       parsed_sector: parsed.sector,
-      matched_mission_id:
-        earlyOutcome === "hit" ? candidates[0]?.id : undefined,
-      outcome: earlyOutcome === "ambiguous" ? "ambiguous" : earlyOutcome,
+      matched_mission_id: matchedMissionId,
+      ensureOnly: true,
     });
 
     try {
@@ -440,34 +460,26 @@ export function SingleSearchPage() {
       } catch {
         /* plain text */
       }
-      await logDemand({
-        what: sectorPart,
-        location: loc,
-        country: countryPart || undefined,
-        parsed_sector: parsed.sector,
-        outcome: "quota_blocked",
-      });
+      await commitDemand("quota_blocked");
       setError(msg);
       setLoading(false);
       return;
     }
 
     try {
-      // Refresh candidates after demand capture may have created a mission.
-      candidates = missions.filter((m) => missionMatchesQuery(m, parsed));
-      // Also match against just-captured mission via fresh list
       try {
         const latest = await api.listMissions();
         setMissions(latest);
         candidates = latest.filter((m) => missionMatchesQuery(m, parsed));
       } catch {
-        /* use local list */
+        candidates = missions.filter((m) => missionMatchesQuery(m, parsed));
       }
 
-      if (earlyOutcome === "ambiguous") {
+      if (outcome === "ambiguous") {
         setNoMatchReason(
           `Several investigations exist in ${parsed.location}. Add a trade (e.g. painters, plumbers) so we pick the right one.`,
         );
+        await commitDemand("ambiguous");
         return;
       }
 
@@ -483,6 +495,7 @@ export function SingleSearchPage() {
             ? `No finished companies for “${sectorPart}” in ${loc}${countryPart ? ` (${countryPart})` : ""} yet — a mission is open in Mission Control from this search. Catalogue also has: ${available.join("; ")}.`
             : `A mission for ${loc}${countryPart ? ` (${countryPart})` : ""} · ${sectorPart} is now open in Mission Control. CURAD can fill sources next.`,
         );
+        await commitDemand("no_match");
         return;
       }
 
@@ -503,9 +516,11 @@ export function SingleSearchPage() {
         setNoMatchReason(
           `Mission opened for “${sectorPart}” in ${loc}. Fill it from Mission Control / Data Worker.`,
         );
+        await commitDemand("no_match");
         return;
       }
 
+      matchedMissionId = best.mission.id;
       setMatchedMission(best.mission);
       setTrustedCount(countTrustedLists(best.sources));
 
@@ -569,20 +584,18 @@ export function SingleSearchPage() {
       setRanked(results.slice(0, 5));
 
       if (!results.length) {
-        await logDemand({
-          what: sectorPart,
-          location: loc,
-          country: countryPart || undefined,
-          parsed_sector: parsed.sector,
-          matched_mission_id: best.mission.id,
-          outcome: "empty_companies",
-        });
         setNoMatchReason(
           `Matched “${best.mission.location} · ${best.mission.subsector}” but it has no companies yet. Open the Data Worker to import or discover companies.`,
         );
+        await commitDemand("empty_companies", best.mission.id);
+      } else {
+        await commitDemand("hit", best.mission.id);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search failed");
+      if (!demandLogged) {
+        await commitDemand(outcome === "hit" ? "hit" : "no_match");
+      }
     } finally {
       setLoading(false);
     }

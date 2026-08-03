@@ -118,11 +118,16 @@ async function ensureMissionFromSearchDemand(
     country: string | null;
     matched_mission_id: string | null;
   },
+  options: { bumpDemand?: boolean } = {},
 ): Promise<{ mission: Mission; created: boolean }> {
+  const bumpDemand = options.bumpDemand !== false;
   const missions = await store.listMissions();
   const existing = findMissionForDemand(missions, input);
   const now = new Date().toISOString();
   if (existing) {
+    if (!bumpDemand) {
+      return { mission: existing, created: false };
+    }
     const demandCount = (existing.demandCount ?? 0) + 1;
     const updated: Mission = {
       ...existing,
@@ -144,7 +149,9 @@ async function ensureMissionFromSearchDemand(
     sector: "Home Maintenance",
     subsector,
     goal: `Find trustworthy ${subsector.toLowerCase()} in ${input.location.trim()}${country !== "Unspecified" ? ` (${country})` : ""} and validate source reliability.`,
-    notes: `Search demand · 1× · last ${now}`,
+    notes: bumpDemand
+      ? `Search demand · 1× · last ${now}`
+      : `Search demand · opened · ${now}`,
     search_plan_version: DEFAULT_SEARCH_PLAN_VERSION,
     discoveryBrief: {
       approach:
@@ -170,7 +177,7 @@ async function ensureMissionFromSearchDemand(
     ],
     producer: "Human",
     origin: "search_demand",
-    demandCount: 1,
+    demandCount: bumpDemand ? 1 : 0,
     lastSearchedAt: now,
     createdAt: now,
     updatedAt: now,
@@ -434,13 +441,23 @@ export function createApp(options: CreateAppOptions) {
     return c.json({ ...result, limit: SEARCH_LIMIT, unlimited: false });
   });
 
-  /** Log every worldwide search demand (anonymous allowed). */
+  /**
+   * Log a worldwide search demand (anonymous allowed).
+   * Pass `ensureOnly: true` to open/find the mission without counting an ask
+   * or inserting a demand row — used mid-search before the final outcome is known.
+   */
   app.post("/api/search/demand", async (c) => {
     const body = await c.req.json().catch(() => null);
-    const parsed = normalizeSearchDemandInput(body);
+    const ensureOnly =
+      Boolean(body && typeof body === "object" && (body as { ensureOnly?: unknown }).ensureOnly);
+    const parsed = normalizeSearchDemandInput(body, { allowMissingOutcome: ensureOnly });
     if (!parsed) {
       return c.json(
-        { error: "Invalid demand — need what, location, and outcome." },
+        {
+          error: ensureOnly
+            ? "Invalid demand — need what and location."
+            : "Invalid demand — need what, location, and outcome.",
+        },
         400,
       );
     }
@@ -451,12 +468,16 @@ export function createApp(options: CreateAppOptions) {
     let mission: Mission | null = null;
     let missionCreated = false;
     try {
-      const ensured = await ensureMissionFromSearchDemand(store, {
-        what: parsed.what,
-        location: parsed.location,
-        country: parsed.country,
-        matched_mission_id: parsed.matched_mission_id,
-      });
+      const ensured = await ensureMissionFromSearchDemand(
+        store,
+        {
+          what: parsed.what,
+          location: parsed.location,
+          country: parsed.country,
+          matched_mission_id: parsed.matched_mission_id,
+        },
+        { bumpDemand: !ensureOnly },
+      );
       mission = ensured.mission;
       missionCreated = ensured.created;
     } catch (err) {
@@ -466,10 +487,24 @@ export function createApp(options: CreateAppOptions) {
       );
     }
 
+    if (ensureOnly) {
+      return c.json(
+        {
+          ok: true,
+          demand: null,
+          mission,
+          missionCreated,
+          ensureOnly: true,
+        },
+        200,
+      );
+    }
+
     const demand = await recordSearchDemand(admin, searchDemandMemory, {
       session_id: sessionId,
       user_id: auth?.user.id ?? null,
       ...parsed,
+      outcome: parsed.outcome!,
       matched_mission_id:
         parsed.matched_mission_id || mission?.id || null,
     });

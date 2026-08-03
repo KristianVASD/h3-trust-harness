@@ -336,20 +336,25 @@ const OUTCOMES = new Set<SearchDemandOutcome>([
   "quota_blocked",
 ]);
 
-export function normalizeSearchDemandInput(body: unknown): {
+export function normalizeSearchDemandInput(
+  body: unknown,
+  options: { allowMissingOutcome?: boolean } = {},
+): {
   what: string;
   location: string;
   country: string | null;
   parsed_sector: string | null;
   matched_mission_id: string | null;
-  outcome: SearchDemandOutcome;
+  outcome: SearchDemandOutcome | null;
 } | null {
   if (!body || typeof body !== "object") return null;
   const b = body as Record<string, unknown>;
   const what = String(b.what ?? "").trim();
   const location = String(b.location ?? "").trim();
   const outcomeRaw = String(b.outcome ?? "").trim() as SearchDemandOutcome;
-  if (!what || !location || !OUTCOMES.has(outcomeRaw)) return null;
+  const hasOutcome = OUTCOMES.has(outcomeRaw);
+  if (!what || !location) return null;
+  if (!hasOutcome && !options.allowMissingOutcome) return null;
   const country = String(b.country ?? "").trim() || null;
   const parsed_sector = String(b.parsed_sector ?? "").trim() || null;
   const matched_mission_id =
@@ -362,7 +367,7 @@ export function normalizeSearchDemandInput(body: unknown): {
     matched_mission_id: matched_mission_id
       ? matched_mission_id.slice(0, 80)
       : null,
-    outcome: outcomeRaw,
+    outcome: hasOutcome ? outcomeRaw : null,
   };
 }
 
@@ -454,11 +459,40 @@ export async function listSearchDemands(
   return memory.slice(0, capped);
 }
 
+/** Collapse double-logs from the same search (early hit + later empty_companies). */
+const DEMAND_DEDUPE_MS = 90_000;
+
 export function aggregateSearchDemands(
   demands: SearchDemand[],
 ): SearchDemandAggregate[] {
+  // Newest first so the later outcome in a burst wins.
+  const ordered = [...demands].sort((a, b) =>
+    b.created_at.localeCompare(a.created_at),
+  );
+  const keptTimes = new Map<string, number[]>();
+  const unique: SearchDemand[] = [];
+
+  for (const d of ordered) {
+    const what = (d.parsed_sector || d.what).trim();
+    const location = d.location.trim();
+    const country = d.country?.trim() || "";
+    const session = d.session_id?.trim() || `anon:${d.id}`;
+    const groupKey = `${session}|${normalizeKey(location)}|${normalizeKey(country)}|${normalizeKey(what)}`;
+    const t = Date.parse(d.created_at);
+    const times = keptTimes.get(groupKey) ?? [];
+    const nearDuplicate =
+      Number.isFinite(t) &&
+      times.some((kept) => Math.abs(kept - t) <= DEMAND_DEDUPE_MS);
+    if (nearDuplicate) continue;
+    if (Number.isFinite(t)) {
+      times.push(t);
+      keptTimes.set(groupKey, times);
+    }
+    unique.push(d);
+  }
+
   const map = new Map<string, SearchDemandAggregate>();
-  for (const d of demands) {
+  for (const d of unique) {
     const what = (d.parsed_sector || d.what).trim();
     const location = d.location.trim();
     const country = d.country?.trim() || null;
@@ -482,6 +516,8 @@ export function aggregateSearchDemands(
     if (d.created_at > existing.lastAt) {
       existing.lastAt = d.created_at;
       if (d.matched_mission_id) existing.matchedMissionId = d.matched_mission_id;
+    } else if (!existing.matchedMissionId && d.matched_mission_id) {
+      existing.matchedMissionId = d.matched_mission_id;
     }
   }
   return [...map.values()].sort((a, b) => {

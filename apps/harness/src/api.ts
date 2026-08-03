@@ -131,18 +131,21 @@ export const api = {
     country?: string;
     parsed_sector?: string;
     matched_mission_id?: string;
-    outcome:
+    outcome?:
       | "hit"
       | "no_match"
       | "empty_companies"
       | "ambiguous"
       | "quota_blocked";
+    /** Open/find mission only — do not count an ask or insert a demand row. */
+    ensureOnly?: boolean;
   }) =>
     request<{
       ok: boolean;
-      demand: SearchDemandRow;
+      demand: SearchDemandRow | null;
       mission: Mission | null;
       missionCreated?: boolean;
+      ensureOnly?: boolean;
     }>("/search/demand", {
       method: "POST",
       body: JSON.stringify(body),
