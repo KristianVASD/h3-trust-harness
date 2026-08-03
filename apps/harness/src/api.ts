@@ -179,6 +179,24 @@ export const api = {
       method: "POST",
       body: JSON.stringify(gap),
     }),
+  importOmegaJson: (
+    missionId: string,
+    body: {
+      job: "discover" | "probe" | "extract" | "harvest";
+      payload: unknown;
+    },
+  ) =>
+    request<{
+      job: string;
+      imported: number;
+      skipped: Array<{ reason: string; detail?: string }>;
+      sources?: Source[];
+      companies?: Company[];
+      warnings: string[];
+    }>(`/missions/${missionId}/omega/import`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   probeSource: (missionId: string, sourceId: string) =>
     request<{ source: Source; output: unknown }>(
       `/missions/${missionId}/omega/probe`,

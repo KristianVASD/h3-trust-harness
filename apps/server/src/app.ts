@@ -38,6 +38,10 @@ import {
   runHarvestForCompany,
 } from "./omega/harvest-route.js";
 import {
+  ImportRouteError,
+  runOmegaImport,
+} from "./omega/import-route.js";
+import {
   SEARCH_COOKIE,
   SEARCH_LIMIT,
   SEARCH_SESSION_HEADER,
@@ -597,6 +601,24 @@ export function createApp(options: CreateAppOptions) {
       }
       return c.json(
         { error: err instanceof Error ? err.message : "Discover failed" },
+        400,
+      );
+    }
+  });
+
+  /** Paste/upload Ω job JSON (manual Qwen / offline) — no live API. */
+  app.post("/api/missions/:missionId/omega/import", async (c) => {
+    const missionId = c.req.param("missionId");
+    const body = await c.req.json().catch(() => null);
+    try {
+      const result = await runOmegaImport(store, missionId, body);
+      return c.json(result, 201);
+    } catch (err) {
+      if (err instanceof ImportRouteError) {
+        return c.json({ error: err.message }, err.status);
+      }
+      return c.json(
+        { error: err instanceof Error ? err.message : "Import failed" },
         400,
       );
     }

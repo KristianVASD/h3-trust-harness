@@ -4,7 +4,9 @@ import { isBlockingBarrier } from "@h3-trust/schema";
 import { ProducerBadge, StatusChip } from "../../components/Badges";
 import { BarrierStatusChip } from "../../components/worker/BarrierCard";
 import { SourceProbeDetail } from "../../components/worker/SourceProbeDetail";
+import { OmegaJsonImportPanel } from "../../components/worker/OmegaJsonImportPanel";
 import type { MissionData } from "../../hooks/useMissionData";
+import { buildProbeJobPrompt } from "../../lib/omegaJobPrompts";
 import { api } from "../../api";
 
 /**
@@ -14,7 +16,7 @@ import { api } from "../../api";
  */
 export function WorkerProbePage() {
   const { missionId = "" } = useParams();
-  const { sources, reload } = useOutletContext<MissionData>();
+  const { mission, sources, reload } = useOutletContext<MissionData>();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [batchBusy, setBatchBusy] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -73,7 +75,8 @@ export function WorkerProbePage() {
         <p className="hint">
           Learn each source&apos;s shape before extract — Probe writes richness
           fields + an extraction guide (stub Ω today). Access barriers Ω cannot
-          cross are raised here for a human to fulfil.
+          cross are raised here for a human to fulfil. Or paste Job 2 JSON from
+          an offline agent.
         </p>
         <p className="muted">
           {unprobed.length} unprobed · {probed.length} probed
@@ -96,6 +99,17 @@ export function WorkerProbePage() {
           </div>
         ) : null}
       </div>
+
+      {mission ? (
+        <OmegaJsonImportPanel
+          missionId={missionId}
+          job="probe"
+          onImported={reload}
+          buildPrompt={() =>
+            buildProbeJobPrompt({ mission, sources })
+          }
+        />
+      ) : null}
 
       {sources.length === 0 ? (
         <div className="worker-empty-hero">

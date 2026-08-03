@@ -8,8 +8,10 @@ import {
   BarrierCard,
   BarrierStatusChip,
 } from "../../components/worker/BarrierCard";
+import { OmegaJsonImportPanel } from "../../components/worker/OmegaJsonImportPanel";
 import type { MissionData } from "../../hooks/useMissionData";
 import { parseCompanyImport } from "../../lib/parseCompanyImport";
+import { buildExtractJobPrompt } from "../../lib/omegaJobPrompts";
 import {
   TRUSTED_LIST_UNLOCK,
   countTrustedLists,
@@ -18,7 +20,7 @@ import {
 
 export function WorkerImportPage() {
   const { missionId = "" } = useParams();
-  const { sources, companies, reload } = useOutletContext<MissionData>();
+  const { mission, sources, companies, reload } = useOutletContext<MissionData>();
 
   const trustedSources = useMemo(
     () => sources.filter(isTrustedSource),
@@ -150,9 +152,21 @@ export function WorkerImportPage() {
         <p className="hint">
           Ask Ω to extract from guided trusted sources (barrier-gated), or paste
           a list yourself. Manual rows and barrier fulfilments are dual-labelled
-          Human.
+          Human. Offline Job 3 JSON (companies[]) imports as Ω below once ≥1
+          list is CURAD-accepted.
         </p>
       </div>
+
+      {mission ? (
+        <OmegaJsonImportPanel
+          missionId={missionId}
+          job="extract"
+          onImported={reload}
+          buildPrompt={() =>
+            buildExtractJobPrompt({ mission, sources })
+          }
+        />
+      ) : null}
 
       {error ? <div className="error">{error}</div> : null}
       {doneMsg ? (

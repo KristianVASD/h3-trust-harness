@@ -401,12 +401,13 @@ export function SingleSearchPage() {
     setParsedHint(parsed);
 
     let candidates = missions.filter((m) => missionMatchesQuery(m, parsed));
-    let outcome:
+    type DemandOutcome =
       | "hit"
       | "no_match"
       | "ambiguous"
       | "empty_companies"
-      | "quota_blocked" = candidates.length ? "hit" : "no_match";
+      | "quota_blocked";
+    let outcome: DemandOutcome = candidates.length ? "hit" : "no_match";
 
     if (parsed.location && !what.trim() && !parsed.sector) {
       const subsectors = [
@@ -422,7 +423,7 @@ export function SingleSearchPage() {
     let demandLogged = false;
 
     const commitDemand = async (
-      finalOutcome: typeof outcome,
+      finalOutcome: DemandOutcome,
       missionId?: string,
     ) => {
       if (demandLogged) return;

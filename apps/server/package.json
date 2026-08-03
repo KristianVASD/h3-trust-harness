@@ -10,6 +10,7 @@
     "fixtures:write": "tsx src/seed.ts --write-fixtures",
     "fixtures:load": "tsx src/load-fixture.ts",
     "omega:smoke": "tsx src/omega/smoke.ts",
+    "omega:import-smoke": "tsx src/omega/import-smoke.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

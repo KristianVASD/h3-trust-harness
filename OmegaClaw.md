@@ -166,8 +166,22 @@ scope must equal the gap layer. regional/local → region = mission location; na
 status will be set to candidate by the harness. Do not claim acceptance.
 suggestedWeight is a proposal (soft sources ≤ 90; hard identity registry ≤ 95).
 
+DISCOVERY PATTERN — PLATFORM CASCADE:
+When a gap has no direct list source, search for PLATFORMS that power such lists
+(sponsor management tools, business club software, directory engines). If found,
+enumerate their clients in the target region and treat each client's public page
+as a candidate source. Report the platform as discoveredVia on each source.
+
+LIST RENDER TYPE:
+For each source, set listRenderType: "text" | "images" | "js-app" | "pdf".
+If "images" or "js-app", do NOT mark found=false only because a text agent cannot
+read the list — mark found=true, set listRenderType, and raise accessBarrier
+noting that a vision / browser step is needed for extract.
+
 OUTPUT: strict JSON only (see contract). No markdown.
 ```
+
+Manual / offline agents may also return the Qwen-compatible `{ "gaps": [ { layer, category, found, sources[], motivation_not_found? } ] }` envelope. Paste it on Data Worker → Gaps → **Import as Ω** (`POST /api/missions/:id/omega/import` with `job: "discover"`).
 
 ### Output (envelope → map into `Source`)
 
@@ -509,7 +523,7 @@ National `accepted`/`adjusted` sources warm-start other regions. Regional/local 
 
 1. **Orchestration lives in the harness** — assemble input, call LLM, parse JSON, Zod-validate envelopes, map into entities, stamp `id` / `createdAt` / `updatedAt` / `v` / `producer`.
 2. **Two schema layers:** agent response envelopes (this doc) → existing `SourceSchema`, `CompanySchema`, `ObservationSchema`, etc.
-3. **Ingress:** same APIs humans use (`POST /api/missions/:missionId/sources`, companies, observations, …). See `AGENT_API` in agent-contracts. Agents must not call final CARA authority endpoints.
+3. **Ingress:** same APIs humans use (`POST /api/missions/:missionId/sources`, companies, observations, …), plus **manual Ω JSON** via `POST /api/missions/:missionId/omega/import` `{ job, payload }` for offline Qwen / pasted envelopes. See `AGENT_API` in agent-contracts. Agents must not call final CARA authority endpoints.
 4. **Idempotency:** pass existing entities; prefer `sources/link` for reuse.
 5. **Failures:** invalid JSON / schema → `AgentJobStub` `status: "failed"`; human retries or fills manually. Gap Fill “Ask OmegaClaw” stub today writes fake candidates — replace with Job 1 (+ optional Job 2).
 6. **Single Search** consumes investigated + (preferably CARA-scored) data; backwards CARA on results is part of the feedback loop.
@@ -520,8 +534,9 @@ National `accepted`/`adjusted` sources warm-start other regions. Regional/local 
 
 | Entrance | OmegaClaw role |
 |----------|----------------|
-| Data Worker → Sources (Gap Fill) | Jobs 1–2 |
-| Data Worker → Import / Results | Jobs 3–4 after working sources exist |
+| Data Worker → Gaps (Gap Fill + Import Ω JSON) | Jobs 1–2 (+ offline paste) |
+| Data Worker → Probe / Extract | Jobs 2–3; paste Job JSON or stub Ask Ω |
+| Data Worker → Import / Profile | Jobs 3–4 after working sources exist |
 | Investigation desk | Same jobs; richer journal / Situation Room |
 | Single Search | Reads outcomes; optional Job 5 / backwards CARA |
 
@@ -534,9 +549,10 @@ Human investigators already write the same shapes. OmegaClaw fills them. CARA sc
 | Ready in repo | Still to build |
 |---------------|----------------|
 | Source / company / evidence Zod models | Live LLM wiring for Jobs 1–5 |
-| Gap plan + Gap Fill stub | Per-gap Job 1 behind “Ask OmegaClaw” |
-| `discover_sources` / `collect_evidence` stubs | Extend job kinds; agent envelope Zod |
-| CARA UI (sources + companies) | Feed Adjust/Disagree reasons into learning / next prompts |
+| Gap plan + Gap Fill stub | Per-gap Job 1 behind “Ask OmegaClaw” (live) |
+| `omega/import` for offline Job 1–4 JSON | Feed Adjust/Disagree reasons into learning / next prompts |
+| `discover` / `probe` / `extract` / `harvest` stubs | Vision sub-agent for `listRenderType: images` |
+| CARA UI (sources + companies) | |
 | Single Search ranking | Prefer CARA-locked weights when present |
 
 When in doubt: **let OmegaClaw run; let CARA catch up; never let CARA stall discovery.**

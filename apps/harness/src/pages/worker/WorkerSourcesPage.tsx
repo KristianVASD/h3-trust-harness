@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Link, useOutletContext, useParams } from "react-router-dom";
 import type { MissionData } from "../../hooks/useMissionData";
 import { GapFillBoard } from "../../components/worker/GapFillBoard";
+import { OmegaJsonImportPanel } from "../../components/worker/OmegaJsonImportPanel";
+import { buildDiscoverJobPrompt } from "../../lib/omegaJobPrompts";
 import { api } from "../../api";
 
 export function WorkerSourcesPage() {
@@ -19,6 +21,7 @@ export function WorkerSourcesPage() {
     (s) => s.status === "draft" || s.status === "pending_review",
   ).length;
   const candidates = sources.filter((s) => s.status === "candidate").length;
+  const planEntries = searchPlan?.entries ?? [];
 
   async function warmStart() {
     setWarmBusy(true);
@@ -46,7 +49,8 @@ export function WorkerSourcesPage() {
           Add found lists under each category — multiple per category is fine.
           <strong> Ask Ω</strong> writes provisional candidates (unprobed) onto
           the board; keep what is worth rating, then send drafts to CURAD · Align.
-          No final decision here; only selection.
+          No final decision here; only selection. Without a live API, paste Job 1
+          JSON from Qwen below.
         </p>
         <p className="muted">
           {candidates} candidates · {caraQueue} ready for align
@@ -74,12 +78,25 @@ export function WorkerSourcesPage() {
         ) : null}
       </div>
 
+      <OmegaJsonImportPanel
+        missionId={missionId}
+        job="discover"
+        onImported={reload}
+        buildPrompt={() =>
+          buildDiscoverJobPrompt({
+            mission,
+            planEntries,
+            sources,
+          })
+        }
+      />
+
       <GapFillBoard
         missionId={missionId}
         mission={mission}
         sources={sources}
         catalogue={catalogue}
-        planEntries={searchPlan?.entries ?? []}
+        planEntries={planEntries}
         onChanged={reload}
       />
 
