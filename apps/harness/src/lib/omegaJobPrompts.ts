@@ -140,6 +140,7 @@ export function buildProbeJobPrompt(args: {
   const targets = args.sources
     .filter((s) => s.probeStatus !== "probed")
     .map((s) => ({
+      id: s.id,
       name: s.name,
       url: s.url,
       listUrl: s.listUrl,
@@ -154,9 +155,10 @@ export function buildProbeJobPrompt(args: {
 
   return `You are OmegaClaw probing trust sources for H3 Trust Harness (Job 2).
 
-For EACH source below, determine: live URL? public member list? membership barrier?
-list render type (text|images|js-app|pdf)? extraction guide fields from
-[name, website, address, phone, email, image, kvk, specialism, tier]?
+For EACH source below, determine: live URL? public member list? membership barrier
+(high|medium|low|unknown)? list render type (text|images|js-app|pdf)?
+extraction guide fields ONLY from this closed set:
+[name, website, address, phone, email, image, kvk, specialism, tier]
 Raise accessBarrier when you cannot extract companies yourself (never bypass auth/captcha/paywall).
 
 DEFINITION OF DONE — PROOF OR BARRIER:
@@ -166,6 +168,23 @@ Essay-only success is a FAILURE. For each source you MUST either:
   (b) raise accessBarrier with severity "blocks-extract" explaining what blocks you.
 If the source is still only a parent homepage (depth shallow), hop once to listUrl /
 register / search / leden and correct listUrl + filterHints. Prefer list_ready depth.
+
+RULES (non-negotiable):
+- Output ONE shape only — the contract below. Do NOT invent field names (no sourceName,
+  sourceUrl, summaryReasons string, accessBarrier.details, confidence 0–1 floats).
+- Match each probe with name EXACTLY as given in Sources to probe (copy-paste).
+  Also set sourceId to the source id when present.
+- suggestedConfidence is an INTEGER 0–100 (e.g. 85), never 0.85.
+- membership_threshold / membershipBarrier enum: "high" | "medium" | "low" | "unknown"
+- extractionGuide.fields MUST be a subset of sourceFields.
+- listPattern enum: "table" | "cards" | "directory" | "map" | "json-api" | "search-form" | "unknown"
+- accessBarrier when needed MUST use kind + severity + what_omega_needs + what_human_does
+  (harness fills id/raised_at). kind enum:
+  "api-key-application" | "email-request" | "manual-lookup" | "login-wall" | "captcha" |
+  "paid-tier" | "pdf-download" | "rate-limited" | "unknown"
+  severity enum: "blocks-extract" | "partial" | "soft"
+- summary_reasons is an ARRAY of strings with ✓ / ✗ / ? prefixes.
+- No markdown. No prose outside JSON.
 
 Mission:
 ${JSON.stringify(
@@ -182,12 +201,74 @@ ${JSON.stringify(
 Sources to probe:
 ${JSON.stringify(targets, null, 2)}
 
-OUTPUT: strict JSON array (or { "probes": [ ... ] }). Each item may be frozen ProbeOutput
-or a narrative object with source.name / source.url / listUrl, suggestedConfidence,
-summary_reasons, accessBarrier, sampleCompanies (or knownSponsorsVerified), and either
-extractionGuide+sourceFields or investigation.publicMemberList.
+OUTPUT: strict JSON only, exactly this envelope (one object per source):
 
-No markdown.`;
+{
+  "probes": [
+    {
+      "sourceId": "<uuid from Sources to probe.id when present>",
+      "name": "<exact name from Sources to probe>",
+      "url": "https://...",
+      "listUrl": "https://.../leden-or-search",
+      "suggestedConfidence": 85,
+      "sourceFields": ["name", "website", "address"],
+      "extractionGuide": {
+        "listPattern": "directory",
+        "fields": ["name", "website"],
+        "pagination": false,
+        "regionFilter": "Hoofddorp",
+        "filterHints": "optional trade codes",
+        "notes": "how to extract"
+      },
+      "evidence": {
+        "url": "https://.../leden-or-search",
+        "membership_threshold": "medium",
+        "summary_reasons": [
+          "✓ Public member list verified",
+          "? Medium barrier — paid membership"
+        ],
+        "sample_companies": [
+          { "name": "Example BV", "note": "visible on list" }
+        ]
+      },
+      "sampleCompanies": [
+        { "name": "Example BV", "note": "visible on list" }
+      ],
+      "accessBarrier": null
+    },
+    {
+      "sourceId": "<uuid>",
+      "name": "KVK Handelsregister",
+      "url": "https://www.kvk.nl",
+      "listUrl": "https://www.kvk.nl/zoeken",
+      "suggestedConfidence": 70,
+      "sourceFields": ["name", "kvk", "address"],
+      "extractionGuide": {
+        "listPattern": "search-form",
+        "fields": ["name", "kvk", "address"],
+        "pagination": false,
+        "filterHints": "SBI 4334",
+        "notes": "Bulk extract blocked; single lookup only"
+      },
+      "evidence": {
+        "url": "https://www.kvk.nl/zoeken",
+        "membership_threshold": "high",
+        "summary_reasons": [
+          "✓ Authoritative registry",
+          "✗ Bulk extract requires paid API / human lookup"
+        ]
+      },
+      "sampleCompanies": [],
+      "accessBarrier": {
+        "kind": "manual-lookup",
+        "severity": "blocks-extract",
+        "what_omega_needs": "Bulk list of SBI-4334 companies in mission location",
+        "what_human_does": "Use free single lookup per company, or purchase bulk/API access",
+        "free_tier_available": true
+      }
+    }
+  ]
+}`;
 }
 
 export function buildExtractJobPrompt(args: {

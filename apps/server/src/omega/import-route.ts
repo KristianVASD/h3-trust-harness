@@ -556,11 +556,14 @@ function resolveSource(
 
   const name =
     str(item.name) ||
+    str(item.sourceName) ||
     (item.source && typeof item.source === "object"
       ? str((item.source as Record<string, unknown>).name)
       : null);
   const url =
     str(item.url) ||
+    str(item.sourceUrl) ||
+    str(item.listUrl) ||
     (item.source && typeof item.source === "object"
       ? str((item.source as Record<string, unknown>).url) ||
         str((item.source as Record<string, unknown>).listUrl)
@@ -569,7 +572,9 @@ function resolveSource(
   if (url) {
     const norm = normalizeUrl(url);
     const byUrl = sources.find(
-      (s) => s.url && normalizeUrl(s.url) === norm,
+      (s) =>
+        (s.url && normalizeUrl(s.url) === norm) ||
+        (s.listUrl && normalizeUrl(s.listUrl) === norm),
     );
     if (byUrl) return byUrl;
   }
@@ -593,6 +598,7 @@ function normalizeProbeItem(
       producer: "OmegaClaw",
       missionId,
       sourceId: source.id,
+      suggestedConfidence: coerceConfidencePercent(item.suggestedConfidence),
       accessBarrier: item.accessBarrier
         ? coerceAccessBarrier(item.accessBarrier) ?? item.accessBarrier
         : undefined,
@@ -640,15 +646,17 @@ function normalizeProbeItem(
         : "unknown");
 
   const summary =
-    Array.isArray(item.summary_reasons)
-      ? (item.summary_reasons as string[])
-      : Array.isArray(inv.summary_reasons)
-        ? (inv.summary_reasons as string[])
-        : [
-            textExtractable
-              ? "✓ Member list reported extractable"
-              : "? List may need vision or human extract",
-          ];
+    coerceSummaryReasons(
+      item.summary_reasons ??
+        item.summaryReasons ??
+        inv.summary_reasons ??
+        inv.summaryReasons,
+    ) ??
+    [
+      textExtractable
+        ? "✓ Member list reported extractable"
+        : "? List may need vision or human extract",
+    ];
 
   const barrier =
     coerceAccessBarrier(item.accessBarrier) ||
@@ -657,7 +665,8 @@ function normalizeProbeItem(
   const threshold = asThreshold(
     item.membershipBarrier ??
       inv.membershipBarrier ??
-      inv.membership_threshold,
+      inv.membership_threshold ??
+      item.membership_threshold,
   );
 
   const sampleCompanies = coerceSampleCompanies(
@@ -702,13 +711,20 @@ function normalizeProbeItem(
       fields: guideFields.filter((f) => fields.includes(f)),
       pagination: false,
       ...(filterHints ? { filterHints } : {}),
-      notes: str(item.nuanceRuleApplied) || str(item.notes),
+      notes:
+        str(item.nuanceRuleApplied) ||
+        str(item.notes) ||
+        str(
+          (item.extractionGuide as { notes?: unknown } | undefined)?.notes,
+        ),
     },
     suggestedConfidence:
-      num(item.suggestedConfidence) ?? num(source.suggestedConfidence) ?? 60,
+      coerceConfidencePercent(item.suggestedConfidence) ??
+      coerceConfidencePercent(source.suggestedConfidence) ??
+      60,
     evidence: {
       checked_at: new Date().toISOString(),
-      url: listUrl || source.url || str(item.url),
+      url: listUrl || source.url || str(item.url) || str(item.sourceUrl),
       membership_threshold: threshold ?? "unknown",
       summary_reasons: summary,
       domain_age: str(inv.domainAge),
@@ -722,6 +738,27 @@ function normalizeProbeItem(
   };
 
   return ProbeOutputSchema.parse(draft);
+}
+
+function coerceSummaryReasons(raw: unknown): string[] | undefined {
+  if (Array.isArray(raw)) {
+    const lines = raw
+      .map((x) => (typeof x === "string" ? x.trim() : ""))
+      .filter(Boolean);
+    return lines.length ? lines : undefined;
+  }
+  if (typeof raw === "string" && raw.trim()) {
+    return [raw.trim()];
+  }
+  return undefined;
+}
+
+/** Accept 0–100 integers, or mistaken 0–1 floats (0.85 → 85). */
+function coerceConfidencePercent(v: unknown): number | undefined {
+  const n = num(v);
+  if (n == null) return undefined;
+  if (n > 0 && n <= 1) return Math.round(n * 100);
+  return Math.max(0, Math.min(100, Math.round(n)));
 }
 
 function coerceSampleCompanies(
@@ -1089,9 +1126,12 @@ function coerceAccessBarrier(raw: unknown): AccessBarrier | undefined {
     kind,
     severity,
     what_omega_needs:
-      str(b.what_omega_needs) || "List data OmegaClaw cannot reach alone.",
+      str(b.what_omega_needs) ||
+      str(b.details) ||
+      "List data OmegaClaw cannot reach alone.",
     what_human_does:
       str(b.what_human_does) ||
+      str(b.details) ||
       "Resolve the access barrier so extract can continue.",
     free_tier_available: Boolean(b.free_tier_available),
     status: "raised",
