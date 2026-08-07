@@ -8,8 +8,10 @@
 import { v4 as uuid } from "uuid";
 import {
   assertGuideSubsetOfFields,
+  collectMatchedElementCodes,
   computeRichness,
   isBlockingBarrier,
+  normalizeCapabilities,
   SOURCE_FIELD_KEYS,
   type AccessBarrier,
   type BarrierFulfillment,
@@ -213,21 +215,45 @@ export function buildProbeSourcePatch(probe: ProbeOutput): {
 /** Persistable company profile patch from a harvest result. */
 export function buildHarvestCompanyPatch(
   harvest: HarvestOutput,
-  opts?: { profileSourceUrl?: string },
+  opts?: {
+    profileSourceUrl?: string;
+    /** Synonym table — folds free-text capabilities to canonical forms. */
+    capabilityAliases?: Record<string, string[]>;
+    /** Extra free-text (e.g. company.specialism) for masterlist element mapping. */
+    existingSpecialism?: string;
+    /** Preserve previously matched element codes when merging. */
+    existingElementCodes?: readonly string[];
+  },
 ): {
   capabilities: string[];
   serviceContexts: HarvestOutput["serviceContexts"];
   differentiators: string[];
+  servicedElementCodes: string[];
   profileSnippet: string;
   profileSourceUrl?: string;
   profileHarvestedAt: string;
   profileProducer: "OmegaClaw";
   updatedAt: string;
 } {
+  const aliases = opts?.capabilityAliases ?? {};
+  const capabilities = normalizeCapabilities(harvest.capabilities, aliases);
+  const differentiators = harvest.differentiators.map((d) => d.trim()).filter(Boolean);
+
+  const intakeTerms = [
+    ...capabilities,
+    ...differentiators,
+    ...(opts?.existingSpecialism ? [opts.existingSpecialism] : []),
+  ];
+  const matched = collectMatchedElementCodes(intakeTerms);
+  const servicedElementCodes = [
+    ...new Set([...(opts?.existingElementCodes ?? []), ...matched]),
+  ];
+
   return {
-    capabilities: harvest.capabilities,
+    capabilities,
     serviceContexts: harvest.serviceContexts,
-    differentiators: harvest.differentiators,
+    differentiators,
+    servicedElementCodes,
     profileSnippet: harvest.profileSnippet,
     ...(opts?.profileSourceUrl
       ? { profileSourceUrl: opts.profileSourceUrl }
@@ -361,6 +387,7 @@ export function buildHumanCompaniesFromFulfillment(args: {
     capabilities: [],
     serviceContexts: [],
     differentiators: [],
+    servicedElementCodes: [],
   }));
 }
 
@@ -401,6 +428,7 @@ export function buildExtractCompanyRecords(
     capabilities: [],
     serviceContexts: [],
     differentiators: [],
+    servicedElementCodes: [],
   }));
 }
 

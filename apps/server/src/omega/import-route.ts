@@ -991,6 +991,8 @@ async function importHarvest(
           ) ||
           match.website_url ||
           match.profileSourceUrl,
+        existingSpecialism: match.specialism,
+        existingElementCodes: match.servicedElementCodes,
       });
       const updated = await store.upsert("companies", { ...match, ...patch });
       const idx = companies.findIndex((c) => c.id === match.id);

@@ -69,6 +69,9 @@ export async function runHarvestForCompany(
 
     const patch = buildHarvestCompanyPatch(out, {
       profileSourceUrl: website_url ?? company.profileSourceUrl,
+      capabilityAliases: capability_aliases,
+      existingSpecialism: company.specialism,
+      existingElementCodes: company.servicedElementCodes,
     });
     const updated = await store.upsert("companies", {
       ...company,

@@ -15,7 +15,8 @@
       "types": "./src/omega-commands.ts",
       "import": "./src/omega-commands.ts",
       "default": "./src/omega-commands.ts"
-    }
+    },
+    "./masterlist.json": "./src/masterlist.json"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

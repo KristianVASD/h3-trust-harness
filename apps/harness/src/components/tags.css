@@ -56,6 +56,14 @@
   color: #6d28d9;
 }
 
+/* Elements — amber (masterlist codes) */
+.tag-chip.tag-el {
+  background: #fef3c7;
+  border-color: #fcd34d;
+  color: #92400e;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
 .profile-snippet {
   margin: 0.5rem 0 0.75rem;
   padding: 0.55rem 0.7rem;

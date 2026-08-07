@@ -7,13 +7,17 @@ import { getCookie, setCookie } from "hono/cookie";
 import {
   CollectionNameSchema,
   DEFAULT_SEARCH_PLAN_VERSION,
+  MASTERLIST,
   SearchPlanSchema,
   computeMissionCoverage,
+  filterElementsForUi,
+  resolveElementAliases,
   type CollectionName,
   type Mission,
   type Producer,
   type SearchPlan,
   type Source,
+  type UiAudience,
 } from "@h3-trust/schema";
 import type { Store } from "@h3-trust/store";
 import {
@@ -546,6 +550,66 @@ export function createApp(options: CreateAppOptions) {
     const plan = await loadSearchPlan(c.req.param("version"));
     if (!plan) return c.json({ error: "Search plan not found" }, 404);
     return c.json(plan);
+  });
+
+  // ---- Masterlist (element naming / intake) ------------------------------
+
+  app.get("/api/masterlist", async (c) => {
+    const audienceRaw = (c.req.query("audience") ?? "pro").toLowerCase();
+    const audience: UiAudience =
+      audienceRaw === "consumer" ||
+      audienceRaw === "hoa" ||
+      audienceRaw === "apartment_owner" ||
+      audienceRaw === "pro"
+        ? audienceRaw
+        : "pro";
+    const elements = filterElementsForUi(audience);
+    return c.json({
+      version: MASTERLIST.version,
+      id: MASTERLIST.id,
+      locale: MASTERLIST.locale,
+      updated: MASTERLIST.updated,
+      split_rule: MASTERLIST.split_rule,
+      audience,
+      categories: MASTERLIST.categories,
+      trades: MASTERLIST.trades,
+      elementCount: elements.length,
+      elements,
+    });
+  });
+
+  app.post("/api/masterlist/resolve", async (c) => {
+    const body = (await c.req.json().catch(() => null)) as {
+      terms?: unknown;
+      text?: unknown;
+    } | null;
+    const fromArray = Array.isArray(body?.terms)
+      ? body.terms.filter((t): t is string => typeof t === "string")
+      : [];
+    const fromText =
+      typeof body?.text === "string"
+        ? body.text
+            .split(/[\n,;|]+/)
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
+    const terms = [...fromArray, ...fromText];
+    if (!terms.length) {
+      return c.json(
+        { error: "Provide terms: string[] and/or text: string" },
+        400,
+      );
+    }
+    const results = resolveElementAliases(terms);
+    const matched = results.filter((r) => r.status === "matched").length;
+    const needsReview = results.length - matched;
+    return c.json({
+      version: MASTERLIST.version,
+      count: results.length,
+      matched,
+      needs_review: needsReview,
+      results,
+    });
   });
 
   // ---- Missions & Omega --------------------------------------------------

@@ -9,6 +9,9 @@ import {
   BarrierStatusChip,
 } from "../../components/worker/BarrierCard";
 import { OmegaJsonImportPanel } from "../../components/worker/OmegaJsonImportPanel";
+import { MasterlistResolvePanel } from "../../components/worker/MasterlistResolvePanel";
+import { TrustedSourcesPackPanel } from "../../components/worker/TrustedSourcesPackPanel";
+import { useAuth } from "../../auth/AuthContext";
 import type { MissionData } from "../../hooks/useMissionData";
 import { parseCompanyImport } from "../../lib/parseCompanyImport";
 import { buildExtractJobPrompt } from "../../lib/omegaJobPrompts";
@@ -21,6 +24,9 @@ import {
 export function WorkerImportPage() {
   const { missionId = "" } = useParams();
   const { mission, sources, companies, reload } = useOutletContext<MissionData>();
+  const { isAdmin, openMode } = useAuth();
+  /** Pre-Ω manual pack — admin on deployed auth; always in local open mode. */
+  const showTrustedPack = isAdmin || openMode;
 
   const trustedSources = useMemo(
     () => sources.filter(isTrustedSource),
@@ -129,6 +135,7 @@ export function WorkerImportPage() {
           capabilities: [],
           serviceContexts: [],
           differentiators: [],
+          servicedElementCodes: [],
           createdAt: now,
           updatedAt: now,
           v: 1,
@@ -157,16 +164,23 @@ export function WorkerImportPage() {
         </p>
       </div>
 
+      {showTrustedPack && mission ? (
+        <TrustedSourcesPackPanel mission={mission} sources={sources} />
+      ) : null}
+
       {mission ? (
         <OmegaJsonImportPanel
           missionId={missionId}
           job="extract"
+          hint="Paste Job 3 companies[] JSON from your agent (built from the CURAD pack above). Import as Ω once ≥1 list is accepted."
           onImported={reload}
           buildPrompt={() =>
             buildExtractJobPrompt({ mission, sources })
           }
         />
       ) : null}
+
+      <MasterlistResolvePanel />
 
       {error ? <div className="error">{error}</div> : null}
       {doneMsg ? (

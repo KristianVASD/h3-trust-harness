@@ -6,14 +6,16 @@ export function TagChip({
   tone = "cap",
 }: {
   label: string;
-  tone?: "cap" | "ctx" | "diff";
+  tone?: "cap" | "ctx" | "diff" | "el";
 }) {
   const cls =
     tone === "ctx"
       ? "tag-chip tag-ctx"
       : tone === "diff"
         ? "tag-chip tag-diff"
-        : "tag-chip tag-cap";
+        : tone === "el"
+          ? "tag-chip tag-el"
+          : "tag-chip tag-cap";
   return <span className={cls}>{label}</span>;
 }
 
@@ -22,7 +24,9 @@ export function CompanyProfileTags({ company }: { company: Company }) {
   const caps = company.capabilities ?? [];
   const ctxs = company.serviceContexts ?? [];
   const diffs = company.differentiators ?? [];
-  const hasTags = caps.length > 0 || ctxs.length > 0 || diffs.length > 0;
+  const els = company.servicedElementCodes ?? [];
+  const hasTags =
+    caps.length > 0 || ctxs.length > 0 || diffs.length > 0 || els.length > 0;
 
   if (!hasTags && !company.profileSnippet) return null;
 
@@ -51,6 +55,14 @@ export function CompanyProfileTags({ company }: { company: Company }) {
               <span className="tag-label">Notable:</span>
               {diffs.map((c) => (
                 <TagChip key={c} label={c} tone="diff" />
+              ))}
+            </div>
+          ) : null}
+          {els.length > 0 ? (
+            <div className="tag-row">
+              <span className="tag-label">Elements:</span>
+              {els.map((c) => (
+                <TagChip key={c} label={c} tone="el" />
               ))}
             </div>
           ) : null}

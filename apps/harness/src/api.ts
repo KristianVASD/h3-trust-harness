@@ -155,6 +155,54 @@ export const api = {
       demands: SearchDemandRow[];
       aggregates: SearchDemandAggregate[];
     }>(`/search/demands?limit=${limit}`),
+  getMasterlist: (audience: "consumer" | "pro" | "hoa" | "apartment_owner" = "pro") =>
+    request<{
+      version: string;
+      id: string;
+      locale: string;
+      updated: string;
+      split_rule: string;
+      audience: string;
+      categories: Array<{ id: string; code: string; name: string; name_en: string; sort: number }>;
+      trades: Array<{ id: string; name: string }>;
+      elementCount: number;
+      elements: Array<{
+        code: string;
+        name: string;
+        name_en: string;
+        aliases: string[];
+        category: string;
+        scope: Array<"C" | "P">;
+      }>;
+    }>(`/masterlist?audience=${audience}`),
+  resolveMasterlist: (body: { terms?: string[]; text?: string }) =>
+    request<{
+      version: string;
+      count: number;
+      matched: number;
+      needs_review: number;
+      results: Array<
+        | {
+            status: "matched";
+            input: string;
+            code: string;
+            element: { code: string; name: string; name_en: string };
+            via: "code" | "name" | "alias";
+          }
+        | {
+            status: "needs_review";
+            input: string;
+            proposals: Array<{
+              code: string;
+              name: string;
+              reason: "ambiguous" | "suggest_alias";
+            }>;
+          }
+      >;
+    }>("/masterlist/resolve", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   listMissions: () => request<Mission[]>("/missions"),
   getMission: (id: string) => request<Mission>(`/missions/${id}`),
   createMission: (mission: Mission) =>

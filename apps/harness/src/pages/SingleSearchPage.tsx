@@ -31,6 +31,31 @@ interface ParsedQuery {
   context?: string;
 }
 
+/** Who is searching — maps to company.serviceContexts (private vs pro). */
+type SearchAudience = {
+  consumer: boolean;
+  professional: boolean;
+};
+
+const PRO_SERVICE_CONTEXTS: readonly ServiceContext[] = [
+  "hoa",
+  "municipal",
+  "commercial",
+  "industrial",
+];
+
+function companyMatchesAudience(
+  company: Company,
+  audience: SearchAudience,
+): boolean {
+  // Both or neither → no audience filter (incomplete profiles stay visible).
+  if (audience.consumer === audience.professional) return true;
+  const ctxs = company.serviceContexts ?? [];
+  if (!ctxs.length) return true; // unknown — don't hide thin harvests
+  if (audience.consumer) return ctxs.includes("private");
+  return ctxs.some((c) => PRO_SERVICE_CONTEXTS.includes(c));
+}
+
 const SECTOR_ALIASES: Record<string, string[]> = {
   painter: ["schilder", "painter", "painters", "schilderwerk", "schilders"],
   plumber: ["loodgieter", "plumber", "plumbers", "loodgieters"],
@@ -255,6 +280,8 @@ export function SingleSearchPage() {
   const [geoHint, setGeoHint] = useState<string | null>(null);
   const [what, setWhat] = useState("");
   const [query, setQuery] = useState("");
+  const [audienceConsumer, setAudienceConsumer] = useState(true);
+  const [audienceProfessional, setAudienceProfessional] = useState(true);
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -582,11 +609,27 @@ export function SingleSearchPage() {
         );
       }
 
+      const audience: SearchAudience = {
+        consumer: audienceConsumer,
+        professional: audienceProfessional,
+      };
+      results = results.filter((r) =>
+        companyMatchesAudience(r.company, audience),
+      );
+
       setRanked(results.slice(0, 5));
 
       if (!results.length) {
+        const audienceOnly =
+          audienceConsumer !== audienceProfessional
+            ? audienceConsumer
+              ? "consumer (private homes)"
+              : "professional (VvE / commercial)"
+            : null;
         setNoMatchReason(
-          `Matched “${best.mission.location} · ${best.mission.subsector}” but it has no companies yet. Open the Data Worker to import or discover companies.`,
+          audienceOnly
+            ? `Matched “${best.mission.location} · ${best.mission.subsector}” but no companies tagged for ${audienceOnly}. Try the other tick box, or both.`
+            : `Matched “${best.mission.location} · ${best.mission.subsector}” but it has no companies yet. Open the Data Worker to import or discover companies.`,
         );
         await commitDemand("empty_companies", best.mission.id);
       } else {
@@ -836,6 +879,50 @@ export function SingleSearchPage() {
             ) : null}
           </div>
 
+          <fieldset className="search-audience">
+            <legend className="search-panel-label">3 · For</legend>
+            <div className="search-audience-row">
+              <label className="search-audience-tick">
+                <input
+                  type="checkbox"
+                  checked={audienceConsumer}
+                  onChange={(e) => setAudienceConsumer(e.target.checked)}
+                />
+                <span>
+                  <strong>Consumer</strong>
+                  <span className="muted"> Private homes / particulier</span>
+                </span>
+              </label>
+              <label className="search-audience-tick">
+                <input
+                  type="checkbox"
+                  checked={audienceProfessional}
+                  onChange={(e) => setAudienceProfessional(e.target.checked)}
+                />
+                <span>
+                  <strong>Professional</strong>
+                  <span className="muted">
+                    {" "}
+                    VvE, commercial, municipal
+                  </span>
+                </span>
+              </label>
+            </div>
+            {!audienceConsumer && !audienceProfessional ? (
+              <p className="muted search-audience-hint">
+                Tick at least one — or leave both on to see everyone.
+              </p>
+            ) : audienceConsumer && !audienceProfessional ? (
+              <p className="muted search-audience-hint">
+                Prefer companies that serve private households.
+              </p>
+            ) : !audienceConsumer && audienceProfessional ? (
+              <p className="muted search-audience-hint">
+                Prefer companies that serve VvE / pro property clients.
+              </p>
+            ) : null}
+          </fieldset>
+
           <div className="search-submit">
             <button type="submit" className="btn search-submit-btn" disabled={loading}>
               {loading ? "Searching…" : "Search"}
@@ -870,6 +957,11 @@ export function SingleSearchPage() {
                 parsedHint.location && `place=${parsedHint.location}`,
                 parsedHint.country && `country=${parsedHint.country}`,
                 parsedHint.sector && `trade=${parsedHint.sector}`,
+                audienceConsumer && !audienceProfessional && "for=consumer",
+                !audienceConsumer && audienceProfessional && "for=professional",
+                audienceConsumer &&
+                  audienceProfessional &&
+                  "for=consumer+professional",
               ]
                 .filter(Boolean)
                 .join(" · ")}

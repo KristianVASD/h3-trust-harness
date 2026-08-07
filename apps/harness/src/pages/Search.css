@@ -234,6 +234,51 @@
   padding: 0.7rem 1.15rem;
 }
 
+.search-audience {
+  margin: 0;
+  padding: 0;
+  border: none;
+  min-inline-size: 0;
+}
+
+.search-audience .search-panel-label {
+  padding: 0;
+  margin-bottom: 0.45rem;
+}
+
+.search-audience-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1.25rem;
+}
+
+.search-audience-tick {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.92rem;
+  line-height: 1.35;
+  color: var(--ink, #1a1f1c);
+}
+
+.search-audience-tick input {
+  margin-top: 0.2rem;
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: var(--teal, #0f6e56);
+  flex-shrink: 0;
+}
+
+.search-audience-tick strong {
+  font-weight: 600;
+}
+
+.search-audience-hint {
+  margin: 0.45rem 0 0;
+  font-size: 0.82rem;
+}
+
 .search-submit {
   margin-top: 0.25rem;
   padding-top: 0.85rem;

@@ -6,6 +6,8 @@ import { createEntity, updateEntity } from "../../api-extra";
 import type { MissionData } from "../../hooks/useMissionData";
 import { ProducerBadge, StatusChip } from "../../components/Badges";
 import { RichnessBar } from "../../components/worker/SourceProbeDetail";
+import { TrustedSourcesPackPanel } from "../../components/worker/TrustedSourcesPackPanel";
+import { useAuth } from "../../auth/AuthContext";
 import { useCanInteract } from "../../hooks/useCanInteract";
 import { TRUSTED_LIST_UNLOCK, countTrustedLists } from "../../lib/worker";
 
@@ -37,8 +39,11 @@ function actionLabel(action: Review["action"]): string {
  */
 export function WorkerCaraPage() {
   const { missionId = "" } = useParams();
-  const { sources, reviews, reload } = useOutletContext<MissionData>();
+  const { mission, sources, reviews, reload } = useOutletContext<MissionData>();
   const { canInteract, isPending } = useCanInteract();
+  const { isAdmin, openMode } = useAuth();
+  /** Pre-Ω manual pack — admin on deployed auth; always in local open mode. */
+  const showTrustedPack = isAdmin || openMode;
 
   const sourceQueue = useMemo(
     () => sources.filter(isAlignQueueItem).sort(sortAlignQueue),
@@ -272,12 +277,25 @@ export function WorkerCaraPage() {
         </div>
       ) : null}
 
+      {showTrustedPack && mission && trustedCount > 0 ? (
+        <TrustedSourcesPackPanel
+          mission={mission}
+          sources={sources}
+          compact
+        />
+      ) : null}
+
       {!sourceQueue.length ? (
         <div className="empty worker-empty-hero">
           <p>No sources waiting for alignment.</p>
           <p className="muted">
             Probe Ω candidates on Probe, or Keep → draft on Gaps — then align
             here.
+            {trustedCount > 0
+              ? showTrustedPack
+                ? ` ${trustedCount} list(s) already CURAD-locked — pack above for Job 3.`
+                : ` ${trustedCount} list(s) already CURAD-locked.`
+              : ""}
           </p>
           <div
             className="row"
@@ -289,7 +307,7 @@ export function WorkerCaraPage() {
             <Link className="btn secondary" to={`/work/${missionId}/gaps`}>
               ← Gaps
             </Link>
-            {trustedCount >= TRUSTED_LIST_UNLOCK ? (
+            {trustedCount > 0 ? (
               <Link className="btn" to={`/work/${missionId}/extract`}>
                 Continue to Extract →
               </Link>

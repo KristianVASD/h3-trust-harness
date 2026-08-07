@@ -271,49 +271,141 @@ OUTPUT: strict JSON only, exactly this envelope (one object per source):
 }`;
 }
 
+/** Slim working-source row for Job 3 offline packs (manual / Kimi / Qwen). */
+export type ExtractWorkingSource = {
+  id: string;
+  name: string;
+  status: "accepted" | "adjusted";
+  url?: string;
+  listUrl?: string;
+  category: string;
+  scope: string;
+  region?: string;
+  depth?: string;
+  listRenderType?: string;
+  filterHints?: string;
+  sourceFields?: string[];
+  guide?: Source["extractionGuide"];
+  sampleCompanies?: Array<{ name: string; note?: string }>;
+  accessBarrier?: {
+    kind: string;
+    severity: string;
+    what_human_does?: string;
+    status?: string;
+  } | null;
+  suggestedConfidence?: number;
+  suggestedWeight?: number;
+};
+
+export function trustedSourcesForExtract(sources: Source[]): Source[] {
+  return sources.filter(
+    (s) => s.status === "accepted" || s.status === "adjusted",
+  );
+}
+
+export function toExtractWorkingSource(s: Source): ExtractWorkingSource {
+  const samples =
+    s.evidence?.sample_companies?.map((c) =>
+      c.note ? { name: c.name, note: c.note } : { name: c.name },
+    ) ?? undefined;
+  const barrier = s.accessBarrier
+    ? {
+        kind: s.accessBarrier.kind,
+        severity: s.accessBarrier.severity,
+        what_human_does: s.accessBarrier.what_human_does,
+        status: s.accessBarrier.status,
+      }
+    : null;
+
+  return {
+    id: s.id,
+    name: s.name,
+    status: s.status as "accepted" | "adjusted",
+    url: s.url,
+    listUrl: s.listUrl,
+    category: s.category,
+    scope: s.scope,
+    region: s.region || undefined,
+    depth: s.depth,
+    listRenderType: s.listRenderType,
+    filterHints: s.filterHints || s.extractionGuide?.filterHints,
+    sourceFields: s.sourceFields?.length ? s.sourceFields : undefined,
+    guide: s.extractionGuide,
+    sampleCompanies: samples?.length ? samples : undefined,
+    accessBarrier: barrier,
+    suggestedConfidence: s.suggestedConfidence,
+    suggestedWeight: s.suggestedWeight,
+  };
+}
+
+/** Downloadable Job 3 pack — mission context + CURAD-approved working sources. */
+export function buildExtractWorkingPack(args: {
+  mission: Mission;
+  sources: Source[];
+}): {
+  job: "extract";
+  generatedAt: string;
+  mission: {
+    id: string;
+    country: string;
+    location: string;
+    sector: string;
+    subsector?: string;
+    goal?: string;
+  };
+  working_sources: ExtractWorkingSource[];
+} {
+  const trusted = trustedSourcesForExtract(args.sources);
+  return {
+    job: "extract",
+    generatedAt: new Date().toISOString(),
+    mission: {
+      id: args.mission.id,
+      country: args.mission.country,
+      location: args.mission.location,
+      sector: args.mission.sector,
+      subsector: args.mission.subsector,
+      goal: args.mission.goal,
+    },
+    working_sources: trusted.map(toExtractWorkingSource),
+  };
+}
+
 export function buildExtractJobPrompt(args: {
   mission: Mission;
   sources: Source[];
 }): string {
-  const trusted = args.sources.filter(
-    (s) => s.status === "accepted" || s.status === "adjusted",
-  );
+  const pack = buildExtractWorkingPack(args);
   return `You are OmegaClaw extracting companies from working trust lists (Job 3).
 
 Extract ONLY from the sources listed. Do not invent companies.
 Record list_membership (source names) for every company.
 kvk_gate = "pass" only if an 8-digit KvK is visible; else "unchecked".
-Use listUrl and extractionGuide.filterHints / regionFilter when present.
+Use listUrl and guide.filterHints / regionFilter when present.
+Never invent URLs, KvK numbers, or firms from general knowledge.
+If a source has accessBarrier with severity "blocks-extract" and status is not
+fulfilled, skip it and mention it in discovery_notes — do not bypass.
 
 Mission:
-${JSON.stringify(
-  {
-    country: args.mission.country,
-    location: args.mission.location,
-    sector: args.mission.sector,
-    subsector: args.mission.subsector,
-  },
-  null,
-  2,
-)}
+${JSON.stringify(pack.mission, null, 2)}
 
-Working sources:
-${JSON.stringify(
-  trusted.map((s) => ({
-    name: s.name,
-    url: s.url,
-    listUrl: s.listUrl,
-    category: s.category,
-    scope: s.scope,
-    filterHints: s.filterHints,
-    guide: s.extractionGuide,
-  })),
-  null,
-  2,
-)}
+Working sources (CURAD accepted/adjusted):
+${JSON.stringify(pack.working_sources, null, 2)}
 
-OUTPUT: strict JSON:
-{ "companies": [ { "name", "address?", "region?", "kvk_number?", "list_membership": ["Source Name"], "specialism?" } ] }
+OUTPUT: strict JSON only. No markdown.
 
-No markdown.`;
+{
+  "companies": [
+    {
+      "name": "…",
+      "address": "optional",
+      "region": "optional",
+      "kvk_number": "optional 8 digits",
+      "kvk_gate": "pass" | "unchecked",
+      "list_membership": ["Exact Source Name"],
+      "fieldsExtracted": ["name"],
+      "specialism": "optional"
+    }
+  ]
+}`;
 }

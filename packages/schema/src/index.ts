@@ -405,6 +405,11 @@ export const CompanySchema = z.object({
    * e.g. ["heritage experience", "colour advice"]
    */
   differentiators: z.array(z.string()).default([]),
+  /**
+   * Masterlist element codes this company services (from harvest/intake alias map).
+   * e.g. ["BUIT", "DAK", "CVK"] — see packages/schema masterlist.
+   */
+  servicedElementCodes: z.array(z.string()).default([]),
   /** Company website — harvest input; optional until discovered. */
   website_url: z.string().optional(),
   /** Short website summary (harvested or manual). Descriptive, not trust. */
@@ -595,3 +600,4 @@ export * from "./capability-aliases";
 export * from "./source-richness";
 export * from "./coverage";
 export * from "./access-barriers";
+export * from "./masterlist";
