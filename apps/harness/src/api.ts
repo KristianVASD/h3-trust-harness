@@ -350,6 +350,8 @@ export const api = {
         kvk_number?: string;
         website_url?: string;
         specialism?: string;
+        phone?: string;
+        email?: string;
       }>;
     },
   ) =>

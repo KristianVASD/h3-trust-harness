@@ -203,7 +203,14 @@ export function WorkerProfilePage() {
                     className="muted"
                     style={{ margin: "0.35rem 0", fontSize: "0.85rem" }}
                   >
+                    {c.address ? (
+                      <>
+                        {c.address}
+                        <br />
+                      </>
+                    ) : null}
                     {c.region || "—"} · kvk {c.kvk_gate}
+                    {c.specialism ? ` · ${c.specialism}` : null}
                     {c.website_url || c.profileSourceUrl
                       ? ` · ${c.website_url ?? c.profileSourceUrl}`
                       : " · no website"}
@@ -214,6 +221,24 @@ export function WorkerProfilePage() {
                       </>
                     ) : null}
                   </p>
+                  {c.phone || c.email ? (
+                    <p
+                      className="muted"
+                      style={{ margin: "0.25rem 0", fontSize: "0.85rem" }}
+                    >
+                      {c.phone ? (
+                        <a href={`tel:${c.phone.replace(/\s+/g, "")}`}>{c.phone}</a>
+                      ) : null}
+                      {c.phone && c.email ? " · " : null}
+                      {c.email ? (
+                        <a href={`mailto:${c.email}`}>{c.email}</a>
+                      ) : null}
+                    </p>
+                  ) : (
+                    <p className="muted" style={{ margin: "0.25rem 0", fontSize: "0.85rem" }}>
+                      No phone / email from source list.
+                    </p>
+                  )}
                   {c.profileSnippet ? (
                     <p style={{ margin: "0.4rem 0", fontSize: "0.9rem" }}>
                       {c.profileSnippet}

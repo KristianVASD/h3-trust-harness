@@ -154,7 +154,8 @@ export function WorkerImportPage() {
           a whole source list yourself. Manual rows and barrier fulfilments are
           dual-labelled Human. Offline Job 3 JSON (companies[]) imports as Ω
           below once ≥1 list is CURAD-accepted. CSV aliases: title→name,
-          city→region, website→website_url, services→specialism.
+          city→region, website→website_url, services→specialism, tel→phone,
+          mailto→email.
         </p>
       </div>
 
@@ -311,7 +312,7 @@ export function WorkerImportPage() {
                 value={raw}
                 onChange={(e) => onPasteChange(e.target.value)}
                 placeholder={
-                  'name,address,region,website,services\n"Painter Co","Street 1","Hoofddorp",www.example.nl,"Schilderen, Onderhoud"'
+                  'title,address,postal_code,city,website,services,tel,mailto\n"Painter Co","Street 1","2131 AE","Hoofddorp",www.example.nl,"Schilderen","tel:06 123","mailto:info@example.nl"'
                 }
                 style={{ minHeight: "8rem" }}
               />
@@ -349,9 +350,14 @@ export function WorkerImportPage() {
               <li key={c.id} style={{ marginBottom: "0.35rem" }}>
                 <strong>{c.name}</strong>{" "}
                 <ProducerBadge producer={c.producer} />
+                {c.region ? (
+                  <span className="muted"> · {c.region}</span>
+                ) : null}
                 {c.specialism ? (
                   <span className="muted"> · {c.specialism}</span>
                 ) : null}
+                {c.phone ? <span className="muted"> · {c.phone}</span> : null}
+                {c.email ? <span className="muted"> · {c.email}</span> : null}
               </li>
             ))}
           </ul>

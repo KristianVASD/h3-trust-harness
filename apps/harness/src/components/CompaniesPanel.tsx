@@ -436,8 +436,9 @@ function CompanyBulkImport({
       <h2>Bulk import</h2>
       <p className="hint">
         Paste one name per line, or CSV (name/title, address, region/city,
-        website, services/specialism, kvk_number, sector). Batch import merges
-        duplicates by name and unions list membership.
+        website, services/specialism, tel/phone, mailto/email, kvk_number,
+        sector). Batch import merges duplicates by name and unions list
+        membership.
       </p>
       <form className="form-stack" onSubmit={submit}>
         <label>

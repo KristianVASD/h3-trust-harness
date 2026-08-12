@@ -928,6 +928,9 @@ function normalizeExtractPayload(
         ? (c.fieldsExtracted as ExtractCompany["fieldsExtracted"])
         : (["name"] as SourceFieldKey[]),
       specialism: str(c.specialism),
+      website_url: str(c.website_url) || str(c.website),
+      phone: str(c.phone) || str(c.tel),
+      email: str(c.email) || str(c.mailto),
       tier: str(c.tier),
       image: str(c.image),
     });

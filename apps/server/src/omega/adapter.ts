@@ -423,6 +423,9 @@ export function buildExtractCompanyRecords(
         ? [source.name]
         : [],
     specialism: c.specialism,
+    website_url: c.website_url,
+    phone: c.phone,
+    email: c.email,
     blacklist_flags: [],
     status: "candidate" as const,
     capabilities: [],

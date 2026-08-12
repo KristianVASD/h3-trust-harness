@@ -1159,6 +1159,45 @@ export function SingleSearchPage() {
                       />
                     </div>
                   </header>
+                  {r.company.address ||
+                  r.company.phone ||
+                  r.company.email ||
+                  r.company.website_url ? (
+                    <p
+                      className="muted"
+                      style={{ margin: "0.35rem 0 0", fontSize: "0.85rem" }}
+                    >
+                      {r.company.address ? <span>{r.company.address}</span> : null}
+                      {r.company.address &&
+                      (r.company.phone || r.company.email)
+                        ? " · "
+                        : null}
+                      {r.company.phone ? (
+                        <a href={`tel:${r.company.phone.replace(/\s+/g, "")}`}>
+                          {r.company.phone}
+                        </a>
+                      ) : null}
+                      {r.company.phone && r.company.email ? " · " : null}
+                      {r.company.email ? (
+                        <a href={`mailto:${r.company.email}`}>{r.company.email}</a>
+                      ) : null}
+                      {(r.company.address ||
+                        r.company.phone ||
+                        r.company.email) &&
+                      r.company.website_url
+                        ? " · "
+                        : null}
+                      {r.company.website_url ? (
+                        <a
+                          href={r.company.website_url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          website
+                        </a>
+                      ) : null}
+                    </p>
+                  ) : null}
 
                   <div
                     className="worker-result-confidence"

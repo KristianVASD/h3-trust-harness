@@ -147,6 +147,9 @@ export const ExtractCompanySchema = z.object({
   list_membership: z.array(z.string()).default([]),
   fieldsExtracted: z.array(SourceFieldKeySchema).default([]),
   specialism: z.string().optional(),
+  website_url: z.string().optional(),
+  phone: z.string().optional(),
+  email: z.string().optional(),
   tier: z.string().optional(),
   image: z.string().optional(),
 });

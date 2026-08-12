@@ -1,6 +1,6 @@
-name,address,region,kvk_number,sector,website,services
-Schilderbedrijf Noord BV,"Hoofdweg 1, Haarlemmermeer",Haarlemmermeer,11111111,Painters,www.noord-example.nl,"Schilderen, Onderhoud"
-De Wit Schilders,"Kerkstraat 8, Hoofddorp",Hoofddorp,22222222,Painters,www.dewit-example.nl,Schilderen
-Hoofddorp Coatings,"Industrieweg 3, Hoofddorp",Hoofddorp,,Painters,,Schilderen
-PaintPro Haarlemmermeer,"Stationsplein 2, Nieuw-Vennep",Nieuw-Vennep,33333333,Painters,https://paintpro.example,"Schilderen, Glaszetten"
-Local Brush Service,"Dorpsstraat 15, Badhoevedorp",Badhoevedorp,,Painters,,Schilderen
+name,address,region,kvk_number,sector,website,services,tel,mailto
+Schilderbedrijf Noord BV,"Hoofdweg 1, Haarlemmermeer",Haarlemmermeer,11111111,Painters,www.noord-example.nl,"Schilderen, Onderhoud",tel:023 1111111,mailto:info@noord-example.nl
+De Wit Schilders,"Kerkstraat 8, Hoofddorp",Hoofddorp,22222222,Painters,www.dewit-example.nl,Schilderen,023 2222222,info@dewit-example.nl
+Hoofddorp Coatings,"Industrieweg 3, Hoofddorp",Hoofddorp,,Painters,,Schilderen,,
+PaintPro Haarlemmermeer,"Stationsplein 2, Nieuw-Vennep",Nieuw-Vennep,33333333,Painters,https://paintpro.example,"Schilderen, Glaszetten",tel:020 3333333,mailto:hello@paintpro.example
+Local Brush Service,"Dorpsstraat 15, Badhoevedorp",Badhoevedorp,,Painters,,Schilderen,06 12345678,

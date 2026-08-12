@@ -412,6 +412,10 @@ export const CompanySchema = z.object({
   servicedElementCodes: z.array(z.string()).default([]),
   /** Company website — harvest input; optional until discovered. */
   website_url: z.string().optional(),
+  /** Public phone from a source list (not a trust signal). */
+  phone: z.string().optional(),
+  /** Public email from a source list (not a trust signal). */
+  email: z.string().optional(),
   /** Short website summary (harvested or manual). Descriptive, not trust. */
   profileSnippet: z.string().optional(),
   profileSourceUrl: z.string().optional(),

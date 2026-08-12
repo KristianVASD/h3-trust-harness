@@ -10,6 +10,8 @@ export type CompanyImportRow = {
   kvk_number?: string;
   website_url?: string;
   specialism?: string;
+  phone?: string;
+  email?: string;
 };
 
 export type CompanyImportResult = {
@@ -52,6 +54,16 @@ function normalizeWebsite(raw: string | undefined): string | undefined {
   }
   if (/^https?:\/\//i.test(value)) return value;
   return `https://${value.replace(/^\/\//, "")}`;
+}
+
+function normalizePhone(raw: string | undefined): string | undefined {
+  const value = (raw ?? "").trim().replace(/^tel:\s*/i, "").trim();
+  return value || undefined;
+}
+
+function normalizeEmail(raw: string | undefined): string | undefined {
+  const value = (raw ?? "").trim().replace(/^mailto:\s*/i, "").trim();
+  return value || undefined;
 }
 
 /**
@@ -128,6 +140,8 @@ export async function importCompaniesForMission(
     const region = (row.region ?? "").trim();
     const sector = (row.sector ?? "").trim() || specialism?.replace(/,/g, ";") || "";
     const kvk_number = (row.kvk_number ?? "").trim() || undefined;
+    const phone = normalizePhone(row.phone);
+    const email = normalizeEmail(row.email);
 
     const match = byName.get(key);
     if (match) {
@@ -144,6 +158,8 @@ export async function importCompaniesForMission(
         kvk_number: fillBlank(match.kvk_number, kvk_number),
         website_url: fillBlank(match.website_url, website_url),
         specialism: fillBlank(match.specialism, specialism),
+        phone: fillBlank(match.phone, phone),
+        email: fillBlank(match.email, email),
         updatedAt: now,
       };
       const saved = (await store.upsert("companies", next)) as Company;
@@ -174,6 +190,8 @@ export async function importCompaniesForMission(
       differentiators: [],
       servicedElementCodes: [],
       website_url,
+      phone,
+      email,
       createdAt: now,
       updatedAt: now,
       v: 1,
