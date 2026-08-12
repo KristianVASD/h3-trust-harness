@@ -12,6 +12,7 @@ import { MasterlistResolvePanel } from "../../components/worker/MasterlistResolv
 import { TrustedSourcesPackPanel } from "../../components/worker/TrustedSourcesPackPanel";
 import { useAuth } from "../../auth/AuthContext";
 import type { MissionData } from "../../hooks/useMissionData";
+import { importCompanyRowsInChunks } from "../../lib/importCompanyRows";
 import { parseCompanyImport } from "../../lib/parseCompanyImport";
 import { buildExtractJobPrompt } from "../../lib/omegaJobPrompts";
 import {
@@ -55,6 +56,10 @@ export function WorkerImportPage() {
   const [sourceId, setSourceId] = useState("");
   const [previewCount, setPreviewCount] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [importProgress, setImportProgress] = useState<{
+    completed: number;
+    total: number;
+  } | null>(null);
   const [extractBusyId, setExtractBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [doneMsg, setDoneMsg] = useState<string | null>(null);
@@ -119,11 +124,18 @@ export function WorkerImportPage() {
     }
 
     setBusy(true);
+    setImportProgress({ completed: 0, total: rows.length });
+    let completed = 0;
     try {
-      const result = await api.importCompanies(missionId, {
+      const result = await importCompanyRowsInChunks({
+        missionId,
         sourceId,
         listLabel,
         rows,
+        onProgress: (nextCompleted, total) => {
+          completed = nextCompleted;
+          setImportProgress({ completed: nextCompleted, total });
+        },
       });
       setRaw("");
       setPreviewCount(0);
@@ -139,9 +151,14 @@ export function WorkerImportPage() {
       );
       await reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Import failed");
+      const detail = err instanceof Error ? err.message : "Import failed";
+      setError(
+        `Import stopped after ${completed}/${rows.length} rows. Re-running the same file is safe. ${detail}`,
+      );
+      await reload();
     } finally {
       setBusy(false);
+      setImportProgress(null);
     }
   }
 
@@ -335,7 +352,7 @@ export function WorkerImportPage() {
               disabled={busy || !previewCount}
             >
               {busy
-                ? "Importing…"
+                ? `Importing ${importProgress?.completed ?? 0}/${importProgress?.total ?? previewCount}…`
                 : `Extract ${previewCount || ""} candidates`}
             </button>
           </form>

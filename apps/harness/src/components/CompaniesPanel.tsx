@@ -13,6 +13,7 @@ import {
 } from "@h3-trust/schema";
 import { api } from "../api";
 import { listSignals } from "../api-extra";
+import { importCompanyRowsInChunks } from "../lib/importCompanyRows";
 import { parseCompanyImport } from "../lib/parseCompanyImport";
 import { ProducerBadge, StatusChip } from "./Badges";
 import { CompanyProfileTags } from "./CompanyProfileTags";
@@ -352,6 +353,10 @@ function CompanyBulkImport({
   const [newCategory, setNewCategory] =
     useState<SourceCategory>("local_business_association");
   const [busy, setBusy] = useState(false);
+  const [importProgress, setImportProgress] = useState<{
+    completed: number;
+    total: number;
+  } | null>(null);
   const [previewCount, setPreviewCount] = useState(0);
 
   function onPasteChange(value: string) {
@@ -375,6 +380,7 @@ function CompanyBulkImport({
     }
 
     setBusy(true);
+    setImportProgress({ completed: 0, total: rows.length });
     try {
       let sourceId = existingSourceId;
       const now = new Date().toISOString();
@@ -412,10 +418,13 @@ function CompanyBulkImport({
         return;
       }
 
-      const result = await api.importCompanies(missionId, {
+      const result = await importCompanyRowsInChunks({
+        missionId,
         sourceId,
         listLabel,
         rows,
+        onProgress: (completed, total) =>
+          setImportProgress({ completed, total }),
       });
 
       setRaw("");
@@ -428,6 +437,7 @@ function CompanyBulkImport({
       onError(err instanceof Error ? err.message : "Import failed");
     } finally {
       setBusy(false);
+      setImportProgress(null);
     }
   }
 
@@ -520,7 +530,9 @@ function CompanyBulkImport({
           </>
         )}
         <button className="btn" type="submit" disabled={busy}>
-          {busy ? "Importing…" : `Import ${previewCount || ""} candidates`}
+          {busy
+            ? `Importing ${importProgress?.completed ?? 0}/${importProgress?.total ?? previewCount}…`
+            : `Import ${previewCount || ""} candidates`}
         </button>
       </form>
     </section>
