@@ -88,6 +88,60 @@ function normalizeLabel(value: string): string {
     .trim();
 }
 
+/** Places that should count as local for each other in NL painter demos. */
+const PLACE_CLUSTERS: string[][] = [
+  [
+    "hoofddorp",
+    "haarlemmermeer",
+    "rijsenhout",
+    "nieuw vennep",
+    "badhoevedorp",
+    "beinsdorp",
+    "zwanenburg",
+    "lisserbroek",
+  ],
+];
+
+function placeCluster(place: string): Set<string> {
+  const n = normalizeLabel(place);
+  const set = new Set<string>([n]);
+  for (const cluster of PLACE_CLUSTERS) {
+    if (cluster.some((p) => n.includes(p) || p.includes(n))) {
+      for (const p of cluster) set.add(p);
+    }
+  }
+  return set;
+}
+
+function companyPlaceText(company: Company): string {
+  return normalizeLabel(`${company.region} ${company.address}`);
+}
+
+function companyMatchesPlace(company: Company, place: string): boolean {
+  const hay = companyPlaceText(company);
+  if (!hay) return false;
+  const cluster = placeCluster(place);
+  for (const token of cluster) {
+    if (token && hay.includes(token)) return true;
+  }
+  return false;
+}
+
+/**
+ * When the query has a place and some companies match it, prefer those.
+ * Non-matching companies are dropped so broad catalogue dumps don't drown locals.
+ * If none match the place, keep the full ranked list (broad / catalogue browse).
+ */
+function preferLocalCompanies<T extends { company: Company }>(
+  rows: T[],
+  place: string | undefined,
+): T[] {
+  const loc = place?.trim();
+  if (!loc || !rows.length) return rows;
+  const local = rows.filter((r) => companyMatchesPlace(r.company, loc));
+  return local.length ? local : rows;
+}
+
 function missionSectorText(m: Mission): string {
   return normalizeLabel(`${m.subsector} ${m.sector}`);
 }
@@ -616,6 +670,8 @@ export function SingleSearchPage() {
       results = results.filter((r) =>
         companyMatchesAudience(r.company, audience),
       );
+
+      results = preferLocalCompanies(results, parsed.location);
 
       setRanked(results.slice(0, 5));
 

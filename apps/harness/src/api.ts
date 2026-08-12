@@ -337,6 +337,32 @@ export const api = {
   listAllSources: () => request<Source[]>("/sources"),
   listCompanies: (missionId: string) =>
     request<Company[]>(`/missions/${missionId}/companies`),
+  importCompanies: (
+    missionId: string,
+    body: {
+      sourceId: string;
+      listLabel: string;
+      rows: Array<{
+        name: string;
+        address?: string;
+        region?: string;
+        sector?: string;
+        kvk_number?: string;
+        website_url?: string;
+        specialism?: string;
+      }>;
+    },
+  ) =>
+    request<{
+      created: number;
+      updated: number;
+      skipped: number;
+      companies: Company[];
+      warnings: string[];
+    }>(`/missions/${missionId}/companies/import`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   listLinkableSources: (excludeMissionId: string, q = "") => {
     const params = new URLSearchParams({
       excludeMission: excludeMissionId,

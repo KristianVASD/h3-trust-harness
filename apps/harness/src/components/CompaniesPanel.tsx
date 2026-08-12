@@ -398,7 +398,7 @@ function CompanyBulkImport({
           reason: `Bulk import source: ${listLabel}`,
           signalIds: [],
           evidenceIds: [],
-          status: "draft" as const,
+          status: "accepted" as const,
           createdAt: now,
           updatedAt: now,
           v: 1,
@@ -412,30 +412,18 @@ function CompanyBulkImport({
         return;
       }
 
-      for (const row of rows) {
-        await api.createInMission(missionId, "companies", {
-          id: uuid(),
-          missionId,
-          producer: "Human" as const,
-          name: row.name,
-          address: row.address,
-          region: row.region,
-          sector: row.sector,
-          kvk_number: row.kvk_number,
-          kvk_gate: "unchecked" as const,
-          source_ids: [sourceId],
-          list_membership: [listLabel],
-          blacklist_flags: [],
-          status: "candidate" as const,
-          createdAt: now,
-          updatedAt: now,
-          v: 1,
-        });
-      }
+      const result = await api.importCompanies(missionId, {
+        sourceId,
+        listLabel,
+        rows,
+      });
 
       setRaw("");
       setPreviewCount(0);
       await onChanged();
+      if (result.created || result.updated) {
+        onError(null);
+      }
     } catch (err) {
       onError(err instanceof Error ? err.message : "Import failed");
     } finally {
@@ -447,8 +435,9 @@ function CompanyBulkImport({
     <section className="panel" style={{ gridColumn: "1 / -1" }}>
       <h2>Bulk import</h2>
       <p className="hint">
-        Paste one name per line, or CSV with columns name,address,region,kvk_number,sector.
-        Creates candidates (Producer · Human) linked to a Source + category.
+        Paste one name per line, or CSV (name/title, address, region/city,
+        website, services/specialism, kvk_number, sector). Batch import merges
+        duplicates by name and unions list membership.
       </p>
       <form className="form-stack" onSubmit={submit}>
         <label>

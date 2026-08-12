@@ -46,6 +46,10 @@ import {
   runOmegaImport,
 } from "./omega/import-route.js";
 import {
+  CompanyImportError,
+  importCompaniesForMission,
+} from "./companies-import-route.js";
+import {
   SEARCH_COOKIE,
   SEARCH_LIMIT,
   SEARCH_SESSION_HEADER,
@@ -781,6 +785,36 @@ export function createApp(options: CreateAppOptions) {
       }
     },
   );
+
+  app.post("/api/missions/:missionId/companies/import", async (c) => {
+    try {
+      const missionId = c.req.param("missionId");
+      const body = await c.req.json();
+      const sourceId =
+        typeof body?.sourceId === "string" ? body.sourceId.trim() : "";
+      const listLabel =
+        typeof body?.listLabel === "string" ? body.listLabel.trim() : "";
+      const rows = Array.isArray(body?.rows) ? body.rows : null;
+      if (!sourceId) {
+        return c.json({ error: "sourceId is required" }, 400);
+      }
+      if (!rows) {
+        return c.json({ error: "rows[] is required" }, 400);
+      }
+      const result = await importCompaniesForMission(store, {
+        missionId,
+        sourceId,
+        listLabel: listLabel || "Member list",
+        rows,
+      });
+      return c.json(result, 201);
+    } catch (err) {
+      if (err instanceof CompanyImportError) {
+        return c.json({ error: err.message }, err.status as 400 | 404);
+      }
+      throw err;
+    }
+  });
 
   app.post(
     "/api/missions/:missionId/companies/:companyId/harvest",

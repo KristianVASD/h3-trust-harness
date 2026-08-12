@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useOutletContext, useParams } from "react-router-dom";
 import { isBlockingBarrier } from "@h3-trust/schema";
-import { v4 as uuid } from "uuid";
 import { api } from "../../api";
 import { ProducerBadge } from "../../components/Badges";
 import {
@@ -44,7 +43,12 @@ export function WorkerImportPage() {
     [trustedSources],
   );
   const trustedCount = countTrustedLists(sources);
-  const unlocked = trustedCount >= TRUSTED_LIST_UNLOCK;
+  /** Whole-list paste unlocks once ≥1 CURAD-accepted source exists (catalogue bootstrap). */
+  const unlocked = trustedSources.length >= 1;
+  const portfolioHint =
+    trustedCount < TRUSTED_LIST_UNLOCK
+      ? `Portfolio: ${trustedCount}/${TRUSTED_LIST_UNLOCK} trusted lists (coverage target).`
+      : null;
 
   const [raw, setRaw] = useState("");
   const [listLabel, setListLabel] = useState("Member list");
@@ -116,34 +120,23 @@ export function WorkerImportPage() {
 
     setBusy(true);
     try {
-      const now = new Date().toISOString();
-      for (const row of rows) {
-        await api.createInMission(missionId, "companies", {
-          id: uuid(),
-          missionId,
-          producer: "Human" as const,
-          name: row.name,
-          address: row.address,
-          region: row.region,
-          sector: row.sector,
-          kvk_number: row.kvk_number,
-          kvk_gate: "unchecked" as const,
-          source_ids: [sourceId],
-          list_membership: [listLabel],
-          blacklist_flags: [],
-          status: "candidate" as const,
-          capabilities: [],
-          serviceContexts: [],
-          differentiators: [],
-          servicedElementCodes: [],
-          createdAt: now,
-          updatedAt: now,
-          v: 1,
-        });
-      }
+      const result = await api.importCompanies(missionId, {
+        sourceId,
+        listLabel,
+        rows,
+      });
       setRaw("");
       setPreviewCount(0);
-      setDoneMsg(`Imported ${rows.length} companies.`);
+      const parts = [
+        result.created ? `${result.created} created` : null,
+        result.updated ? `${result.updated} updated (merged sources)` : null,
+        result.skipped ? `${result.skipped} skipped` : null,
+      ].filter(Boolean);
+      setDoneMsg(
+        parts.length
+          ? `Imported: ${parts.join(", ")}.`
+          : `Import finished with no changes.`,
+      );
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Import failed");
@@ -158,9 +151,10 @@ export function WorkerImportPage() {
         <h2>Extract</h2>
         <p className="hint">
           Ask Ω to extract from guided trusted sources (barrier-gated), or paste
-          a list yourself. Manual rows and barrier fulfilments are dual-labelled
-          Human. Offline Job 3 JSON (companies[]) imports as Ω below once ≥1
-          list is CURAD-accepted.
+          a whole source list yourself. Manual rows and barrier fulfilments are
+          dual-labelled Human. Offline Job 3 JSON (companies[]) imports as Ω
+          below once ≥1 list is CURAD-accepted. CSV aliases: title→name,
+          city→region, website→website_url, services→specialism.
         </p>
       </div>
 
@@ -263,12 +257,12 @@ export function WorkerImportPage() {
       {!unlocked ? (
         <div className="empty worker-empty-hero worker-locked">
           <p>
-            Manual extract locked — need {TRUSTED_LIST_UNLOCK} trusted lists (
-            {trustedCount} so far).
+            Manual extract locked — accept at least one trusted source in Align
+            first ({trustedCount} so far).
           </p>
           <p className="muted">
-            Approve more sources in Align, then come back to attach CSVs. Ω
-            extract above works once a source is accepted + probed.
+            Then paste or upload a whole list CSV for that source. Coverage still
+            targets {TRUSTED_LIST_UNLOCK} trusted lists over time.
           </p>
           <div
             className="row"
@@ -282,6 +276,11 @@ export function WorkerImportPage() {
       ) : (
         <section className="panel worker-import-panel">
           <h3 style={{ marginTop: 0 }}>Manual extract (Human)</h3>
+          {portfolioHint ? (
+            <p className="muted" style={{ marginTop: 0 }}>
+              {portfolioHint}
+            </p>
+          ) : null}
           <form className="form-stack" onSubmit={(e) => void submit(e)}>
             <label>
               CARA-trusted source
@@ -311,7 +310,9 @@ export function WorkerImportPage() {
               <textarea
                 value={raw}
                 onChange={(e) => onPasteChange(e.target.value)}
-                placeholder={"Painter Co A\nPainter Co B"}
+                placeholder={
+                  'name,address,region,website,services\n"Painter Co","Street 1","Hoofddorp",www.example.nl,"Schilderen, Onderhoud"'
+                }
                 style={{ minHeight: "8rem" }}
               />
             </label>
