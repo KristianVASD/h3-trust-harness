@@ -16,7 +16,6 @@ import { importCompanyRowsInChunks } from "../../lib/importCompanyRows";
 import { parseCompanyImport } from "../../lib/parseCompanyImport";
 import { buildExtractJobPrompt } from "../../lib/omegaJobPrompts";
 import {
-  TRUSTED_LIST_UNLOCK,
   countTrustedLists,
   isTrustedSource,
 } from "../../lib/worker";
@@ -44,12 +43,11 @@ export function WorkerImportPage() {
     [trustedSources],
   );
   const trustedCount = countTrustedLists(sources);
-  /** Whole-list paste unlocks once ≥1 CURAD-accepted source exists (catalogue bootstrap). */
-  const unlocked = trustedSources.length >= 1;
-  const portfolioHint =
-    trustedCount < TRUSTED_LIST_UNLOCK
-      ? `Portfolio: ${trustedCount}/${TRUSTED_LIST_UNLOCK} trusted lists (coverage target).`
-      : null;
+  const unlocked = sources.length >= 1;
+  const importSources = useMemo(
+    () => (trustedSources.length ? trustedSources : sources),
+    [trustedSources, sources],
+  );
 
   const [raw, setRaw] = useState("");
   const [listLabel, setListLabel] = useState("Member list");
@@ -66,12 +64,12 @@ export function WorkerImportPage() {
 
   useEffect(() => {
     if (
-      trustedSources.length &&
-      !trustedSources.some((s) => s.id === sourceId)
+      importSources.length &&
+      !importSources.some((s) => s.id === sourceId)
     ) {
-      setSourceId(trustedSources[0]!.id);
+      setSourceId(importSources[0]!.id);
     }
-  }, [trustedSources, sourceId]);
+  }, [importSources, sourceId]);
 
   function onPasteChange(value: string) {
     setRaw(value);
@@ -82,6 +80,30 @@ export function WorkerImportPage() {
     if (!file) return;
     const text = await file.text();
     onPasteChange(text);
+  }
+
+  async function acceptAsImported(sid: string) {
+    const source = sources.find((s) => s.id === sid);
+    if (!source) return;
+    setError(null);
+    setDoneMsg(null);
+    try {
+      await api.updateEntity("sources", {
+        ...source,
+        status: "accepted",
+        producer: "ImportedDataset",
+        notes: [source.notes, "Accepted as imported dataset — Align later."]
+          .filter(Boolean)
+          .join(" · "),
+        updatedAt: new Date().toISOString(),
+      });
+      setDoneMsg(
+        `“${source.name}” accepted as imported dataset. Paste the CSV below.`,
+      );
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not accept list");
+    }
   }
 
   async function askOmegaExtract(sid: string) {
@@ -119,8 +141,17 @@ export function WorkerImportPage() {
       return;
     }
     if (!sourceId) {
-      setError("Choose a CARA-trusted source for this list.");
+      setError("Choose a source for this list.");
       return;
+    }
+
+    const selectedSource = sources.find((s) => s.id === sourceId);
+    if (
+      selectedSource &&
+      selectedSource.status !== "accepted" &&
+      selectedSource.status !== "adjusted"
+    ) {
+      await acceptAsImported(sourceId);
     }
 
     setBusy(true);
@@ -167,154 +198,153 @@ export function WorkerImportPage() {
       <div className="worker-step-intro">
         <h2>Extract</h2>
         <p className="hint">
-          Ask Ω to extract from guided trusted sources (barrier-gated), or paste
-          a whole source list yourself. Manual rows and barrier fulfilments are
-          dual-labelled Human. Offline Job 3 JSON (companies[]) imports as Ω
-          below once ≥1 list is CURAD-accepted. CSV aliases: title→name,
-          city→region, website→website_url, services→specialism, tel→phone,
-          mailto→email.
+          Paste or upload a source list. CSV <code>services</code> become Can
+          chips. Align is optional — mark a candidate list as an imported
+          dataset if it is not CURAD-accepted yet.
         </p>
       </div>
 
-      {showTrustedPack && mission ? (
-        <TrustedSourcesPackPanel mission={mission} sources={sources} />
-      ) : null}
+      <details className="worker-advanced">
+        <summary>Advanced · Ω extract, Job 3 pack, masterlist</summary>
+        {showTrustedPack && mission ? (
+          <TrustedSourcesPackPanel mission={mission} sources={sources} />
+        ) : null}
 
-      {mission ? (
-        <OmegaJsonImportPanel
-          missionId={missionId}
-          job="extract"
-          hint="Paste Job 3 companies[] JSON from your agent (built from the CURAD pack above). Import as Ω once ≥1 list is accepted."
-          onImported={reload}
-          buildPrompt={() =>
-            buildExtractJobPrompt({ mission, sources })
-          }
-        />
-      ) : null}
+        {mission ? (
+          <OmegaJsonImportPanel
+            missionId={missionId}
+            job="extract"
+            hint="Paste Job 3 companies[] JSON from your agent. Import as Ω once ≥1 list is accepted."
+            onImported={reload}
+            buildPrompt={() =>
+              buildExtractJobPrompt({ mission, sources })
+            }
+          />
+        ) : null}
 
-      <MasterlistResolvePanel />
+        <MasterlistResolvePanel />
+
+        {blockedSources.length > 0 ? (
+          <section className="panel" style={{ marginBottom: "1rem" }}>
+            <h3 style={{ marginTop: 0 }}>
+              Barriers ({blockedSources.length}) — fulfil before Ω extract
+            </h3>
+            {blockedSources.map((s) => (
+              <div key={s.id} style={{ marginBottom: "1rem" }}>
+                <p style={{ margin: "0 0 0.5rem" }}>
+                  <strong>{s.name}</strong>{" "}
+                  {s.accessBarrier ? (
+                    <BarrierStatusChip barrier={s.accessBarrier} />
+                  ) : null}
+                </p>
+                <BarrierCard
+                  missionId={missionId}
+                  source={s}
+                  onDone={reload}
+                />
+              </div>
+            ))}
+          </section>
+        ) : null}
+
+        {guidedTrusted.length > 0 ? (
+          <section className="panel" style={{ marginBottom: "1rem" }}>
+            <h3 style={{ marginTop: 0 }}>Ask Ω Extract</h3>
+            <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+              {guidedTrusted.map((s) => {
+                const blocked =
+                  s.accessBarrier != null && isBlockingBarrier(s.accessBarrier);
+                const rowBusy = extractBusyId === s.id;
+                return (
+                  <li key={s.id} style={{ marginBottom: "0.6rem" }}>
+                    <strong>{s.name}</strong>{" "}
+                    <span className="muted">
+                      · {s.extractionGuide?.listPattern} ·{" "}
+                      {s.extractionGuide?.fields.length ?? 0} fields
+                    </span>
+                    <div style={{ marginTop: "0.35rem" }}>
+                      <button
+                        type="button"
+                        className="btn secondary small"
+                        disabled={blocked || extractBusyId != null}
+                        onClick={() => void askOmegaExtract(s.id)}
+                      >
+                        {rowBusy
+                          ? "Extracting…"
+                          : blocked
+                            ? "Blocked"
+                            : "Ask Ω Extract"}
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ) : null}
+      </details>
 
       {error ? <div className="error">{error}</div> : null}
       {doneMsg ? (
         <div className="thesis" style={{ borderColor: "var(--teal)" }}>
           {doneMsg}{" "}
-          <Link to={`/work/${missionId}/profile`}>View profiles →</Link>
+          <Link to={`/work/${missionId}/search`}>Preview search →</Link>
         </div>
-      ) : null}
-
-      {blockedSources.length > 0 ? (
-        <section className="panel" style={{ marginBottom: "1rem" }}>
-          <h3 style={{ marginTop: 0 }}>
-            Barriers ({blockedSources.length}) — fulfil before Ω extract
-          </h3>
-          {blockedSources.map((s) => (
-            <div key={s.id} style={{ marginBottom: "1rem" }}>
-              <p style={{ margin: "0 0 0.5rem" }}>
-                <strong>{s.name}</strong>{" "}
-                {s.accessBarrier ? (
-                  <BarrierStatusChip barrier={s.accessBarrier} />
-                ) : null}
-              </p>
-              <BarrierCard
-                missionId={missionId}
-                source={s}
-                onDone={reload}
-              />
-            </div>
-          ))}
-        </section>
-      ) : null}
-
-      {guidedTrusted.length > 0 ? (
-        <section className="panel" style={{ marginBottom: "1rem" }}>
-          <h3 style={{ marginTop: 0 }}>Ask Ω Extract</h3>
-          <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
-            {guidedTrusted.map((s) => {
-              const blocked =
-                s.accessBarrier != null && isBlockingBarrier(s.accessBarrier);
-              const rowBusy = extractBusyId === s.id;
-              return (
-                <li key={s.id} style={{ marginBottom: "0.6rem" }}>
-                  <strong>{s.name}</strong>{" "}
-                  <span className="muted">
-                    · {s.extractionGuide?.listPattern} ·{" "}
-                    {s.extractionGuide?.fields.length ?? 0} fields
-                  </span>
-                  {s.accessBarrier ? (
-                    <>
-                      {" "}
-                      <BarrierStatusChip barrier={s.accessBarrier} />
-                    </>
-                  ) : null}
-                  <div style={{ marginTop: "0.35rem" }}>
-                    <button
-                      type="button"
-                      className="btn secondary small"
-                      disabled={blocked || extractBusyId != null}
-                      title={
-                        blocked
-                          ? "Fulfil the access barrier first"
-                          : "Run gated Ω extract"
-                      }
-                      onClick={() => void askOmegaExtract(s.id)}
-                    >
-                      {rowBusy
-                        ? "Extracting…"
-                        : blocked
-                          ? "Blocked"
-                          : "Ask Ω Extract"}
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
       ) : null}
 
       {!unlocked ? (
         <div className="empty worker-empty-hero worker-locked">
-          <p>
-            Manual extract locked — accept at least one trusted source in Align
-            first ({trustedCount} so far).
-          </p>
+          <p>No source on this job yet.</p>
           <p className="muted">
-            Then paste or upload a whole list CSV for that source. Coverage still
-            targets {TRUSTED_LIST_UNLOCK} trusted lists over time.
+            Add a list on Gaps, or onboard a CSV pack from Mission Control.
           </p>
           <div
             className="row"
-            style={{ justifyContent: "center", marginTop: "1rem" }}
+            style={{ justifyContent: "center", marginTop: "1rem", gap: "0.5rem" }}
           >
-            <Link className="btn" to={`/work/${missionId}/align`}>
-              ← Back to Align
+            <Link className="btn" to={`/work/${missionId}/gaps`}>
+              ← Gaps
+            </Link>
+            <Link className="btn secondary" to="/control">
+              Mission Control
             </Link>
           </div>
         </div>
       ) : (
         <section className="panel worker-import-panel">
-          <h3 style={{ marginTop: 0 }}>Manual extract (Human)</h3>
-          {portfolioHint ? (
+          <h3 style={{ marginTop: 0 }}>Import CSV</h3>
+          {trustedCount === 0 ? (
             <p className="muted" style={{ marginTop: 0 }}>
-              {portfolioHint}
+              This list is not CURAD-accepted yet. Import will mark it as an
+              imported dataset (Align later).
             </p>
           ) : null}
           <form className="form-stack" onSubmit={(e) => void submit(e)}>
             <label>
-              CARA-trusted source
+              Source list
               <select
                 value={sourceId}
                 onChange={(e) => setSourceId(e.target.value)}
                 required
               >
-                {trustedSources.map((s) => (
+                {importSources.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name} · {s.category} · w
-                    {s.suggestedConfidence ?? s.suggestedWeight ?? "—"}
+                    {s.name} · {s.category} · {s.status}
                   </option>
                 ))}
               </select>
             </label>
+            {sourceId &&
+            sources.find((s) => s.id === sourceId) &&
+            !isTrustedSource(sources.find((s) => s.id === sourceId)!) ? (
+              <button
+                type="button"
+                className="btn secondary small"
+                onClick={() => void acceptAsImported(sourceId)}
+              >
+                Accept as imported list (skip Align)
+              </button>
+            ) : null}
             <label>
               List membership label
               <input
@@ -385,14 +415,14 @@ export function WorkerImportPage() {
       ) : null}
 
       <footer className="worker-step-footer">
-        <Link className="btn secondary" to={`/work/${missionId}/align`}>
-          ← Align
+        <Link className="btn secondary" to={`/work/${missionId}/gaps`}>
+          ← Gaps
         </Link>
         <Link
           className={`btn ${companies.length ? "" : "secondary"}`}
-          to={`/work/${missionId}/profile`}
+          to={`/work/${missionId}/search`}
         >
-          Profile →
+          Search →
         </Link>
       </footer>
     </div>

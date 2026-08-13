@@ -61,19 +61,11 @@ export function WorkerProfilePage() {
         [companyId]: result.harvest_confidence!,
       }));
     }
-    if (result.harvest_confidence === "low") {
-      setNoteById((prev) => ({
-        ...prev,
-        [companyId]:
-          "Ω couldn't read the site — profile is name+address only.",
-      }));
-    } else {
-      setNoteById((prev) => {
-        const next = { ...prev };
-        delete next[companyId];
-        return next;
-      });
-    }
+    setNoteById((prev) => ({
+      ...prev,
+      [companyId]:
+        "STUB — no website was read. Can/For from the source list were left unchanged. Live OmegaClaw harvest is not wired yet.",
+    }));
     return true;
   }
 
@@ -122,9 +114,10 @@ export function WorkerProfilePage() {
       <div className="worker-step-intro">
         <h2>Profile</h2>
         <p className="hint">
-          Harvest Can / For / Notable from company websites (stub Ω today).
-          Missing websites yield a low-confidence name-only profile — never a
-          barrier.
+          Can chips come from the source list (<code>services</code>). Website
+          harvest is a <strong>STUB</strong> until live OmegaClaw — it does not
+          invent HOA, consumer, or colour advice. Optional depth at referral
+          time.
         </p>
         <p className="muted">
           {companies.length} companies · {thin} still thin
@@ -164,15 +157,12 @@ export function WorkerProfilePage() {
             >
               {batchBusy
                 ? "Harvesting…"
-                : `Harvest selected (${selected.size})`}
+                : `Stub-harvest selected (${selected.size})`}
             </button>
           </div>
 
           <div className="worker-profile-grid">
             {companies.map((c) => {
-              const needsHarvest =
-                c.capabilities.length === 0 &&
-                !(c.profileSnippet ?? "").trim();
               const confidence = confidenceById[c.id];
               const note = noteById[c.id];
               const busy = busyId === c.id || batchBusy;
@@ -192,7 +182,7 @@ export function WorkerProfilePage() {
                       {confidence ? (
                         <span
                           className={`worker-harvest-dot worker-harvest-dot--${confidence}`}
-                          title={`harvest_confidence: ${confidence}`}
+                          title={`STUB harvest_confidence: ${confidence} (no website read)`}
                           aria-label={`Confidence ${confidence}`}
                         />
                       ) : null}
@@ -284,10 +274,8 @@ export function WorkerProfilePage() {
                       onClick={() => void onHarvest(c.id)}
                     >
                       {busyId === c.id
-                        ? "Harvesting…"
-                        : needsHarvest
-                          ? "Harvest"
-                          : "Re-harvest"}
+                        ? "Stub harvest…"
+                        : "Stub harvest (no site read)"}
                     </button>
                   </div>
                 </article>

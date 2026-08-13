@@ -111,7 +111,6 @@ export function MissionLayout() {
             sources={data.sources}
             catalogue={data.catalogue}
             companies={data.companies}
-            reviews={data.reviews}
             searchPlan={data.searchPlan}
           />
         ) : null}

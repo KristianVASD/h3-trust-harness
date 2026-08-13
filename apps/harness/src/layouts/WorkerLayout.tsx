@@ -5,6 +5,7 @@ import { WorkerStepRail } from "../components/worker/WorkerStepRail";
 import { TrustedPortfolioBar } from "../components/worker/TrustedPortfolioBar";
 import {
   deriveWorkerStepState,
+  nextWorkerAction,
   stepFromPath,
 } from "../lib/worker";
 
@@ -32,6 +33,18 @@ export function WorkerLayout() {
     [mission, sources, companies, searchPlan, catalogue],
   );
 
+  const next = useMemo(
+    () =>
+      nextWorkerAction({
+        mission,
+        sources,
+        companies,
+        planEntries: searchPlan?.entries ?? [],
+        catalogue,
+      }),
+    [mission, sources, companies, searchPlan, catalogue],
+  );
+
   if (!mission && !error) {
     return <p className="muted" style={{ padding: "2rem" }}>Loading job…</p>;
   }
@@ -40,18 +53,14 @@ export function WorkerLayout() {
     <div className="worker-shell">
       <header className="worker-header">
         <div className="worker-header-top">
-          <NavLink to="/" className="btn secondary small">
-            ← Home
-          </NavLink>
           <NavLink to="/control" className="btn secondary small">
-            Mission Control
+            ← Mission Control
           </NavLink>
           <NavLink
             to={`/missions/${missionId}`}
-            className="btn secondary small"
-            title="Open full investigator UI"
+            className="btn secondary small worker-header-quiet"
           >
-            ← Investigation
+            Investigation
           </NavLink>
         </div>
 
@@ -63,6 +72,14 @@ export function WorkerLayout() {
 
         <WorkerStepRail current={current} stepStates={derived.steps} />
 
+        {mission && current !== next.id ? (
+          <p className="worker-next-banner">
+            <span className="muted">Next:</span>{" "}
+            <NavLink to={`/work/${missionId}/${next.id}`}>{next.label}</NavLink>
+            <span className="muted"> — {next.detail}</span>
+          </p>
+        ) : null}
+
         {mission ? (
           <TrustedPortfolioBar
             missionId={missionId}
@@ -71,6 +88,7 @@ export function WorkerLayout() {
             totalCategories={derived.totalCategories}
             alignQueue={derived.alignQueue}
             coverage={derived.coverage}
+            companyCount={companies.length}
           />
         ) : null}
       </header>

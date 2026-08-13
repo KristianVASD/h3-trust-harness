@@ -18,6 +18,7 @@ import { listReviews } from "../api-extra";
 import { useAuth } from "../auth/AuthContext";
 import { useCanInteract } from "../hooks/useCanInteract";
 import { countTrustedLists } from "../lib/worker";
+import { isNationalPack, missionMatchesPackTrade } from "../lib/packMatch";
 import { CompanyProfileTags } from "../components/CompanyProfileTags";
 import { StatusChip } from "../components/Badges";
 import "./Search.css";
@@ -132,18 +133,37 @@ function companyMatchesPlace(company: Company, place: string): boolean {
  * Non-matching companies are dropped so broad catalogue dumps don't drown locals.
  * If none match the place, keep the full ranked list (broad / catalogue browse).
  */
-function preferLocalCompanies<T extends { company: Company }>(
-  rows: T[],
+function companyInQueryPlace(
+  company: Company,
+  mission: Mission,
   place: string | undefined,
-): T[] {
+): boolean {
   const loc = place?.trim();
-  if (!loc || !rows.length) return rows;
-  const local = rows.filter((r) => companyMatchesPlace(r.company, loc));
-  return local.length ? local : rows;
+  if (!loc) return true;
+  if (companyMatchesPlace(company, loc)) return true;
+  const regionEmpty = !(company.region ?? "").trim() && !(company.address ?? "").trim();
+  if (regionEmpty) {
+    const cluster = placeCluster(mission.location);
+    const n = normalizeLabel(loc);
+    if (cluster.has(n) || [...cluster].some((p) => n.includes(p) || p.includes(n))) {
+      return true;
+    }
+  }
+  return false;
 }
 
-function missionSectorText(m: Mission): string {
-  return normalizeLabel(`${m.subsector} ${m.sector}`);
+function sourcesForQueryPlace(sources: Source[], place: string | undefined): Source[] {
+  const loc = place?.trim();
+  return sources.filter((s) => {
+    if (s.status !== "accepted" && s.status !== "adjusted") return false;
+    if (s.scope === "national") return true;
+    if (!loc) return true;
+    const region = normalizeLabel(s.region || "");
+    if (!region) return s.scope !== "local";
+    const cluster = placeCluster(loc);
+    if (cluster.has(region)) return true;
+    return [...cluster].some((p) => region.includes(p) || p.includes(region));
+  });
 }
 
 function aliasHit(hay: string, needle: string): boolean {
@@ -211,23 +231,8 @@ function parseQuery(raw: string, missions: Mission[]): ParsedQuery {
   return { sector, location, context };
 }
 
-function missionMatchesSector(m: Mission, sector: string): boolean {
-  return aliasHit(missionSectorText(m), sector);
-}
-
 function missionMatchesQuery(m: Mission, parsed: ParsedQuery): boolean {
-  const locOk = parsed.location
-    ? normalizeLabel(m.location) === normalizeLabel(parsed.location)
-    : true;
-  const countryOk = parsed.country
-    ? normalizeLabel(m.country ?? "") === normalizeLabel(parsed.country) ||
-      normalizeLabel(m.country ?? "").includes(normalizeLabel(parsed.country)) ||
-      normalizeLabel(parsed.country).includes(normalizeLabel(m.country ?? ""))
-    : true;
-  const secOk = parsed.sector
-    ? missionMatchesSector(m, parsed.sector)
-    : true;
-  return locOk && countryOk && secOk;
+  return missionMatchesPackTrade(m, parsed, aliasHit);
 }
 
 function companyMatchesSector(company: Company, sector: string): boolean {
@@ -246,37 +251,6 @@ type MissionBundle = {
   companies: Company[];
   reviews: Review[];
 };
-
-function rankMissionsForQuery(
-  bundles: MissionBundle[],
-  parsed: ParsedQuery,
-): MissionBundle[] {
-  return [...bundles].sort((a, b) => {
-    const aComps = a.companies.filter((c) => c.kvk_gate !== "fail").length;
-    const bComps = b.companies.filter((c) => c.kvk_gate !== "fail").length;
-    if (bComps !== aComps) return bComps - aComps;
-
-    const aTrusted = countTrustedLists(a.sources);
-    const bTrusted = countTrustedLists(b.sources);
-    if (bTrusted !== aTrusted) return bTrusted - aTrusted;
-
-    if (parsed.sector) {
-      const aExact = normalizeLabel(a.mission.subsector).includes(
-        normalizeLabel(parsed.sector),
-      )
-        ? 1
-        : 0;
-      const bExact = normalizeLabel(b.mission.subsector).includes(
-        normalizeLabel(parsed.sector),
-      )
-        ? 1
-        : 0;
-      if (bExact !== aExact) return bExact - aExact;
-    }
-
-    return b.mission.updatedAt.localeCompare(a.mission.updatedAt);
-  });
-}
 
 const SECTOR_DISPLAY: Record<string, string> = {
   painter: "Painters",
@@ -346,6 +320,7 @@ export function SingleSearchPage() {
   const [searchUnlimited, setSearchUnlimited] = useState(false);
 
   const [matchedMission, setMatchedMission] = useState<Mission | null>(null);
+  const [overlayNote, setOverlayNote] = useState<string | null>(null);
   const [ranked, setRanked] = useState<RankedCompany[]>([]);
   const [trustedCount, setTrustedCount] = useState(0);
 
@@ -470,6 +445,7 @@ export function SingleSearchPage() {
     setSearched(true);
     setDemandSaved(false);
     setMatchedMission(null);
+    setOverlayNote(null);
     setRanked([]);
     setTrustedCount(0);
     setParsedHint(null);
@@ -569,13 +545,13 @@ export function SingleSearchPage() {
         const available = missions
           .map(
             (m) =>
-              `${m.location}${m.country ? `, ${m.country}` : ""} · ${m.subsector.replace(/\s*\([^)]*\)\s*/g, "").trim()}`,
+              `${m.country} · ${m.subsector.replace(/\s*\([^)]*\)\s*/g, "").trim()}`,
           )
           .filter((v, i, arr) => arr.indexOf(v) === i);
         setNoMatchReason(
           available.length
-            ? `No finished companies for “${sectorPart}” in ${loc}${countryPart ? ` (${countryPart})` : ""} yet — a mission is open in Mission Control from this search. Catalogue also has: ${available.join("; ")}.`
-            : `A mission for ${loc}${countryPart ? ` (${countryPart})` : ""} · ${sectorPart} is now open in Mission Control. CURAD can fill sources next.`,
+            ? `No ${sectorPart} pack for ${countryPart || "this country"} yet. Catalogue has: ${available.join("; ")}. Onboard a national list from Mission Control.`
+            : `No sector pack for “${sectorPart}” yet. Onboard a national list from Mission Control — searches no longer open a mission per town.`,
         );
         await commitDemand("no_match");
         return;
@@ -592,25 +568,38 @@ export function SingleSearchPage() {
         }),
       );
 
-      const rankedMissions = rankMissionsForQuery(bundles, parsed);
-      const best = rankedMissions[0];
-      if (!best) {
-        setNoMatchReason(
-          `Mission opened for “${sectorPart}” in ${loc}. Fill it from Mission Control / Data Worker.`,
-        );
-        await commitDemand("no_match");
-        return;
+      const allSources = [
+        ...new Map(bundles.flatMap((b) => b.sources).map((s) => [s.id, s])).values(),
+      ];
+      const byName = new Map<string, { company: Company; mission: Mission }>();
+      for (const bundle of bundles) {
+        for (const company of bundle.companies) {
+          const key = company.name.trim().toLowerCase().replace(/\s+/g, " ");
+          const prev = byName.get(key);
+          if (!prev || (company.source_ids?.length ?? 0) > (prev.company.source_ids?.length ?? 0)) {
+            byName.set(key, { company, mission: bundle.mission });
+          }
+        }
       }
+      const merged = [...byName.values()];
 
-      matchedMissionId = best.mission.id;
-      setMatchedMission(best.mission);
-      setTrustedCount(countTrustedLists(best.sources));
+      const primary =
+        bundles.find((b) => isNationalPack(b.mission) && b.companies.length > 0)?.mission ??
+        bundles.find((b) => b.companies.length > 0)?.mission ??
+        bundles[0]!.mission;
+      matchedMissionId = primary.id;
+      setMatchedMission(primary);
+
+      const placeSources = sourcesForQueryPlace(allSources, parsed.location);
+      setTrustedCount(countTrustedLists(placeSources));
 
       const reviewMap = new Map<string, Review>();
-      for (const r of best.reviews) {
-        if (r.targetType !== "company") continue;
-        const prev = reviewMap.get(r.targetId);
-        if (!prev || r.createdAt > prev.createdAt) reviewMap.set(r.targetId, r);
+      for (const bundle of bundles) {
+        for (const r of bundle.reviews) {
+          if (r.targetType !== "company") continue;
+          const prev = reviewMap.get(r.targetId);
+          if (!prev || r.createdAt > prev.createdAt) reviewMap.set(r.targetId, r);
+        }
       }
 
       let planEntries: {
@@ -619,28 +608,46 @@ export function SingleSearchPage() {
       }[] = [];
       try {
         const plan = await api.getSearchPlan(
-          best.mission.search_plan_version || DEFAULT_SEARCH_PLAN_VERSION,
+          primary.search_plan_version || DEFAULT_SEARCH_PLAN_VERSION,
         );
         planEntries = plan.entries;
       } catch {
         /* coverage still works with empty plan */
       }
+      const packCompanies = merged.map((row) => row.company);
       const missionCov = computeMissionCoverage({
-        sources: best.sources,
-        companies: best.companies,
+        sources: placeSources,
+        companies: packCompanies,
         planEntries,
       });
 
-      let results: RankedCompany[] = best.companies
-        .filter((c) => c.kvk_gate !== "fail")
-        .filter((c) =>
-          parsed.sector ? companyMatchesSector(c, parsed.sector) : true,
+      const placed = merged.filter((row) =>
+        companyInQueryPlace(row.company, row.mission, parsed.location),
+      );
+      const localSources = placeSources.filter((s) => s.scope === "local" || s.scope === "regional");
+      if (placed.length && localSources.length === 0 && parsed.location) {
+        setOverlayNote(
+          `National pack hit for ${parsed.location} — no local overlay list yet. Demand is queued in Mission Control.`,
+        );
+      } else {
+        setOverlayNote(null);
+      }
+
+      let results: RankedCompany[] = placed
+        .filter((row) => row.company.kvk_gate !== "fail")
+        .filter((row) =>
+          parsed.sector
+            ? isNationalPack(row.mission) ||
+              companyMatchesSector(row.company, parsed.sector)
+            : true,
         )
-        .map((c) => {
-          const cov = computeListCoverage(c, best.sources);
+        .map((row) => {
+          const c = row.company;
+          const cov = computeListCoverage(c, placeSources);
           const human = reviewMap.get(c.id);
+          const localBoost = companyMatchesPlace(c, parsed.location ?? "") ? 8 : 0;
           const displayScore =
-            human?.humanScore != null ? human.humanScore : cov.score;
+            (human?.humanScore != null ? human.humanScore : cov.score) + localBoost;
           const coverageConfidence = computeResultCoverage(c, missionCov);
           return {
             company: c,
@@ -671,8 +678,6 @@ export function SingleSearchPage() {
         companyMatchesAudience(r.company, audience),
       );
 
-      results = preferLocalCompanies(results, parsed.location);
-
       setRanked(results.slice(0, 5));
 
       if (!results.length) {
@@ -684,12 +689,12 @@ export function SingleSearchPage() {
             : null;
         setNoMatchReason(
           audienceOnly
-            ? `Matched “${best.mission.location} · ${best.mission.subsector}” but no companies tagged for ${audienceOnly}. Try the other tick box, or both.`
-            : `Matched “${best.mission.location} · ${best.mission.subsector}” but it has no companies yet. Open the Data Worker to import or discover companies.`,
+            ? `Matched the ${primary.country} · ${primary.subsector} pack but no companies tagged for ${audienceOnly}. Try the other tick box, or both.`
+            : `Matched the ${primary.country} · ${primary.subsector} pack but no companies in ${loc}. Demand is queued for a local overlay — onboard a local list from Mission Control.`,
         );
-        await commitDemand("empty_companies", best.mission.id);
+        await commitDemand("empty_companies", primary.id);
       } else {
-        await commitDemand("hit", best.mission.id);
+        await commitDemand("hit", primary.id);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search failed");
@@ -1002,8 +1007,7 @@ export function SingleSearchPage() {
           {noMatchReason ? <p className="muted">{noMatchReason}</p> : null}
           {demandSaved ? (
             <p className="search-demand-saved" role="status">
-              Saved worldwide — a mission is open in Mission Control (no login
-              needed to record the need).
+              Saved worldwide — Mission Control queues overlay work. No mission is created per search.
             </p>
           ) : null}
           {parsedHint && (parsedHint.location || parsedHint.sector) ? (
@@ -1066,8 +1070,8 @@ export function SingleSearchPage() {
           </div>
           {!matchedMission ? (
             <p className="muted" style={{ marginTop: "0.85rem", fontSize: "0.85rem" }}>
-              Worldwide: Eindhoven, Michigan, Nairobi — same flow. National
-              catalogues can warm-start later; local lists stay as gaps to fill.
+              Base layer first: a national sector pack answers by town from
+              company region. Local lists are overlays. CARA locks weights later.
             </p>
           ) : null}
         </div>
@@ -1080,9 +1084,13 @@ export function SingleSearchPage() {
           <div className="search-mission-bar">
             <div>
               <h2>
-                {matchedMission.location} · {matchedMission.subsector}
+                {matchedMission.country} · {matchedMission.subsector}
+                {parsedHint?.location ? ` · ${parsedHint.location}` : ""}
               </h2>
-              <p className="muted">{matchedMission.goal}</p>
+              <p className="muted">
+                {matchedMission.goal}
+                {overlayNote ? ` ${overlayNote}` : ""}
+              </p>
             </div>
             <div className="row" style={{ gap: "0.35rem", flexWrap: "wrap" }}>
               <StatusChip

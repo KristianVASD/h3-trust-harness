@@ -46,7 +46,7 @@ export const WORKER_STEPS: {
   { id: "brief", label: "Brief", short: "1" },
   { id: "gaps", label: "Gaps", short: "2" },
   { id: "probe", label: "Probe", short: "3" },
-  { id: "align", label: "CURAD · Align", short: "4" },
+  { id: "align", label: "Align (optional)", short: "4" },
   { id: "extract", label: "Extract", short: "5" },
   { id: "profile", label: "Profile", short: "6" },
   { id: "coverage", label: "Coverage", short: "7" },
@@ -166,10 +166,7 @@ export function deriveWorkerStepState(args: {
     (unprobedCount > 0 ||
       candidateCount > 0 ||
       sources.some((s) => s.probeStatus === "probe-failed"));
-
-  const alignEnabled = loaded && alignQueue > 0;
-  const extractEnabled =
-    loaded && (guidedTrusted >= 1 || trustedCount >= 1);
+  const extractEnabled = loaded && sources.length > 0;
   const profileEnabled = loaded && companies.length > 0;
 
   const steps: WorkerStepState[] = [
@@ -198,9 +195,10 @@ export function deriveWorkerStepState(args: {
     },
     {
       id: "align",
-      enabled: alignEnabled || loaded,
-      todoLabel: alignQueue > 0 ? `${alignQueue} queue` : "clear",
-      settled: loaded && alignQueue === 0,
+      enabled: loaded,
+      todoLabel:
+        alignQueue > 0 ? `${alignQueue} queue · optional` : "optional",
+      settled: true,
     },
     {
       id: "extract",
@@ -220,11 +218,11 @@ export function deriveWorkerStepState(args: {
       enabled: profileEnabled,
       todoLabel:
         companies.length === 0
-          ? ""
+          ? "optional"
           : needsProfile > 0
-            ? `${needsProfile} thin`
+            ? `${needsProfile} thin · optional`
             : `${companies.length} co`,
-      settled: loaded && companies.length > 0 && needsProfile === 0,
+      settled: true,
     },
     {
       id: "coverage",
@@ -237,8 +235,8 @@ export function deriveWorkerStepState(args: {
     {
       id: "search",
       enabled: loaded,
-      todoLabel: coverage?.readyForSearch ? "ready" : "not ready",
-      settled: Boolean(coverage?.readyForSearch),
+      todoLabel: companies.length > 0 ? "ready" : "needs companies",
+      settled: loaded && companies.length > 0,
     },
   ];
 
@@ -259,6 +257,44 @@ export function deriveWorkerStepState(args: {
   };
 }
 
+export type WorkerNextAction = {
+  id: WorkerStepId;
+  label: string;
+  detail: string;
+};
+
+/** Production next click — Align / Profile / remaining gaps are not brakes. */
+export function nextWorkerAction(args: {
+  mission: Mission | null;
+  sources: Source[];
+  companies: Company[];
+  planEntries: SearchPlanEntry[];
+  catalogue?: Source[];
+}): WorkerNextAction {
+  if (!args.mission) {
+    return { id: "brief", label: "Open brief", detail: "Loading job…" };
+  }
+  if (args.sources.length === 0) {
+    return {
+      id: "gaps",
+      label: "Add a source list",
+      detail: "Warm-start the catalogue or onboard a CSV pack from Mission Control.",
+    };
+  }
+  if (args.companies.length === 0) {
+    return {
+      id: "extract",
+      label: "Import companies",
+      detail: "Paste or upload the source CSV. Align is optional.",
+    };
+  }
+  return {
+    id: "search",
+    label: "Preview search",
+    detail: `${args.companies.length} companies are searchable from this job.`,
+  };
+}
+
 /** First unsettled enabled worker step — used by Investigator “Open Data Worker” CTA. */
 export function nextIncompleteWorkerStep(args: {
   mission: Mission | null;
@@ -267,7 +303,5 @@ export function nextIncompleteWorkerStep(args: {
   planEntries: SearchPlanEntry[];
   catalogue?: Source[];
 }): WorkerStepId {
-  const { steps } = deriveWorkerStepState(args);
-  const next = steps.find((s) => s.enabled && !s.settled);
-  return next?.id ?? "brief";
+  return nextWorkerAction(args).id;
 }

@@ -79,6 +79,46 @@ export type SearchDemandAggregate = {
   matchedMissionId: string | null;
 };
 
+export type CoverageMissionRow = {
+  id: string;
+  location: string;
+  country: string;
+  sector: string;
+  subsector: string;
+  companyCount: number;
+  trustedCount: number;
+  nationalSourceCount: number;
+  localSourceCount: number;
+  nationalPack: boolean;
+  updatedAt: string;
+  origin?: Mission["origin"];
+};
+
+export type CoveragePackRow = {
+  key: string;
+  country: string;
+  sector: string;
+  subsector: string;
+  companyCount: number;
+  missionCount: number;
+  trustedCount: number;
+  nationalSourceCount: number;
+  localSourceCount: number;
+  searchable: boolean;
+  status: "searchable" | "needs_overlay" | "empty";
+  missions: CoverageMissionRow[];
+};
+
+export type PackOnboardResult = {
+  mission: Mission;
+  createdMission: boolean;
+  source: Source;
+  created: number;
+  updated: number;
+  skipped: number;
+  nationalPack: boolean;
+};
+
 export const api = {
   health: () =>
     request<{
@@ -204,6 +244,29 @@ export const api = {
       body: JSON.stringify(body),
     }),
   listMissions: () => request<Mission[]>("/missions"),
+  getCoverageDesk: () =>
+    request<{ packs: CoveragePackRow[]; missions: CoverageMissionRow[] }>(
+      "/control/coverage",
+    ),
+  onboardPack: (body: {
+    country: string;
+    sector: string;
+    subsector: string;
+    location?: string;
+    goal?: string;
+    source: {
+      name: string;
+      url?: string;
+      layer: "national" | "regional" | "local";
+      category: string;
+    };
+    listLabel?: string;
+    rows: Array<Record<string, string | undefined>>;
+  }) =>
+    request<PackOnboardResult>("/packs/onboard", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   getMission: (id: string) => request<Mission>(`/missions/${id}`),
   createMission: (mission: Mission) =>
     request<Mission>("/missions", {

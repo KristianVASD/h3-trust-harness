@@ -266,8 +266,17 @@ async function main(): Promise<void> {
     profileSourceUrl: "https://example.stub/painter",
   });
   if (!harvestPatch.profileSnippet) throw new Error("harvest missing profileSnippet");
-  if (harvest.harvest_confidence !== "medium") {
-    throw new Error(`expected medium confidence, got ${harvest.harvest_confidence}`);
+  if (harvest.harvest_confidence !== "low") {
+    throw new Error(`expected stub harvest confidence low, got ${harvest.harvest_confidence}`);
+  }
+  if (harvest.capabilities.length > 0 || harvest.serviceContexts.length > 0) {
+    throw new Error("stub harvest must not invent Can / For");
+  }
+  if (harvest.differentiators.length > 0) {
+    throw new Error("stub harvest must not invent Notable");
+  }
+  if (!harvest.profileSnippet.toUpperCase().includes("STUB")) {
+    throw new Error("stub harvest snippet must be labelled STUB");
   }
   if (!harvestPatch.profileSourceUrl) {
     throw new Error("harvest patch missing profileSourceUrl");

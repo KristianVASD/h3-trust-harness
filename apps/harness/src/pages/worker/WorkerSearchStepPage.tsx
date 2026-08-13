@@ -45,15 +45,19 @@ export function WorkerSearchStepPage() {
       <div className="worker-step-intro">
         <h2>Search</h2>
         <p className="hint">
-          Ranked answer from this mission&apos;s trusted lists. Full Single
-          Search lives on the global Search entrance.
+          Ranked answer from this job. Full Single Search reads the whole
+          country × sector pack, filtered by town.
         </p>
         <p>
           <span
-            className={`worker-ready-chip ${coverage.readyForSearch ? "ready" : "not-ready"}`}
-            title={coverage.readyReason}
+            className={`worker-ready-chip ${companies.length ? "ready" : "not-ready"}`}
+            title={
+              companies.length
+                ? "Companies in this job are searchable"
+                : "Import a list to search"
+            }
           >
-            {coverage.readyForSearch ? "ready for search" : "not ready"}
+            {companies.length ? "searchable" : "needs companies"}
           </span>
           <span className="muted">
             {" "}
@@ -62,10 +66,9 @@ export function WorkerSearchStepPage() {
         </p>
       </div>
 
-      {!coverage.readyForSearch ? (
+      {!companies.length ? (
         <div className="panel worker-thin-warning" style={{ marginBottom: "1rem" }}>
-          Soft gate: mission is not marked ready yet ({coverage.readyReason}).
-          You can still preview rankings and open Search.
+          Import a source CSV to rank companies. Align is optional.
         </div>
       ) : null}
 

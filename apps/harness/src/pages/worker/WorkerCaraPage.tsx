@@ -9,7 +9,7 @@ import { RichnessBar } from "../../components/worker/SourceProbeDetail";
 import { TrustedSourcesPackPanel } from "../../components/worker/TrustedSourcesPackPanel";
 import { useAuth } from "../../auth/AuthContext";
 import { useCanInteract } from "../../hooks/useCanInteract";
-import { TRUSTED_LIST_UNLOCK, countTrustedLists } from "../../lib/worker";
+import { countTrustedLists } from "../../lib/worker";
 
 const SCOPES: SourceScope[] = ["national", "regional", "local"];
 
@@ -263,10 +263,9 @@ export function WorkerCaraPage() {
         <h2>CURAD · Align</h2>
         <p className="hint">
           Mirror dual-labelling — Ω proposal on the left, your judgement on the
-          right. Agree keeps the proposal; Adjust tweaks weight, confidence,
-          scope, region; Dissent rejects with a preserved reason. Extract
-          unlocks at {TRUSTED_LIST_UNLOCK} trusted lists ({trustedCount} so
-          far).
+          right. Optional later: lock source weights for ranking. Extract does
+          not wait for this queue ({trustedCount} trusted list
+          {trustedCount === 1 ? "" : "s"} so far).
         </p>
       </div>
 
@@ -643,12 +642,12 @@ export function WorkerCaraPage() {
           ← Gaps
         </Link>
         <Link
-          className={`btn ${trustedCount >= TRUSTED_LIST_UNLOCK ? "" : "secondary"}`}
+          className="btn"
           to={`/work/${missionId}/extract`}
         >
-          {trustedCount >= TRUSTED_LIST_UNLOCK
+          {trustedCount > 0
             ? "Continue to Extract →"
-            : `Extract (${trustedCount}/${TRUSTED_LIST_UNLOCK}) →`}
+            : "Extract (optional Align) →"}
         </Link>
       </footer>
     </div>

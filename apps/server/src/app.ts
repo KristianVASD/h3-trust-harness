@@ -49,6 +49,12 @@ import {
   CompanyImportError,
   importCompaniesForMission,
 } from "./companies-import-route.js";
+import { buildCoverageDesk } from "./coverage-desk.js";
+import { isNationalPack } from "./pack-match.js";
+import {
+  PackOnboardError,
+  onboardCountrySectorPack,
+} from "./pack-onboard-route.js";
 import {
   SEARCH_COOKIE,
   SEARCH_LIMIT,
@@ -80,13 +86,6 @@ function normPlace(value: string): string {
     .trim();
 }
 
-function titleCaseTrade(value: string): string {
-  return value
-    .replace(/\([^)]*\)/g, "")
-    .trim()
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 function findMissionForDemand(
   missions: Mission[],
   input: {
@@ -108,18 +107,25 @@ function findMissionForDemand(
     const mLoc = normPlace(m.location);
     const mCountry = normPlace(m.country);
     const mSector = normPlace(`${m.subsector} ${m.sector}`);
-    let score = 0;
-    if (mLoc === loc || mLoc.includes(loc) || loc.includes(mLoc)) score += 2;
+    const tradeOk =
+      mSector.includes(what) || what.includes(normPlace(m.subsector));
+    if (!tradeOk) continue;
+    const countryOk =
+      !country ||
+      mCountry === country ||
+      mCountry.includes(country) ||
+      country.includes(mCountry);
+    if (!countryOk) continue;
+
+    let score = 2;
+    const locHit = mLoc === loc || mLoc.includes(loc) || loc.includes(mLoc);
+    if (locHit) score += 2;
+    else if (isNationalPack(m)) score += 1;
     else continue;
-    if (mSector.includes(what) || what.includes(normPlace(m.subsector))) {
-      score += 2;
-    } else continue;
-    if (country && (mCountry === country || mCountry.includes(country) || country.includes(mCountry))) {
-      score += 1;
-    }
+    if (country) score += 1;
     if (!best || score > best.score) best = { mission: m, score };
   }
-  return best && best.score >= 4 ? best.mission : null;
+  return best && best.score >= 3 ? best.mission : null;
 }
 
 async function ensureMissionFromSearchDemand(
@@ -131,7 +137,7 @@ async function ensureMissionFromSearchDemand(
     matched_mission_id: string | null;
   },
   options: { bumpDemand?: boolean } = {},
-): Promise<{ mission: Mission; created: boolean }> {
+): Promise<{ mission: Mission | null; created: boolean }> {
   const bumpDemand = options.bumpDemand !== false;
   const missions = await store.listMissions();
   const existing = findMissionForDemand(missions, input);
@@ -146,62 +152,12 @@ async function ensureMissionFromSearchDemand(
       demandCount,
       lastSearchedAt: now,
       updatedAt: now,
-      notes: `Search demand · ${demandCount}× · last ${now}`,
     };
     await store.upsertMission(updated);
     return { mission: updated, created: false };
   }
-
-  const subsector = titleCaseTrade(input.what);
-  const country = input.country?.trim() || "Unspecified";
-  const created: Mission = {
-    id: randomUUID(),
-    location: input.location.trim(),
-    country,
-    sector: "Home Maintenance",
-    subsector,
-    goal: `Find trustworthy ${subsector.toLowerCase()} in ${input.location.trim()}${country !== "Unspecified" ? ` (${country})` : ""} and validate source reliability.`,
-    notes: bumpDemand
-      ? `Search demand · 1× · last ${now}`
-      : `Search demand · opened · ${now}`,
-    search_plan_version: DEFAULT_SEARCH_PLAN_VERSION,
-    discoveryBrief: {
-      approach:
-        "Opened from worldwide Single Search demand. Warm-start reusable lists; fill local/sector gaps.",
-      candidateListTypes: [
-        "registry",
-        "local_business_association",
-        "branch_association",
-      ],
-      successCriteria:
-        "≥5 CARA-accepted/adjusted lists before company deep-check",
-      producer: "Human",
-      updatedAt: now,
-    },
-    phases: [
-      { key: "observation", status: "active" },
-      { key: "hypothesis", status: "waiting" },
-      { key: "evidence", status: "waiting" },
-      { key: "cara", status: "waiting" },
-      { key: "patterns", status: "waiting" },
-      { key: "companies", status: "waiting" },
-      { key: "deep_check", status: "waiting" },
-    ],
-    producer: "Human",
-    origin: "search_demand",
-    demandCount: bumpDemand ? 1 : 0,
-    lastSearchedAt: now,
-    createdAt: now,
-    updatedAt: now,
-    v: 1,
-  };
-  await store.upsertMission(created);
-  try {
-    await store.warmStartMissionSources(created.id, created.location);
-  } catch {
-    /* mission still created */
-  }
-  return { mission: created, created: true };
+  // Demand is a queue for local overlay — do not spawn a mission per search.
+  return { mission: null, created: false };
 }
 
 export type CreateAppOptions = {
@@ -623,6 +579,27 @@ export function createApp(options: CreateAppOptions) {
     // allow public search to list missions (search page needs it).
     const missions = await store.listMissions();
     return c.json(missions);
+  });
+
+  app.get("/api/control/coverage", async (c) => {
+    const desk = await buildCoverageDesk(store);
+    return c.json(desk);
+  });
+
+  app.post("/api/packs/onboard", async (c) => {
+    try {
+      const body = await c.req.json();
+      const result = await onboardCountrySectorPack(store, body);
+      return c.json(result, result.createdMission ? 201 : 200);
+    } catch (err) {
+      if (err instanceof PackOnboardError) {
+        return c.json({ error: err.message }, err.status as 400);
+      }
+      if (err instanceof CompanyImportError) {
+        return c.json({ error: err.message }, err.status as 400 | 404);
+      }
+      throw err;
+    }
   });
 
   app.get("/api/missions/:id", async (c) => {

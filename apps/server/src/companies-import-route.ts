@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Company } from "@h3-trust/schema";
+import type { Company, Producer } from "@h3-trust/schema";
 import type { Store } from "@h3-trust/store";
 
 export type CompanyImportRow = {
@@ -24,6 +24,17 @@ export type CompanyImportResult = {
 
 function normName(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** CSV `services` / specialism → Can chips. Never invents For / Notable. */
+export function servicesToCapabilities(specialism?: string): string[] {
+  if (!specialism) return [];
+  return uniqStrings(
+    specialism
+      .split(/[,;|/]/)
+      .map((part) => part.trim())
+      .filter(Boolean),
+  );
 }
 
 function uniqStrings(values: string[]): string[] {
@@ -78,9 +89,11 @@ export async function importCompaniesForMission(
     sourceId: string;
     listLabel: string;
     rows: CompanyImportRow[];
+    producer?: Producer;
   },
 ): Promise<CompanyImportResult> {
   const { missionId, sourceId, listLabel, rows } = args;
+  const producer: Producer = args.producer ?? "Human";
   const warnings: string[] = [];
 
   const mission = await store.get("missions", missionId);
@@ -136,6 +149,7 @@ export async function importCompaniesForMission(
     const key = normName(name);
     const website_url = normalizeWebsite(row.website_url);
     const specialism = (row.specialism ?? "").trim() || undefined;
+    const incomingCaps = servicesToCapabilities(specialism);
     const address = (row.address ?? "").trim();
     const region = (row.region ?? "").trim();
     const sector = (row.sector ?? "").trim() || specialism?.replace(/,/g, ";") || "";
@@ -158,6 +172,10 @@ export async function importCompaniesForMission(
         kvk_number: fillBlank(match.kvk_number, kvk_number),
         website_url: fillBlank(match.website_url, website_url),
         specialism: fillBlank(match.specialism, specialism),
+        capabilities:
+          (match.capabilities?.length ?? 0) > 0
+            ? match.capabilities
+            : incomingCaps,
         phone: fillBlank(match.phone, phone),
         email: fillBlank(match.email, email),
         updatedAt: now,
@@ -172,7 +190,7 @@ export async function importCompaniesForMission(
     const company: Company = {
       id: randomUUID(),
       missionId,
-      producer: "Human",
+      producer,
       name,
       address,
       region,
@@ -185,7 +203,7 @@ export async function importCompaniesForMission(
       list_membership: [label],
       blacklist_flags: [],
       status: "candidate",
-      capabilities: [],
+      capabilities: incomingCaps,
       serviceContexts: [],
       differentiators: [],
       servicedElementCodes: [],

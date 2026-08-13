@@ -1,13 +1,21 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { v4 as uuid } from "uuid";
-import { DEFAULT_SEARCH_PLAN_VERSION, type Mission } from "@h3-trust/schema";
-import { api, type SearchDemandAggregate } from "../api";
-import { ProducerBadge, StatusChip } from "../components/Badges";
+import {
+  DEFAULT_SEARCH_PLAN_VERSION,
+  SOURCE_CATEGORIES,
+  type Mission,
+  type SourceCategory,
+  type SourceScope,
+} from "@h3-trust/schema";
+import {
+  api,
+  type CoveragePackRow,
+  type SearchDemandAggregate,
+} from "../api";
+import { StatusChip } from "../components/Badges";
 import { useCanInteract } from "../hooks/useCanInteract";
-
-const MODE_KEY = "h3-harness-mode";
-type UiMode = "worker" | "investigator";
+import { parseCompanyImport } from "../lib/parseCompanyImport";
 
 const defaultPhases: Mission["phases"] = [
   { key: "observation", status: "active" },
@@ -18,16 +26,6 @@ const defaultPhases: Mission["phases"] = [
   { key: "companies", status: "waiting" },
   { key: "deep_check", status: "waiting" },
 ];
-
-function readMode(): UiMode {
-  try {
-    const v = localStorage.getItem(MODE_KEY);
-    if (v === "investigator" || v === "worker") return v;
-  } catch {
-    /* ignore */
-  }
-  return "worker";
-}
 
 function formatWhen(iso: string): string {
   try {
@@ -40,44 +38,58 @@ function formatWhen(iso: string): string {
   }
 }
 
+function packStatusLabel(status: CoveragePackRow["status"]): string {
+  if (status === "searchable") return "searchable";
+  if (status === "needs_overlay") return "needs overlay";
+  return "empty";
+}
+
+function workerPath(id: string): string {
+  return `/work/${id}/brief`;
+}
+
 export function MissionControl() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { canInteract, isPending, needsLogin } = useCanInteract();
-  const [mode, setMode] = useState<UiMode>(readMode);
   const [missions, setMissions] = useState<Mission[]>([]);
+  const [packs, setPacks] = useState<CoveragePackRow[]>([]);
   const [demands, setDemands] = useState<SearchDemandAggregate[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [onboarding, setOnboarding] = useState(false);
+  const [doneMsg, setDoneMsg] = useState<string | null>(null);
+
   const [form, setForm] = useState({
-    location: "Haarlemmermeer",
+    location: "",
     country: "Netherlands",
     sector: "Home Maintenance",
     subsector: "Painters",
-    goal: "Find trustworthy local painters and validate source reliability.",
-    notes: "",
+    sourceName: "Vakwerk+ Garantie",
+    sourceUrl: "https://www.vakwerkplusgarantie.nl",
+    sourceLayer: "national" as SourceScope,
+    sourceCategory: "quality_mark" as SourceCategory,
+    listLabel: "Vakwerk+",
+    csv: "",
   });
-
-  function switchMode(next: UiMode) {
-    setMode(next);
-    try {
-      localStorage.setItem(MODE_KEY, next);
-    } catch {
-      /* ignore */
-    }
-  }
+  const previewCount = useMemo(
+    () => parseCompanyImport(form.csv).length,
+    [form.csv],
+  );
 
   async function load() {
     try {
       setError(null);
-      const [missionList, demandFeed] = await Promise.all([
+      const [missionList, demandFeed, desk] = await Promise.all([
         api.listMissions(),
         api.listSearchDemands(300),
+        api.getCoverageDesk(),
       ]);
       setMissions(missionList);
       setDemands(demandFeed.aggregates);
+      setPacks(desk.packs);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load missions");
+      setError(err instanceof Error ? err.message : "Failed to load coverage");
     }
   }
 
@@ -95,55 +107,99 @@ export function MissionControl() {
       location: location?.trim() || f.location,
       country: country?.trim() || f.country,
       subsector: subsector?.trim() || f.subsector,
-      goal: `Find trustworthy ${(subsector || f.subsector).toLowerCase()} in ${location || f.location}${country ? ` (${country})` : ""} and validate source reliability.`,
-      notes: "Prefilled from worldwide search demand.",
+      sourceLayer: location?.trim() ? "local" : "national",
+      sourceCategory: location?.trim()
+        ? "local_business_association"
+        : "quality_mark",
     }));
   }, [searchParams]);
 
-  function missionPath(id: string) {
-    return mode === "worker" ? `/work/${id}/brief` : `/missions/${id}`;
-  }
-
   function applyDemand(d: SearchDemandAggregate) {
-    setForm({
+    setForm((f) => ({
+      ...f,
       location: d.location,
-      country: d.country || "Unspecified",
-      sector: "Home Maintenance",
+      country: d.country || f.country,
       subsector: d.what,
-      goal: `Find trustworthy ${d.what.toLowerCase()} in ${d.location}${d.country ? ` (${d.country})` : ""} and validate source reliability.`,
-      notes: `From search demand · ${d.count}× asked · last ${formatWhen(d.lastAt)}`,
-    });
-    document.getElementById("new-mission-form")?.scrollIntoView({
+      sourceLayer: "local",
+      sourceCategory: "local_business_association",
+      sourceName: `${d.location} local list`,
+      listLabel: `${d.location} overlay`,
+    }));
+    document.getElementById("onboard-pack-form")?.scrollIntoView({
       behavior: "smooth",
       block: "start",
     });
   }
 
-  async function onSubmit(e: FormEvent) {
+  async function onFile(file: File | null) {
+    if (!file) return;
+    const text = await file.text();
+    setForm((f) => ({ ...f, csv: text }));
+  }
+
+  async function onOnboard(e: FormEvent) {
     e.preventDefault();
     if (!canInteract) {
       setError(
         needsLogin
-          ? "Sign in as an approved CURAD volunteer to create missions."
+          ? "Sign in as an approved CURAD volunteer to onboard packs."
           : isPending
-            ? "Awaiting admin approval — you cannot create missions yet."
-            : "You cannot create missions with this account.",
+            ? "Awaiting admin approval — you cannot onboard yet."
+            : "You cannot onboard packs with this account.",
       );
       return;
     }
+    setOnboarding(true);
+    setError(null);
+    setDoneMsg(null);
+    try {
+      const rows = parseCompanyImport(form.csv);
+      const result = await api.onboardPack({
+        country: form.country,
+        sector: form.sector,
+        subsector: form.subsector,
+        location: form.location.trim() || form.country,
+        source: {
+          name: form.sourceName,
+          url: form.sourceUrl || undefined,
+          layer: form.sourceLayer,
+          category: form.sourceCategory,
+        },
+        listLabel: form.listLabel,
+        rows,
+      });
+      setDoneMsg(
+        `${result.createdMission ? "Created" : "Updated"} ${result.nationalPack ? "national pack" : "overlay"} · ${result.source.name} · +${result.created} companies (${result.updated} merged).`,
+      );
+      setForm((f) => ({ ...f, csv: "" }));
+      await load();
+      navigate(`/work/${result.mission.id}/extract`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Onboard failed");
+    } finally {
+      setOnboarding(false);
+    }
+  }
+
+  async function onCreateEmptyJob() {
+    if (!canInteract) return;
     setSaving(true);
+    setError(null);
     try {
       const now = new Date().toISOString();
+      const location = form.location.trim() || form.country;
       const mission: Mission = {
         id: uuid(),
-        ...form,
-        notes: form.notes || undefined,
+        location,
+        country: form.country,
+        sector: form.sector,
+        subsector: form.subsector,
+        goal: `Find trustworthy ${form.subsector.toLowerCase()} in ${location} (${form.country}).`,
         search_plan_version: DEFAULT_SEARCH_PLAN_VERSION,
         discoveryBrief: {
-          approach: "",
-          candidateListTypes: ["registry", "local_business_association"],
-          successCriteria:
-            "≥5 CARA-accepted/adjusted lists before company deep-check",
+          approach: "Base layer first, then overlay, then CARA.",
+          candidateListTypes: [form.sourceCategory],
+          successCriteria: "Companies searchable; Align optional.",
           producer: "Human",
           updatedAt: now,
         },
@@ -154,11 +210,10 @@ export function MissionControl() {
         v: 1,
       };
       await api.createMission(mission);
-      setForm((f) => ({ ...f, notes: "" }));
       await load();
-      navigate(missionPath(mission.id));
+      navigate(workerPath(mission.id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create mission");
+      setError(err instanceof Error ? err.message : "Failed to create job");
     } finally {
       setSaving(false);
     }
@@ -181,282 +236,375 @@ export function MissionControl() {
     }
   }
 
-  const isWorker = mode === "worker";
   const demandList = [...demands].sort((a, b) => {
     if (b.count !== a.count) return b.count - a.count;
     return b.lastAt.localeCompare(a.lastAt);
   });
 
-  function demandCountForMission(m: Mission): number {
-    const fromAgg = demands.find((d) => {
-      if (d.matchedMissionId && d.matchedMissionId === m.id) return true;
-      const samePlace =
-        d.location.trim().toLowerCase() === m.location.trim().toLowerCase();
-      const sameCountry =
-        (d.country || "").trim().toLowerCase() ===
-        (m.country || "").trim().toLowerCase();
-      const trade = m.subsector.replace(/\s*\([^)]*\)\s*/g, "").trim();
-      const want = d.what.trim().toLowerCase();
-      const sameTrade =
-        trade.toLowerCase() === want || trade.toLowerCase().includes(want);
-      return samePlace && sameCountry && sameTrade;
-    });
-    return fromAgg?.count ?? m.demandCount ?? 0;
-  }
+  const coverageById = useMemo(() => {
+    const map = new Map<
+      string,
+      CoveragePackRow["missions"][number]
+    >();
+    for (const pack of packs) {
+      for (const m of pack.missions) map.set(m.id, m);
+    }
+    return map;
+  }, [packs]);
 
   const sortedMissions = [...missions].sort((a, b) => {
-    const ad = demandCountForMission(a);
-    const bd = demandCountForMission(b);
-    if (bd !== ad) return bd - ad;
-    const al = a.lastSearchedAt ?? a.updatedAt;
-    const bl = b.lastSearchedAt ?? b.updatedAt;
-    return bl.localeCompare(al);
+    const ac = coverageById.get(a.id)?.companyCount ?? 0;
+    const bc = coverageById.get(b.id)?.companyCount ?? 0;
+    if (bc !== ac) return bc - ac;
+    return b.updatedAt.localeCompare(a.updatedAt);
   });
 
   return (
     <div>
-      <div className="mode-toggle" role="group" aria-label="UI mode">
-        <button
-          type="button"
-          className={`mode-toggle-btn ${isWorker ? "active" : ""}`}
-          onClick={() => switchMode("worker")}
-        >
-          Data Worker
-        </button>
-        <button
-          type="button"
-          className={`mode-toggle-btn ${!isWorker ? "active" : ""}`}
-          onClick={() => switchMode("investigator")}
-        >
-          Investigator
-        </button>
-        <Link className="mode-toggle-btn" to="/search">
-          Search
-        </Link>
-      </div>
-
       <p className="thesis">
-        {isWorker ? (
-          <>
-            <strong>Data Worker.</strong> Brief → Gaps → Probe → Align → Extract →
-            Profile → Coverage → Search — a straight production path. Notebook and
-            reviews stay on Investigation.
-          </>
-        ) : (
-          <>
-            <strong>The Harness never decides.</strong> It structures investigations,
-            preserves evidence, captures human reasoning, and accumulates validated
-            knowledge. You are the investigator today — OmegaClaw can be one tomorrow.
-          </>
-        )}
+        <strong>Coverage desk.</strong> National sector packs feed Single
+        Search. Local lists are overlays. CARA locks weights later — it is not
+        the onboarding brake.
       </p>
 
       {error ? <div className="error">{error}</div> : null}
+      {doneMsg ? (
+        <div className="thesis" style={{ borderColor: "var(--teal)" }}>
+          {doneMsg}
+        </div>
+      ) : null}
 
-      <section className="panel demand-panel" aria-labelledby="demand-heading">
-        <h2 id="demand-heading">Worldwide search demand</h2>
+      <section className="panel" aria-labelledby="coverage-heading">
+        <h2 id="coverage-heading">Coverage</h2>
         <p className="hint">
-          Each Single Search counts once and opens or bumps a mission —
-          including anonymous visitors. No login required to record the need.
+          Country × sector packs. Searchable means companies are already in the
+          catalogue — overlay is optional local evidence.
         </p>
-        {demandList.length === 0 ? (
+        {packs.length === 0 ? (
           <div className="empty">
-            No search demand yet. As soon as someone searches worldwide, it
-            appears here and under Jobs.
+            No packs yet. Onboard a national list below (e.g. NL Painters +
+            Vakwerk+ CSV).
           </div>
         ) : (
-          <div className="demand-list">
-            {demandList.slice(0, 40).map((d) => {
-              const misses =
-                (d.outcomes.no_match ?? 0) +
-                (d.outcomes.empty_companies ?? 0) +
-                (d.outcomes.quota_blocked ?? 0);
-              const hits = d.outcomes.hit ?? 0;
-              return (
-                <article key={d.key} className="demand-card">
-                  <div className="demand-card-main">
-                    <h3>
-                      {d.location}
-                      {d.country ? `, ${d.country}` : ""} · {d.what}
-                    </h3>
-                    <p className="muted">
-                      {d.count}× asked · last {formatWhen(d.lastAt)}
-                      {misses ? ` · ${misses} unmet/blocked` : ""}
-                      {hits ? ` · ${hits} catalogue hits` : ""}
-                    </p>
-                  </div>
-                  <div className="row demand-card-actions">
-                    {d.matchedMissionId ? (
-                      <Link
-                        className="btn secondary small"
-                        to={missionPath(d.matchedMissionId)}
-                      >
-                        Open mission
-                      </Link>
-                    ) : null}
-                    <button
-                      type="button"
-                      className="btn small"
-                      onClick={() => applyDemand(d)}
+          <div className="coverage-pack-list">
+            {packs.map((pack) => (
+              <article key={pack.key} className="coverage-pack-card">
+                <div className="demand-card-main">
+                  <h3>
+                    {pack.country} · {pack.subsector}
+                  </h3>
+                  <p className="muted">
+                    {pack.companyCount} companies · {pack.missionCount} job
+                    {pack.missionCount === 1 ? "" : "s"} ·{" "}
+                    {pack.nationalSourceCount} national / {pack.localSourceCount}{" "}
+                    local lists
+                  </p>
+                </div>
+                <StatusChip
+                  label={packStatusLabel(pack.status)}
+                  tone={
+                    pack.status === "searchable"
+                      ? "done"
+                      : pack.status === "needs_overlay"
+                        ? "active"
+                        : "waiting"
+                  }
+                />
+                <div className="row" style={{ marginTop: "0.65rem", flexWrap: "wrap" }}>
+                  {pack.missions.map((m) => (
+                    <Link
+                      key={m.id}
+                      className="btn secondary small"
+                      to={workerPath(m.id)}
                     >
-                      Prefill new job
-                    </button>
-                  </div>
-                </article>
-              );
-            })}
+                      {m.nationalPack ? "National" : m.location} · {m.companyCount}
+                    </Link>
+                  ))}
+                </div>
+              </article>
+            ))}
           </div>
         )}
       </section>
 
-      <div className="grid-missions">
+      <section
+        className="panel"
+        id="onboard-pack-form"
+        style={{ marginTop: "1.25rem" }}
+      >
+        <h2>Onboard pack</h2>
+        <p className="hint">
+          Add a country + sector list in one sitting. Leave location empty (or
+          equal to country) for the national base layer. Fill location for a
+          local overlay. The source is accepted as an imported dataset — Align
+          later.
+        </p>
+        <form className="form-stack" onSubmit={(e) => void onOnboard(e)}>
+          <div className="split-2">
+            <label>
+              Country
+              <input
+                value={form.country}
+                onChange={(e) => setForm({ ...form, country: e.target.value })}
+                required
+              />
+            </label>
+            <label>
+              Location (optional overlay)
+              <input
+                value={form.location}
+                onChange={(e) => setForm({ ...form, location: e.target.value })}
+                placeholder="Empty = national pack"
+              />
+            </label>
+          </div>
+          <div className="split-2">
+            <label>
+              Sector
+              <input
+                value={form.sector}
+                onChange={(e) => setForm({ ...form, sector: e.target.value })}
+                required
+              />
+            </label>
+            <label>
+              Subsector
+              <input
+                value={form.subsector}
+                onChange={(e) => setForm({ ...form, subsector: e.target.value })}
+                required
+              />
+            </label>
+          </div>
+          <div className="split-2">
+            <label>
+              Source name
+              <input
+                value={form.sourceName}
+                onChange={(e) =>
+                  setForm({ ...form, sourceName: e.target.value })
+                }
+                required
+              />
+            </label>
+            <label>
+              Source URL
+              <input
+                value={form.sourceUrl}
+                onChange={(e) =>
+                  setForm({ ...form, sourceUrl: e.target.value })
+                }
+                placeholder="https://…"
+              />
+            </label>
+          </div>
+          <div className="split-2">
+            <label>
+              Layer
+              <select
+                value={form.sourceLayer}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    sourceLayer: e.target.value as SourceScope,
+                  })
+                }
+              >
+                <option value="national">national</option>
+                <option value="regional">regional</option>
+                <option value="local">local</option>
+              </select>
+            </label>
+            <label>
+              Category
+              <select
+                value={form.sourceCategory}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    sourceCategory: e.target.value as SourceCategory,
+                  })
+                }
+              >
+                {SOURCE_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <label>
+            List membership label
+            <input
+              value={form.listLabel}
+              onChange={(e) => setForm({ ...form, listLabel: e.target.value })}
+              required
+            />
+          </label>
+          <label>
+            Paste list / CSV
+            <textarea
+              value={form.csv}
+              onChange={(e) => setForm({ ...form, csv: e.target.value })}
+              placeholder='title,address,postal_code,city,website,services,tel,mailto'
+              style={{ minHeight: "7rem" }}
+            />
+          </label>
+          <label>
+            Or upload .csv / .txt
+            <input
+              type="file"
+              accept=".csv,.txt,text/csv,text/plain"
+              onChange={(e) => void onFile(e.target.files?.[0] ?? null)}
+            />
+          </label>
+          <p className="muted">Preview: {previewCount} companies</p>
+          <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+            <button
+              className="btn"
+              type="submit"
+              disabled={onboarding || !canInteract}
+            >
+              {onboarding
+                ? "Onboarding…"
+                : !canInteract
+                  ? "Approved CURAD only"
+                  : previewCount
+                    ? `Onboard pack · ${previewCount} companies`
+                    : "Onboard source (no CSV yet)"}
+            </button>
+            <button
+              className="btn secondary"
+              type="button"
+              disabled={saving || !canInteract}
+              onClick={() => void onCreateEmptyJob()}
+            >
+              {saving ? "Creating…" : "Empty job only"}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <div className="grid-missions" style={{ marginTop: "1.25rem" }}>
         <section className="panel">
-          <h2>{isWorker ? "Jobs" : "Missions"}</h2>
+          <h2>Jobs</h2>
           <p className="hint">
-            {isWorker
-              ? "Jobs include missions opened from worldwide search demand (sorted by demand)."
-              : "Open an investigation notebook. Production runs in Data Worker."}
+            Production state — companies and trusted lists — not investigation
+            phases. Opens Data Worker.
           </p>
           {sortedMissions.length === 0 ? (
-            <div className="empty">
-              {isWorker
-                ? "No jobs yet. Start one from demand above or the form."
-                : "No missions yet. Create one to begin."}
-            </div>
+            <div className="empty">No jobs yet. Onboard a pack above.</div>
           ) : (
             sortedMissions.map((m) => {
-              const asks = demandCountForMission(m);
+              const stats = coverageById.get(m.id);
               return (
-              <div key={m.id} className="mission-card" style={{ position: "relative" }}>
-                <Link to={missionPath(m.id)} style={{ display: "block" }}>
-                  <h3>
-                    {m.location} · {m.subsector}
-                  </h3>
-                  <p className="muted">{m.goal}</p>
-                  <div className="mission-meta">
-                    <ProducerBadge producer={m.producer} />
-                    <StatusChip label={m.country} />
-                    <StatusChip label={m.sector} />
-                    {m.origin === "search_demand" ? (
-                      <StatusChip label="from search" tone="active" />
-                    ) : null}
-                    {asks > 0 ? (
+                <div
+                  key={m.id}
+                  className="mission-card"
+                  style={{ position: "relative" }}
+                >
+                  <Link to={workerPath(m.id)} style={{ display: "block" }}>
+                    <h3>
+                      {m.location} · {m.subsector}
+                    </h3>
+                    <p className="muted">{m.goal}</p>
+                    <div className="mission-meta">
+                      <StatusChip label={m.country} />
                       <StatusChip
-                        label={`${asks}× demand`}
-                        tone="active"
+                        label={`${stats?.companyCount ?? 0} companies`}
+                        tone={
+                          (stats?.companyCount ?? 0) > 0 ? "done" : "waiting"
+                        }
                       />
-                    ) : null}
-                    {m.phases
-                      .filter((p) => p.status === "active")
-                      .map((p) => (
-                        <StatusChip key={p.key} label={p.key} tone="active" />
-                      ))}
-                  </div>
-                </Link>
-                <div className="row" style={{ marginTop: "0.75rem" }}>
-                  <Link className="btn small" to={missionPath(m.id)}>
-                    {isWorker ? "Open job" : "Open"}
+                      <StatusChip
+                        label={`${stats?.trustedCount ?? 0} lists`}
+                      />
+                      {stats?.nationalPack ? (
+                        <StatusChip label="national pack" tone="active" />
+                      ) : null}
+                    </div>
                   </Link>
-                  {isWorker ? (
+                  <div className="row" style={{ marginTop: "0.75rem" }}>
+                    <Link className="btn small" to={workerPath(m.id)}>
+                      Open job
+                    </Link>
                     <Link
                       className="btn secondary small"
                       to={`/missions/${m.id}`}
                     >
-                      ← Investigation
+                      Investigation
                     </Link>
-                  ) : (
-                    <Link
-                      className="btn small"
-                      to={`/work/${m.id}/brief`}
+                    <button
+                      type="button"
+                      className="btn danger small"
+                      onClick={() =>
+                        void onDelete(m.id, `${m.location} · ${m.subsector}`)
+                      }
                     >
-                      ⚡ Data Worker
-                    </Link>
-                  )}
-                  <button
-                    type="button"
-                    className="btn danger small"
-                    onClick={() =>
-                      void onDelete(m.id, `${m.location} · ${m.subsector}`)
-                    }
-                  >
-                    Delete
-                  </button>
+                      Delete
+                    </button>
+                  </div>
                 </div>
-              </div>
               );
             })
           )}
         </section>
 
-        <section className="panel" id="new-mission-form">
-          <h2>{isWorker ? "New data job" : "New mission"}</h2>
+        <section className="panel demand-panel" aria-labelledby="demand-heading">
+          <h2 id="demand-heading">Unmet search demand</h2>
           <p className="hint">
-            {isWorker
-              ? "Prefill from worldwide demand, or start Painters · Haarlemmermeer defaults."
-              : "Mission Control — start research, not a chat."}
+            Priority queue for local overlay — searches no longer spawn a
+            mission per town.
           </p>
-          <form className="form-stack" onSubmit={onSubmit}>
-            <div className="split-2">
-              <label>
-                Location
-                <input
-                  value={form.location}
-                  onChange={(e) => setForm({ ...form, location: e.target.value })}
-                  required
-                />
-              </label>
-              <label>
-                Country
-                <input
-                  value={form.country}
-                  onChange={(e) => setForm({ ...form, country: e.target.value })}
-                  required
-                />
-              </label>
+          {demandList.length === 0 ? (
+            <div className="empty">
+              No search demand yet. Worldwide searches appear here when a place
+              still needs a local list.
             </div>
-            <div className="split-2">
-              <label>
-                Sector
-                <input
-                  value={form.sector}
-                  onChange={(e) => setForm({ ...form, sector: e.target.value })}
-                  required
-                />
-              </label>
-              <label>
-                Subsector
-                <input
-                  value={form.subsector}
-                  onChange={(e) => setForm({ ...form, subsector: e.target.value })}
-                  required
-                />
-              </label>
+          ) : (
+            <div className="demand-list">
+              {demandList.slice(0, 40).map((d) => {
+                const misses =
+                  (d.outcomes.no_match ?? 0) +
+                  (d.outcomes.empty_companies ?? 0) +
+                  (d.outcomes.quota_blocked ?? 0);
+                const hits = d.outcomes.hit ?? 0;
+                return (
+                  <article key={d.key} className="demand-card">
+                    <div className="demand-card-main">
+                      <h3>
+                        {d.location}
+                        {d.country ? `, ${d.country}` : ""} · {d.what}
+                      </h3>
+                      <p className="muted">
+                        {d.count}× asked · last {formatWhen(d.lastAt)}
+                        {misses ? ` · ${misses} unmet/blocked` : ""}
+                        {hits ? ` · ${hits} catalogue hits` : ""}
+                      </p>
+                    </div>
+                    <div className="row demand-card-actions">
+                      {d.matchedMissionId ? (
+                        <Link
+                          className="btn secondary small"
+                          to={workerPath(d.matchedMissionId)}
+                        >
+                          Open job
+                        </Link>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="btn small"
+                        onClick={() => applyDemand(d)}
+                      >
+                        Prefill overlay
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
-            <label>
-              Mission goal
-              <textarea
-                value={form.goal}
-                onChange={(e) => setForm({ ...form, goal: e.target.value })}
-                required
-              />
-            </label>
-            <label>
-              Notes (optional)
-              <textarea
-                value={form.notes}
-                onChange={(e) => setForm({ ...form, notes: e.target.value })}
-              />
-            </label>
-            <button className="btn" type="submit" disabled={saving || !canInteract}>
-              {saving
-                ? "Creating…"
-                : !canInteract
-                  ? "Approved CURAD only"
-                  : isWorker
-                    ? "Start data job"
-                    : "Start investigation"}
-            </button>
-          </form>
+          )}
         </section>
       </div>
     </div>

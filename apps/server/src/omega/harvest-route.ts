@@ -73,9 +73,19 @@ export async function runHarvestForCompany(
       existingSpecialism: company.specialism,
       existingElementCodes: company.servicedElementCodes,
     });
+    // Stub (and any empty harvest) must not wipe list-imported Can / For / Notable.
     const updated = await store.upsert("companies", {
       ...company,
       ...patch,
+      capabilities: patch.capabilities.length
+        ? patch.capabilities
+        : company.capabilities,
+      serviceContexts: patch.serviceContexts.length
+        ? patch.serviceContexts
+        : company.serviceContexts,
+      differentiators: patch.differentiators.length
+        ? patch.differentiators
+        : company.differentiators,
     });
 
     return {

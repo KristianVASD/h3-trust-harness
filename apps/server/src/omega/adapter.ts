@@ -581,13 +581,9 @@ function stubExtract(input: ExtractInput): ExtractOutput {
 }
 
 function stubHarvest(input: HarvestInput): HarvestOutput {
-  const allowed =
-    input.service_contexts_allowed.length > 0
-      ? input.service_contexts_allowed
-      : (["private", "hoa"] as const);
   const hasUrl = Boolean(input.website_url?.trim());
 
-  // No website → minimal name-only profile, low confidence — not an error.
+  // Stub Ω must not invent Can / For / Notable. Real harvest waits for live OC.
   if (!hasUrl) {
     return mirrorStamp({
       producer: "OmegaClaw",
@@ -596,10 +592,10 @@ function stubHarvest(input: HarvestInput): HarvestOutput {
       capabilities: [],
       serviceContexts: [],
       differentiators: [],
-      profileSnippet: `${input.name} — no website on file; profile is name-only.`,
+      profileSnippet: `STUB harvest — ${input.name} has no website on file. List-imported Can/For left unchanged.`,
       harvest_confidence: "low",
       webpageTrustProbe: {
-        notes: "v2: traditional webpage trust probe not wired",
+        notes: "STUB: no website read; traditional webpage trust probe not wired",
       },
     });
   }
@@ -608,13 +604,13 @@ function stubHarvest(input: HarvestInput): HarvestOutput {
     producer: "OmegaClaw",
     missionId: input.missionId,
     companyId: input.companyId,
-    capabilities: ["interior painting", "exterior painting"],
-    serviceContexts: [...allowed].slice(0, 2),
-    differentiators: ["stub local presence", "colour advice"],
-    profileSnippet: `Stub harvest for ${input.name} (${input.website_url}). Residential painters in ${input.missionId.slice(0, 8)}.`,
-    harvest_confidence: "medium",
+    capabilities: [],
+    serviceContexts: [],
+    differentiators: [],
+    profileSnippet: `STUB harvest — no website was read for ${input.name} (${input.website_url}). List-imported Can/For left unchanged. Live OmegaClaw harvest is not wired yet.`,
+    harvest_confidence: "low",
     webpageTrustProbe: {
-      notes: "v2: traditional webpage trust probe not wired",
+      notes: "STUB: URL on file but not fetched; traditional webpage trust probe not wired",
     },
   });
 }
