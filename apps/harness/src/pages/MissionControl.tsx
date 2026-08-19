@@ -15,6 +15,7 @@ import {
 } from "../api";
 import { StatusChip } from "../components/Badges";
 import { useCanInteract } from "../hooks/useCanInteract";
+import { importCompanyRowsInChunks } from "../lib/importCompanyRows";
 import { parseCompanyImport } from "../lib/parseCompanyImport";
 
 const defaultPhases: Mission["phases"] = [
@@ -58,6 +59,10 @@ export function MissionControl() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [onboarding, setOnboarding] = useState(false);
+  const [importProgress, setImportProgress] = useState<{
+    completed: number;
+    total: number;
+  } | null>(null);
   const [doneMsg, setDoneMsg] = useState<string | null>(null);
 
   const [form, setForm] = useState({
@@ -152,9 +157,13 @@ export function MissionControl() {
     setOnboarding(true);
     setError(null);
     setDoneMsg(null);
+    const rows = parseCompanyImport(form.csv);
+    setImportProgress(
+      rows.length ? { completed: 0, total: rows.length } : null,
+    );
+    let completed = 0;
     try {
-      const rows = parseCompanyImport(form.csv);
-      const result = await api.onboardPack({
+      const setup = await api.onboardPack({
         country: form.country,
         sector: form.sector,
         subsector: form.subsector,
@@ -166,16 +175,34 @@ export function MissionControl() {
           category: form.sourceCategory,
         },
         listLabel: form.listLabel,
-        rows,
+        rows: [],
       });
+      const imported = rows.length
+        ? await importCompanyRowsInChunks({
+            missionId: setup.mission.id,
+            sourceId: setup.source.id,
+            listLabel: form.listLabel,
+            rows,
+            producer: "ImportedDataset",
+            onProgress: (next, total) => {
+              completed = next;
+              setImportProgress({ completed: next, total });
+            },
+          })
+        : { created: 0, updated: 0, skipped: 0 };
       setDoneMsg(
-        `${result.createdMission ? "Created" : "Updated"} ${result.nationalPack ? "national pack" : "overlay"} · ${result.source.name} · +${result.created} companies (${result.updated} merged).`,
+        `${setup.createdMission ? "Created" : "Updated"} ${setup.nationalPack ? "national pack" : "overlay"} · ${setup.source.name} · +${imported.created} companies (${imported.updated} merged). Re-running the same file is safe.`,
       );
       setForm((f) => ({ ...f, csv: "" }));
+      setImportProgress(null);
       await load();
-      navigate(`/work/${result.mission.id}/extract`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Onboard failed");
+      const detail = err instanceof Error ? err.message : "Onboard failed";
+      setError(
+        rows.length
+          ? `Import stopped after ${completed}/${rows.length} rows. Keep this tab and click Resume — names already in merge, they are not duplicated. ${detail}`
+          : detail,
+      );
     } finally {
       setOnboarding(false);
     }
@@ -459,7 +486,41 @@ export function MissionControl() {
               onChange={(e) => void onFile(e.target.files?.[0] ?? null)}
             />
           </label>
-          <p className="muted">Preview: {previewCount} companies</p>
+            <p className="muted">
+              Preview: {previewCount} companies
+              {previewCount > 40
+                ? " · large lists import in batches of 20. Keep this tab open. Re-run is safe."
+                : ""}
+            </p>
+            {importProgress ? (
+              <div className="worker-result-confidence" style={{ margin: "0.35rem 0 0.75rem" }}>
+                <span className="muted" style={{ fontSize: "0.78rem" }}>
+                  Importing {importProgress.completed}/{importProgress.total}
+                </span>
+                <div
+                  className="worker-result-confidence-bar"
+                  role="progressbar"
+                  aria-valuenow={importProgress.completed}
+                  aria-valuemin={0}
+                  aria-valuemax={importProgress.total}
+                  aria-label={`Importing ${importProgress.completed} of ${importProgress.total}`}
+                >
+                  <div
+                    className="worker-result-confidence-fill"
+                    style={{
+                      width: `${
+                        importProgress.total
+                          ? Math.round(
+                              (importProgress.completed / importProgress.total) *
+                                100,
+                            )
+                          : 0
+                      }%`,
+                    }}
+                  />
+                </div>
+              </div>
+            ) : null}
           <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
             <button
               className="btn"
@@ -467,9 +528,13 @@ export function MissionControl() {
               disabled={onboarding || !canInteract}
             >
               {onboarding
-                ? "Onboarding…"
+                ? importProgress
+                  ? `Importing ${importProgress.completed}/${importProgress.total}…`
+                  : "Starting pack…"
                 : !canInteract
                   ? "Approved CURAD only"
+                  : importProgress && importProgress.completed < importProgress.total
+                    ? `Resume · ${importProgress.completed}/${importProgress.total} already in`
                   : previewCount
                     ? `Onboard pack · ${previewCount} companies`
                     : "Onboard source (no CSV yet)"}
@@ -477,7 +542,7 @@ export function MissionControl() {
             <button
               className="btn secondary"
               type="button"
-              disabled={saving || !canInteract}
+              disabled={saving || onboarding || !canInteract}
               onClick={() => void onCreateEmptyJob()}
             >
               {saving ? "Creating…" : "Empty job only"}

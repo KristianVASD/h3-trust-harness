@@ -416,6 +416,7 @@ export const api = {
         phone?: string;
         email?: string;
       }>;
+      producer?: "Human" | "ImportedDataset";
     },
   ) =>
     request<{

@@ -778,11 +778,14 @@ export function createApp(options: CreateAppOptions) {
       if (!rows) {
         return c.json({ error: "rows[] is required" }, 400);
       }
+      const producer =
+        body?.producer === "ImportedDataset" ? "ImportedDataset" : "Human";
       const result = await importCompaniesForMission(store, {
         missionId,
         sourceId,
         listLabel: listLabel || "Member list",
         rows,
+        producer,
       });
       return c.json(result, 201);
     } catch (err) {

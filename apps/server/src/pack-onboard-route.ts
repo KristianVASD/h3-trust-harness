@@ -144,41 +144,55 @@ export async function onboardCountrySectorPack(
     createdMission = true;
   }
 
-  const sourceId = randomUUID();
   const layer = input.source.layer;
-  const source = await store.createSourceInMission(mission.id, {
-    id: sourceId,
-    producer: "ImportedDataset",
-    createdAt: now,
-    updatedAt: now,
-    v: 1,
-    first_seen_mission: mission.id,
-    reused_in_missions: [],
-    name: input.source.name.trim(),
-    type: categoryToType(input.source.category),
-    category: input.source.category,
-    scope: layer,
-    region: layer === "national" ? "" : location,
-    url: input.source.url?.trim() || undefined,
-    listUrl: input.source.url?.trim() || undefined,
-    reason: "Bulk pack onboard — accepted as imported dataset; CARA may adjust later.",
-    suggestedWeight: defaultWeight(input.source.category, layer),
-    suggestedConfidence: defaultWeight(input.source.category, layer),
-    signalIds: [],
-    evidenceIds: [],
-    status: "accepted",
-    notes: "ImportedDataset — Align later to lock trust weight.",
-    sourceFields: [],
-    probeStatus: "unprobed",
-  });
+  const sourceName = input.source.name.trim();
+  const existingSources = (await store.listByMission(
+    "sources",
+    mission.id,
+  )) as Source[];
+  let source = existingSources.find(
+    (s) => s.name.trim().toLowerCase() === sourceName.toLowerCase(),
+  );
 
-  const importResult = await importCompaniesForMission(store, {
-    missionId: mission.id,
-    sourceId: source.id,
-    listLabel: input.listLabel?.trim() || source.name,
-    rows: input.rows ?? [],
-    producer: "ImportedDataset",
-  });
+  if (!source) {
+    source = await store.createSourceInMission(mission.id, {
+      id: randomUUID(),
+      producer: "ImportedDataset",
+      createdAt: now,
+      updatedAt: now,
+      v: 1,
+      first_seen_mission: mission.id,
+      reused_in_missions: [],
+      name: sourceName,
+      type: categoryToType(input.source.category),
+      category: input.source.category,
+      scope: layer,
+      region: layer === "national" ? "" : location,
+      url: input.source.url?.trim() || undefined,
+      listUrl: input.source.url?.trim() || undefined,
+      reason: "Bulk pack onboard — accepted as imported dataset; CARA may adjust later.",
+      suggestedWeight: defaultWeight(input.source.category, layer),
+      suggestedConfidence: defaultWeight(input.source.category, layer),
+      signalIds: [],
+      evidenceIds: [],
+      status: "accepted",
+      notes: "ImportedDataset — Align later to lock trust weight.",
+      sourceFields: [],
+      probeStatus: "unprobed",
+    });
+  }
+
+  const rows = input.rows ?? [];
+  const importResult =
+    rows.length === 0
+      ? { created: 0, updated: 0, skipped: 0 }
+      : await importCompaniesForMission(store, {
+          missionId: mission.id,
+          sourceId: source.id,
+          listLabel: input.listLabel?.trim() || source.name,
+          rows,
+          producer: "ImportedDataset",
+        });
 
   return {
     mission,

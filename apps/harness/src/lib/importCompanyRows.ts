@@ -18,6 +18,7 @@ export async function importCompanyRowsInChunks(args: {
   sourceId: string;
   listLabel: string;
   rows: ParsedCompanyRow[];
+  producer?: "Human" | "ImportedDataset";
   onProgress?: (completed: number, total: number) => void;
 }): Promise<ChunkedCompanyImportResult> {
   const totals: ChunkedCompanyImportResult = {
@@ -40,6 +41,7 @@ export async function importCompanyRowsInChunks(args: {
           sourceId: args.sourceId,
           listLabel: args.listLabel,
           rows,
+          producer: args.producer,
         });
         break;
       } catch (error) {
