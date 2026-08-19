@@ -31,7 +31,8 @@ export function servicesToCapabilities(specialism?: string): string[] {
   if (!specialism) return [];
   return uniqStrings(
     specialism
-      .split(/[,;|/]/)
+      // Do not split on `/` — BRL codes are `BRL6000-25/1A`.
+      .split(/[,;|]/)
       .map((part) => part.trim())
       .filter(Boolean),
   );
@@ -172,10 +173,7 @@ export async function importCompaniesForMission(
         kvk_number: fillBlank(match.kvk_number, kvk_number),
         website_url: fillBlank(match.website_url, website_url),
         specialism: fillBlank(match.specialism, specialism),
-        capabilities:
-          (match.capabilities?.length ?? 0) > 0
-            ? match.capabilities
-            : incomingCaps,
+        capabilities: incomingCaps.length ? incomingCaps : match.capabilities,
         phone: fillBlank(match.phone, phone),
         email: fillBlank(match.email, email),
         updatedAt: now,

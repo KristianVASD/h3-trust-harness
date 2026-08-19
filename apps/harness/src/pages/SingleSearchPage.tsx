@@ -134,7 +134,8 @@ function placeCluster(place: string): Set<string> {
   const n = normalizeLabel(place);
   const set = new Set<string>([n]);
   for (const cluster of PLACE_CLUSTERS) {
-    if (cluster.some((p) => n.includes(p) || p.includes(n))) {
+    // Exact town only — "lisse" must not pull in "lisserbroek".
+    if (cluster.includes(n)) {
       for (const p of cluster) set.add(p);
     }
   }
@@ -145,14 +146,26 @@ function companyPlaceText(company: Company): string {
   return normalizeLabel(`${company.region} ${company.address}`);
 }
 
+/** Whole-token match so "lisse" does not hit "lisserbroek" or "Zwanenburg". */
+function hayHasPlace(hay: string, place: string): boolean {
+  const needle = normalizeLabel(place);
+  if (!needle || !hay) return false;
+  if (hay === needle) return true;
+  return ` ${hay} `.includes(` ${needle} `);
+}
+
 function companyMatchesPlace(company: Company, place: string): boolean {
   const hay = companyPlaceText(company);
   if (!hay) return false;
   const cluster = placeCluster(place);
   for (const token of cluster) {
-    if (token && hay.includes(token)) return true;
+    if (token && hayHasPlace(hay, token)) return true;
   }
   return false;
+}
+
+function companyExactPlace(company: Company, place: string): boolean {
+  return hayHasPlace(companyPlaceText(company), place);
 }
 
 /**
@@ -172,9 +185,7 @@ function companyInQueryPlace(
   if (regionEmpty) {
     const cluster = placeCluster(mission.location);
     const n = normalizeLabel(loc);
-    if (cluster.has(n) || [...cluster].some((p) => n.includes(p) || p.includes(n))) {
-      return true;
-    }
+    if (cluster.has(n)) return true;
   }
   return false;
 }
@@ -183,13 +194,13 @@ function sourcesForQueryPlace(sources: Source[], place: string | undefined): Sou
   const loc = place?.trim();
   return sources.filter((s) => {
     if (s.status !== "accepted" && s.status !== "adjusted") return false;
-    if (s.scope === "national") return true;
+    if (s.scope === "national" || s.scope === "regional") return true;
     if (!loc) return true;
     const region = normalizeLabel(s.region || "");
     if (!region) return s.scope !== "local";
     const cluster = placeCluster(loc);
     if (cluster.has(region)) return true;
-    return [...cluster].some((p) => region.includes(p) || p.includes(region));
+    return [...cluster].some((p) => hayHasPlace(region, p));
   });
 }
 
@@ -673,7 +684,11 @@ export function SingleSearchPage() {
           const c = row.company;
           const cov = computeListCoverage(c, placeSources);
           const human = reviewMap.get(c.id);
-          const localBoost = companyMatchesPlace(c, parsed.location ?? "") ? 8 : 0;
+          const localBoost = companyExactPlace(c, parsed.location ?? "")
+            ? 12
+            : companyMatchesPlace(c, parsed.location ?? "")
+              ? 8
+              : 0;
           const displayScore =
             (human?.humanScore != null ? human.humanScore : cov.score) + localBoost;
           const coverageConfidence = computeResultCoverage(c, missionCov);
