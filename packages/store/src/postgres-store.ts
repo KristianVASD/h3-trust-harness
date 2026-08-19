@@ -29,6 +29,9 @@ type EntityRow = {
   v: number;
 };
 
+/** PostgREST returns at most 1000 rows unless we page. */
+const ENTITY_PAGE_SIZE = 1000;
+
 export type PostgresStoreOptions = {
   url: string;
   serviceRoleKey: string;
@@ -43,6 +46,34 @@ export class PostgresStore implements Store {
     });
   }
 
+  private async fetchPayloads(
+    collection: string,
+    missionId?: string,
+  ): Promise<unknown[]> {
+    const payloads: unknown[] = [];
+    for (let offset = 0; ; offset += ENTITY_PAGE_SIZE) {
+      let query = this.db
+        .from("entities")
+        .select("payload")
+        .eq("collection", collection)
+        .order("id", { ascending: true })
+        .range(offset, offset + ENTITY_PAGE_SIZE - 1);
+      if (missionId) {
+        query = query.eq("mission_id", missionId);
+      }
+      const { data, error } = await query;
+      if (error) {
+        throw new Error(
+          `entities list ${collection}${missionId ? `/${missionId}` : ""}: ${error.message}`,
+        );
+      }
+      const page = data ?? [];
+      for (const row of page) payloads.push(row.payload);
+      if (page.length < ENTITY_PAGE_SIZE) break;
+    }
+    return payloads;
+  }
+
   /** Expose client for auth/admin helpers on the server. */
   get client(): SupabaseClient {
     return this.db;
@@ -51,14 +82,10 @@ export class PostgresStore implements Store {
   private async readAll<K extends CollectionName>(
     collection: K,
   ): Promise<EntityMap[K][]> {
-    const { data, error } = await this.db
-      .from("entities")
-      .select("payload")
-      .eq("collection", collection);
-    if (error) throw new Error(`entities list ${collection}: ${error.message}`);
+    const payloads = await this.fetchPayloads(collection);
     const items: EntityMap[K][] = [];
-    for (const row of data ?? []) {
-      const parsed = entitySchemas[collection].parse(row.payload);
+    for (const payload of payloads) {
+      const parsed = entitySchemas[collection].parse(payload);
       items.push(parsed as EntityMap[K]);
     }
     return items;
@@ -86,34 +113,27 @@ export class PostgresStore implements Store {
       return (await this.listSourcesForMission(missionId)) as EntityMap[K][];
     }
 
-    const { data, error } = await this.db
-      .from("entities")
-      .select("payload")
-      .eq("collection", collection)
-      .eq("mission_id", missionId);
-    if (error) {
-      // Fallback if mission_id column missing on older rows: filter in memory
+    try {
+      const payloads = await this.fetchPayloads(collection, missionId);
+      if (payloads.length === 0) {
+        const all = await this.readAll(collection);
+        const filtered = all.filter((item) => missionKey(item) === missionId);
+        if (filtered.length > 0) {
+          return sortByUpdatedDesc(filtered) as EntityMap[K][];
+        }
+      }
+      const items: EntityMap[K][] = [];
+      for (const payload of payloads) {
+        const parsed = entitySchemas[collection].parse(payload);
+        items.push(parsed as EntityMap[K]);
+      }
+      return sortByUpdatedDesc(items) as EntityMap[K][];
+    } catch {
       const all = await this.readAll(collection);
       return sortByUpdatedDesc(
         all.filter((item) => missionKey(item) === missionId),
       ) as EntityMap[K][];
     }
-
-    if (!data || data.length === 0) {
-      // Also catch rows where mission_id was null but payload has missionId
-      const all = await this.readAll(collection);
-      const filtered = all.filter((item) => missionKey(item) === missionId);
-      if (filtered.length > 0) {
-        return sortByUpdatedDesc(filtered) as EntityMap[K][];
-      }
-    }
-
-    const items: EntityMap[K][] = [];
-    for (const row of data ?? []) {
-      const parsed = entitySchemas[collection].parse(row.payload);
-      items.push(parsed as EntityMap[K]);
-    }
-    return sortByUpdatedDesc(items) as EntityMap[K][];
   }
 
   private async listSourcesForMission(missionId: string): Promise<Source[]> {
