@@ -117,6 +117,10 @@ export type PackOnboardResult = {
   updated: number;
   skipped: number;
   nationalPack: boolean;
+  mixed?: boolean;
+  createdUnknown?: number;
+  clusterHits?: number;
+  directoryMissionId?: string;
 };
 
 export const api = {
@@ -262,6 +266,9 @@ export const api = {
     };
     listLabel?: string;
     rows: Array<Record<string, string | undefined>>;
+    mixed?: boolean;
+    suggestedWeight?: number;
+    defaultAudience?: string;
   }) =>
     request<PackOnboardResult>("/packs/onboard", {
       method: "POST",
@@ -293,7 +300,7 @@ export const api = {
   importOmegaJson: (
     missionId: string,
     body: {
-      job: "discover" | "probe" | "extract" | "harvest";
+      job: "discover" | "probe" | "extract" | "harvest" | "classify";
       payload: unknown;
     },
   ) =>
@@ -417,6 +424,9 @@ export const api = {
         email?: string;
       }>;
       producer?: "Human" | "ImportedDataset";
+      mixed?: boolean;
+      place?: string;
+      defaultAudience?: string;
     },
   ) =>
     request<{
@@ -425,10 +435,39 @@ export const api = {
       skipped: number;
       companies: Company[];
       warnings: string[];
+      createdUnknown?: number;
+      clusterHits?: number;
+      mixed?: boolean;
     }>(`/missions/${missionId}/companies/import`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  listDirectoryCompanies: (country: string, sourceId?: string) => {
+    const params = new URLSearchParams({ country });
+    if (sourceId) params.set("sourceId", sourceId);
+    return request<{
+      mission: Mission | null;
+      companies: Company[];
+      unknown: number;
+      potentials: number;
+    }>(`/directory/companies?${params}`);
+  },
+  promoteDirectoryCompany: (
+    companyId: string,
+    body: { country: string; subsector: string; reviewer?: string; reason?: string },
+  ) =>
+    request<{ company: Company; mission: Mission }>(
+      `/directory/companies/${companyId}/promote`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  exportHhhLeads: (country?: string, subsector?: string) => {
+    const params = new URLSearchParams();
+    if (country) params.set("country", country);
+    if (subsector) params.set("subsector", subsector);
+    return request<{ count: number; leads: unknown[] }>(
+      `/export/hhh-leads?${params}`,
+    );
+  },
   listLinkableSources: (excludeMissionId: string, q = "") => {
     const params = new URLSearchParams({
       excludeMission: excludeMissionId,

@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { api } from "../../api";
 
-export type OmegaImportJob = "discover" | "probe" | "extract" | "harvest";
+export type OmegaImportJob = "discover" | "probe" | "extract" | "harvest" | "classify";
 
 type Props = {
   missionId: string;
@@ -18,6 +18,7 @@ const JOB_LABEL: Record<OmegaImportJob, string> = {
   probe: "Job 2 · Probe",
   extract: "Job 3 · Extract companies",
   harvest: "Job 4 · Harvest profiles",
+  classify: "Job 6 · Classify bijvangst",
 };
 
 export function OmegaJsonImportPanel({
@@ -184,6 +185,14 @@ function previewPayload(job: OmegaImportJob, raw: string): string | null {
       if (Array.isArray(parsed)) return `${parsed.length} profile(s)`;
       if (Array.isArray(p.profiles)) return `${p.profiles.length} profile(s)`;
       return "1 harvest object";
+    }
+    if (job === "classify") {
+      const list = Array.isArray(p.verdicts)
+        ? p.verdicts
+        : Array.isArray(parsed)
+          ? parsed
+          : null;
+      return list ? `${list.length} verdict(s)` : null;
     }
     return "JSON object";
   } catch {

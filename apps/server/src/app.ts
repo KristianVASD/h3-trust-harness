@@ -16,8 +16,12 @@ import {
   type Mission,
   type Producer,
   type SearchPlan,
+  type ServiceContext,
   type Source,
   type UiAudience,
+  defaultAudienceForCategory,
+  isLocalDirectoryMission,
+  isMixedSourceCategory,
 } from "@h3-trust/schema";
 import type { Store } from "@h3-trust/store";
 import {
@@ -49,12 +53,18 @@ import {
   CompanyImportError,
   importCompaniesForMission,
 } from "./companies-import-route.js";
+import { exportHhhHighTrustLeads } from "./hhh-export.js";
 import { buildCoverageDesk } from "./coverage-desk.js";
-import { isNationalPack } from "./pack-match.js";
+import { countriesMatch, isNationalPack } from "./pack-match.js";
 import {
   PackOnboardError,
   onboardCountrySectorPack,
 } from "./pack-onboard-route.js";
+import {
+  importNicheForPack,
+  importStackedMixedList,
+  promoteUnknownToSectorPack,
+} from "./stacked-import.js";
 import {
   SEARCH_COOKIE,
   SEARCH_LIMIT,
@@ -602,6 +612,67 @@ export function createApp(options: CreateAppOptions) {
     }
   });
 
+  app.get("/api/export/hhh-leads", async (c) => {
+    const country = c.req.query("country") ?? undefined;
+    const subsector = c.req.query("subsector") ?? undefined;
+    const result = await exportHhhHighTrustLeads(store, { country, subsector });
+    return c.json(result);
+  });
+
+  app.get("/api/directory/companies", async (c) => {
+    const country = (c.req.query("country") ?? "").trim();
+    if (!country) return c.json({ error: "country is required" }, 400);
+    const sourceId = (c.req.query("sourceId") ?? "").trim();
+    const missions = await store.listMissions();
+    const mission = missions.find(
+      (m) =>
+        isLocalDirectoryMission(m) &&
+        countriesMatch(m, country) &&
+        isNationalPack(m),
+    );
+    if (!mission) {
+      return c.json({
+        mission: null,
+        companies: [],
+        unknown: 0,
+        potentials: 0,
+      });
+    }
+    const companies = (
+      await store.listByMission("companies", mission.id)
+    ).filter((co) => {
+      if (sourceId && !(co.source_ids ?? []).includes(sourceId)) return false;
+      return true;
+    });
+    return c.json({
+      mission,
+      companies,
+      unknown: companies.filter((co) => co.status === "unknown").length,
+      potentials: companies.filter(
+        (co) => co.status === "unknown" && co.classify?.verdict === "home_service",
+      ).length,
+    });
+  });
+
+  app.post("/api/directory/companies/:companyId/promote", async (c) => {
+    try {
+      const body = await c.req.json().catch(() => ({}));
+      const result = await promoteUnknownToSectorPack(store, {
+        companyId: c.req.param("companyId"),
+        country: String(body.country ?? ""),
+        subsector: String(body.subsector ?? ""),
+        reviewer: String(body.reviewer ?? "Human"),
+        reason: typeof body.reason === "string" ? body.reason : undefined,
+      });
+      return c.json(result);
+    } catch (err) {
+      if (err instanceof CompanyImportError) {
+        return c.json({ error: err.message }, err.status as 400 | 404);
+      }
+      throw err;
+    }
+  });
+
   app.get("/api/missions/:id", async (c) => {
     const mission = await store.getMission(c.req.param("id"));
     if (!mission) return c.json({ error: "Not found" }, 404);
@@ -780,14 +851,86 @@ export function createApp(options: CreateAppOptions) {
       }
       const producer =
         body?.producer === "ImportedDataset" ? "ImportedDataset" : "Human";
-      const result = await importCompaniesForMission(store, {
-        missionId,
-        sourceId,
-        listLabel: listLabel || "Member list",
-        rows,
-        producer,
-      });
-      return c.json(result, 201);
+      const mission = await store.getMission(missionId);
+      if (!mission) return c.json({ error: "Mission not found" }, 404);
+      const source = await store.get("sources", sourceId);
+      const mixed =
+        body?.mixed === true ||
+        (source ? isMixedSourceCategory(source.category) : false);
+      const audienceRaw =
+        typeof body?.defaultAudience === "string"
+          ? body.defaultAudience
+          : source
+            ? defaultAudienceForCategory(source.category)
+            : undefined;
+      const serviceContexts = audienceRaw
+        ? [audienceRaw as ServiceContext]
+        : undefined;
+      const place =
+        typeof body?.place === "string" ? body.place.trim() : undefined;
+
+      if (mixed) {
+        const stacked = await importStackedMixedList(store, {
+          country: mission.country,
+          sourceId,
+          listLabel: listLabel || "Member list",
+          rows,
+          producer,
+          place,
+          serviceContexts,
+        });
+        return c.json(
+          {
+            created: stacked.createdUnknown,
+            updated: stacked.matched,
+            skipped: stacked.skipped,
+            createdUnknown: stacked.createdUnknown,
+            clusterHits: stacked.clusterHits,
+            mixed: true,
+            warnings: stacked.warnings,
+            companies: [],
+          },
+          201,
+        );
+      }
+
+      const result = isLocalDirectoryMission(mission)
+        ? await importCompaniesForMission(store, {
+            missionId,
+            sourceId,
+            listLabel: listLabel || "Member list",
+            rows,
+            producer,
+            status: "unknown",
+            serviceContexts,
+          })
+        : await importNicheForPack(store, {
+            missionId,
+            country: mission.country,
+            sourceId,
+            listLabel: listLabel || "Member list",
+            rows,
+            producer,
+            place,
+            serviceContexts,
+          });
+      return c.json(
+        {
+          created: "created" in result ? result.created ?? 0 : 0,
+          updated:
+            "updated" in result
+              ? result.updated ?? 0
+              : "matched" in result
+                ? result.matched
+                : 0,
+          skipped: result.skipped,
+          clusterHits: "clusterHits" in result ? result.clusterHits : 0,
+          mixed: false,
+          warnings: result.warnings,
+          companies: "companies" in result ? result.companies : [],
+        },
+        201,
+      );
     } catch (err) {
       if (err instanceof CompanyImportError) {
         return c.json({ error: err.message }, err.status as 400 | 404);

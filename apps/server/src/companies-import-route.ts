@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
-import type { Company, Producer } from "@h3-trust/schema";
+import {
+  buildCompanyIndexes,
+  findCompanyMatchIndex,
+  type Company,
+  type Producer,
+  type ServiceContext,
+} from "@h3-trust/schema";
 import type { Store } from "@h3-trust/store";
 
 export type CompanyImportRow = {
@@ -22,16 +28,11 @@ export type CompanyImportResult = {
   warnings: string[];
 };
 
-function normName(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
 /** CSV `services` / specialism → Can chips. Never invents For / Notable. */
 export function servicesToCapabilities(specialism?: string): string[] {
   if (!specialism) return [];
   return uniqStrings(
     specialism
-      // Do not split on `/` — BRL codes are `BRL6000-25/1A`.
       .split(/[,;|]/)
       .map((part) => part.trim())
       .filter(Boolean),
@@ -78,10 +79,52 @@ function normalizeEmail(raw: string | undefined): string | undefined {
   return value || undefined;
 }
 
+function mergeCompany(
+  match: Company,
+  args: {
+    sourceId: string;
+    label: string;
+    address: string;
+    region: string;
+    sector: string;
+    kvk_number?: string;
+    website_url?: string;
+    specialism?: string;
+    incomingCaps: string[];
+    phone?: string;
+    email?: string;
+    serviceContexts?: ServiceContext[];
+    now: string;
+  },
+): Company {
+  const nextContexts =
+    (match.serviceContexts ?? []).length > 0
+      ? match.serviceContexts
+      : args.serviceContexts ?? match.serviceContexts;
+  return {
+    ...match,
+    source_ids: uniqStrings([...(match.source_ids ?? []), args.sourceId]),
+    list_membership: uniqStrings([
+      ...(match.list_membership ?? []),
+      args.label,
+    ]),
+    address: fillBlank(match.address, args.address) ?? match.address ?? "",
+    region: fillBlank(match.region, args.region) ?? match.region ?? "",
+    sector: fillBlank(match.sector, args.sector) ?? match.sector ?? "",
+    kvk_number: fillBlank(match.kvk_number, args.kvk_number),
+    website_url: fillBlank(match.website_url, args.website_url),
+    specialism: fillBlank(match.specialism, args.specialism),
+    capabilities: args.incomingCaps.length ? args.incomingCaps : match.capabilities,
+    phone: fillBlank(match.phone, args.phone),
+    email: fillBlank(match.email, args.email),
+    serviceContexts: nextContexts ?? [],
+    updatedAt: args.now,
+  };
+}
+
 /**
- * Batch-create / merge Human company candidates for a trusted source list.
- * Dedupes by normalized name within the mission: unions source_ids + list_membership,
- * fills blank fields only (does not overwrite populated values).
+ * Batch-create / merge company candidates for a trusted source list.
+ * Waterfall dedup: KvK (8 digits) → email/website domain → name + 4-digit postcode.
  */
 export async function importCompaniesForMission(
   store: Store,
@@ -91,6 +134,10 @@ export async function importCompaniesForMission(
     listLabel: string;
     rows: CompanyImportRow[];
     producer?: Producer;
+    /** Skip rows that do not match an existing company (niche match-only). */
+    matchOnly?: boolean;
+    status?: Company["status"];
+    serviceContexts?: ServiceContext[];
   },
 ): Promise<CompanyImportResult> {
   const { missionId, sourceId, listLabel, rows } = args;
@@ -128,11 +175,8 @@ export async function importCompaniesForMission(
     "companies",
     missionId,
   )) as Company[];
-  const byName = new Map<string, Company>();
-  for (const company of existing) {
-    const key = normName(company.name);
-    if (!byName.has(key)) byName.set(key, company);
-  }
+  const companies = [...existing];
+  let indexes = buildCompanyIndexes(companies);
 
   let created = 0;
   let updated = 0;
@@ -147,7 +191,6 @@ export async function importCompaniesForMission(
       skipped += 1;
       continue;
     }
-    const key = normName(name);
     const website_url = normalizeWebsite(row.website_url);
     const specialism = (row.specialism ?? "").trim() || undefined;
     const incomingCaps = servicesToCapabilities(specialism);
@@ -158,30 +201,38 @@ export async function importCompaniesForMission(
     const phone = normalizePhone(row.phone);
     const email = normalizeEmail(row.email);
 
-    const match = byName.get(key);
+    const matchIndex = findCompanyMatchIndex(
+      { name, kvk_number, website_url, email, address, region },
+      indexes,
+    );
+    const match = matchIndex != null ? companies[matchIndex] : undefined;
+
     if (match) {
-      const next: Company = {
-        ...match,
-        source_ids: uniqStrings([...(match.source_ids ?? []), sourceId]),
-        list_membership: uniqStrings([
-          ...(match.list_membership ?? []),
-          label,
-        ]),
-        address: fillBlank(match.address, address) ?? match.address ?? "",
-        region: fillBlank(match.region, region) ?? match.region ?? "",
-        sector: fillBlank(match.sector, sector) ?? match.sector ?? "",
-        kvk_number: fillBlank(match.kvk_number, kvk_number),
-        website_url: fillBlank(match.website_url, website_url),
-        specialism: fillBlank(match.specialism, specialism),
-        capabilities: incomingCaps.length ? incomingCaps : match.capabilities,
-        phone: fillBlank(match.phone, phone),
-        email: fillBlank(match.email, email),
-        updatedAt: now,
-      };
+      const next = mergeCompany(match, {
+        sourceId,
+        label,
+        address,
+        region,
+        sector,
+        kvk_number,
+        website_url,
+        specialism,
+        incomingCaps,
+        phone,
+        email,
+        serviceContexts: args.serviceContexts,
+        now,
+      });
       const saved = (await store.upsert("companies", next)) as Company;
-      byName.set(key, saved);
+      companies[matchIndex!] = saved;
+      indexes = buildCompanyIndexes(companies);
       touched.push(saved);
       updated += 1;
+      continue;
+    }
+
+    if (args.matchOnly) {
+      skipped += 1;
       continue;
     }
 
@@ -200,9 +251,9 @@ export async function importCompaniesForMission(
       source_ids: [sourceId],
       list_membership: [label],
       blacklist_flags: [],
-      status: "candidate",
+      status: args.status ?? "candidate",
       capabilities: incomingCaps,
-      serviceContexts: [],
+      serviceContexts: args.serviceContexts ?? [],
       differentiators: [],
       servicedElementCodes: [],
       website_url,
@@ -213,7 +264,8 @@ export async function importCompaniesForMission(
       v: 1,
     };
     const saved = (await store.upsert("companies", company)) as Company;
-    byName.set(key, saved);
+    companies.push(saved);
+    indexes = buildCompanyIndexes(companies);
     touched.push(saved);
     created += 1;
   }
@@ -224,6 +276,8 @@ export async function importCompaniesForMission(
 
   return { created, updated, skipped, companies: touched, warnings };
 }
+
+export { mergeCompany };
 
 export class CompanyImportError extends Error {
   status: number;

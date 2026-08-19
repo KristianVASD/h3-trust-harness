@@ -19,6 +19,9 @@ export async function importCompanyRowsInChunks(args: {
   listLabel: string;
   rows: ParsedCompanyRow[];
   producer?: "Human" | "ImportedDataset";
+  mixed?: boolean;
+  place?: string;
+  defaultAudience?: string;
   onProgress?: (completed: number, total: number) => void;
 }): Promise<ChunkedCompanyImportResult> {
   const totals: ChunkedCompanyImportResult = {
@@ -42,6 +45,9 @@ export async function importCompanyRowsInChunks(args: {
           listLabel: args.listLabel,
           rows,
           producer: args.producer,
+          mixed: args.mixed,
+          place: args.place,
+          defaultAudience: args.defaultAudience,
         });
         break;
       } catch (error) {

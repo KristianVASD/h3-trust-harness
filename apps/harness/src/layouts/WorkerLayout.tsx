@@ -10,7 +10,7 @@ import {
 } from "../lib/worker";
 
 /**
- * Data Worker shell — Brief → Gaps → Probe → Align → Extract → Profile → Coverage → Search.
+ * Data Worker shell — Brief → Gaps → Probe → Align → Extract → Classify → Profile → Coverage → Search.
  * Investigator UI stays on /missions/:id/*.
  */
 export function WorkerLayout() {

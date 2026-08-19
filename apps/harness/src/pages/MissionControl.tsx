@@ -4,6 +4,10 @@ import { v4 as uuid } from "uuid";
 import {
   DEFAULT_SEARCH_PLAN_VERSION,
   SOURCE_CATEGORIES,
+  countClusterHits,
+  defaultAudienceForCategory,
+  defaultWeightForList,
+  isMixedSourceCategory,
   type Mission,
   type SourceCategory,
   type SourceScope,
@@ -41,12 +45,46 @@ function formatWhen(iso: string): string {
 
 function packStatusLabel(status: CoveragePackRow["status"]): string {
   if (status === "searchable") return "searchable";
-  if (status === "needs_overlay") return "needs overlay";
+  if (status === "needs_overlay") return "needs local list";
   return "empty";
 }
 
 function workerPath(id: string): string {
   return `/work/${id}/brief`;
+}
+
+function SourceWeighPrompt({ csv }: { csv: string }) {
+  const sample = csv
+    .split(/\r?\n/)
+    .filter((l) => l.trim())
+    .slice(0, 6)
+    .join("\n");
+  const text = `I am importing this list into H3 Trust Harness. Here are sample CSV rows:
+
+${sample || "(paste CSV first)"}
+
+1. Sector purity: niche (100% one trade) or mixed (KvK / ondernemersvereniging / sportclub)?
+2. Service context default: B2C/private, B2B/commercial, VvE/hoa, or unknown?
+3. Trust weight (0–100): how exclusive? (Vakwerk+ ≈ 90, football-club sponsor ≈ 40)
+4. Match keys: which columns for dedup? (KvK, email domain, website, name+postcode)`;
+
+  return (
+    <details className="worker-advanced">
+      <summary>Source classification prompt (copy before import)</summary>
+      <p className="hint">
+        Paste into Qwen / Cursor. Then set mixed, weight, and audience above.
+        CARA still reviews the source after import.
+      </p>
+      <textarea readOnly value={text} style={{ minHeight: "8rem" }} />
+      <button
+        type="button"
+        className="btn secondary small"
+        onClick={() => void navigator.clipboard.writeText(text)}
+      >
+        Copy prompt
+      </button>
+    </details>
+  );
 }
 
 export function MissionControl() {
@@ -76,6 +114,9 @@ export function MissionControl() {
     sourceCategory: "quality_mark" as SourceCategory,
     listLabel: "Vakwerk+",
     csv: "",
+    mixed: false,
+    suggestedWeight: "75",
+    defaultAudience: "private",
   });
   const previewCount = useMemo(
     () => parseCompanyImport(form.csv).length,
@@ -116,6 +157,8 @@ export function MissionControl() {
       sourceCategory: location?.trim()
         ? "local_business_association"
         : "quality_mark",
+      mixed: Boolean(location?.trim()),
+      suggestedWeight: location?.trim() ? "65" : f.suggestedWeight,
     }));
   }, [searchParams]);
 
@@ -129,6 +172,9 @@ export function MissionControl() {
       sourceCategory: "local_business_association",
       sourceName: `${d.location} local list`,
       listLabel: `${d.location} overlay`,
+      mixed: true,
+      suggestedWeight: "65",
+      defaultAudience: "",
     }));
     document.getElementById("onboard-pack-form")?.scrollIntoView({
       behavior: "smooth",
@@ -163,11 +209,12 @@ export function MissionControl() {
     );
     let completed = 0;
     try {
+      const mixed = form.mixed || isMixedSourceCategory(form.sourceCategory);
       const setup = await api.onboardPack({
         country: form.country,
         sector: form.sector,
         subsector: form.subsector,
-        location: form.location.trim() || form.country,
+        location: form.location.trim(),
         source: {
           name: form.sourceName,
           url: form.sourceUrl || undefined,
@@ -176,6 +223,9 @@ export function MissionControl() {
         },
         listLabel: form.listLabel,
         rows: [],
+        mixed,
+        suggestedWeight: Number(form.suggestedWeight) || undefined,
+        defaultAudience: form.defaultAudience || undefined,
       });
       const imported = rows.length
         ? await importCompanyRowsInChunks({
@@ -184,14 +234,25 @@ export function MissionControl() {
             listLabel: form.listLabel,
             rows,
             producer: "ImportedDataset",
+            mixed,
+            place: form.location.trim() || undefined,
+            defaultAudience: form.defaultAudience || undefined,
             onProgress: (next, total) => {
               completed = next;
               setImportProgress({ completed: next, total });
             },
           })
         : { created: 0, updated: 0, skipped: 0 };
+      const localHits = form.location.trim()
+        ? countClusterHits(rows, form.location.trim())
+        : 0;
       setDoneMsg(
-        `${setup.createdMission ? "Created" : "Updated"} ${setup.nationalPack ? "national pack" : "overlay"} · ${setup.source.name} · +${imported.created} companies (${imported.updated} merged). Re-running the same file is safe.`,
+        `${setup.createdMission ? "Created" : "Updated"} national pack · ${setup.source.name}` +
+          (mixed
+            ? ` · mixed: ${imported.updated} matched, ${imported.created} unknown in local directory`
+            : ` · +${imported.created} companies (${imported.updated} merged)`) +
+          (localHits ? ` · ${localHits} rows in ${form.location} cluster` : "") +
+          `. Re-run is safe.`,
       );
       setForm((f) => ({ ...f, csv: "" }));
       setImportProgress(null);
@@ -214,7 +275,7 @@ export function MissionControl() {
     setError(null);
     try {
       const now = new Date().toISOString();
-      const location = form.location.trim() || form.country;
+      const location = form.country;
       const mission: Mission = {
         id: uuid(),
         location,
@@ -243,6 +304,27 @@ export function MissionControl() {
       setError(err instanceof Error ? err.message : "Failed to create job");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function onExportHhh() {
+    try {
+      setError(null);
+      const result = await api.exportHhhLeads(form.country, form.subsector);
+      setDoneMsg(
+        `HHH high-trust export: ${result.count} unclaimed leads (≥2 lists, sector-confirmed) for ${form.country} · ${form.subsector}.`,
+      );
+      const blob = new Blob([JSON.stringify(result, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `hhh-leads-${form.country}-${form.subsector}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Export failed");
     }
   }
 
@@ -289,9 +371,9 @@ export function MissionControl() {
   return (
     <div>
       <p className="thesis">
-        <strong>Coverage desk.</strong> National sector packs feed Single
-        Search. Local lists are overlays. CARA locks weights later — it is not
-        the onboarding brake.
+        <strong>Coverage desk.</strong> One national pack per country × trade.
+        Attach local lists (region on the source). Mixed OV/sportclub rows stack
+        as unknown bijvangst. CARA reviews Human and OmegaClaw steps.
       </p>
 
       {error ? <div className="error">{error}</div> : null}
@@ -305,8 +387,15 @@ export function MissionControl() {
         <h2 id="coverage-heading">Coverage</h2>
         <p className="hint">
           Country × sector packs. Searchable means companies are already in the
-          catalogue — overlay is optional local evidence.
+          catalogue. Attach a local list instead of opening a town mission.
         </p>
+        <button
+          type="button"
+          className="btn secondary small"
+          onClick={() => void onExportHhh()}
+        >
+          Download HHH high-trust leads (≥2 lists)
+        </button>
         {packs.length === 0 ? (
           <div className="empty">
             No packs yet. Onboard a national list below (e.g. NL Painters +
@@ -359,12 +448,12 @@ export function MissionControl() {
         id="onboard-pack-form"
         style={{ marginTop: "1.25rem" }}
       >
-        <h2>Onboard pack</h2>
+        <h2>Attach local list to national pack</h2>
         <p className="hint">
-          Add a country + sector list in one sitting. Leave location empty (or
-          equal to country) for the national base layer. Fill location for a
-          local overlay. The source is accepted as an imported dataset — Align
-          later.
+          Country + sector is one national pack. Location is the source region
+          (Hoofddorp), not a new town mission. Mixed lists (OV, sportclub) match
+          existing trades and keep the rest as unknown bijvangst. CARA reviews
+          the list weight.
         </p>
         <form className="form-stack" onSubmit={(e) => void onOnboard(e)}>
           <div className="split-2">
@@ -377,11 +466,11 @@ export function MissionControl() {
               />
             </label>
             <label>
-              Location (optional overlay)
+              Location (source region, optional)
               <input
                 value={form.location}
                 onChange={(e) => setForm({ ...form, location: e.target.value })}
-                placeholder="Empty = national pack"
+                placeholder="Hoofddorp — attaches to national pack"
               />
             </label>
           </div>
@@ -446,12 +535,20 @@ export function MissionControl() {
               Category
               <select
                 value={form.sourceCategory}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const sourceCategory = e.target.value as SourceCategory;
+                  const mixed = isMixedSourceCategory(sourceCategory);
                   setForm({
                     ...form,
-                    sourceCategory: e.target.value as SourceCategory,
-                  })
-                }
+                    sourceCategory,
+                    mixed,
+                    suggestedWeight: String(
+                      defaultWeightForList(sourceCategory, form.sourceLayer),
+                    ),
+                    defaultAudience:
+                      defaultAudienceForCategory(sourceCategory) ?? "",
+                  });
+                }}
               >
                 {SOURCE_CATEGORIES.map((c) => (
                   <option key={c} value={c}>
@@ -461,6 +558,44 @@ export function MissionControl() {
               </select>
             </label>
           </div>
+          <div className="split-2">
+            <label>
+              Trust weight (0–100)
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={form.suggestedWeight}
+                onChange={(e) =>
+                  setForm({ ...form, suggestedWeight: e.target.value })
+                }
+              />
+            </label>
+            <label>
+              Default audience
+              <select
+                value={form.defaultAudience}
+                onChange={(e) =>
+                  setForm({ ...form, defaultAudience: e.target.value })
+                }
+              >
+                <option value="">unknown (leave empty)</option>
+                <option value="private">B2C / private</option>
+                <option value="hoa">VvE / hoa</option>
+                <option value="commercial">B2B / commercial</option>
+                <option value="municipal">municipal</option>
+              </select>
+            </label>
+          </div>
+          <label className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={form.mixed}
+              onChange={(e) => setForm({ ...form, mixed: e.target.checked })}
+            />
+            Mixed list (OV / sportclub) — match all sector packs, keep unmatched as unknown
+          </label>
+          <SourceWeighPrompt csv={form.csv} />
           <label>
             List membership label
             <input
@@ -536,8 +671,8 @@ export function MissionControl() {
                   : importProgress && importProgress.completed < importProgress.total
                     ? `Resume · ${importProgress.completed}/${importProgress.total} already in`
                   : previewCount
-                    ? `Onboard pack · ${previewCount} companies`
-                    : "Onboard source (no CSV yet)"}
+                    ? `Attach list · ${previewCount} companies`
+                    : "Attach source (no CSV yet)"}
             </button>
             <button
               className="btn secondary"
@@ -662,7 +797,7 @@ export function MissionControl() {
                         className="btn small"
                         onClick={() => applyDemand(d)}
                       >
-                        Prefill overlay
+                        Prefill attach list
                       </button>
                     </div>
                   </article>

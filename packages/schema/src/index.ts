@@ -331,7 +331,12 @@ export type MissionSource = z.infer<typeof MissionSourceSchema>;
 export const KvkGateSchema = z.enum(["pass", "fail", "unchecked"]);
 export type KvkGate = z.infer<typeof KvkGateSchema>;
 
-export const CompanyStatusSchema = z.enum(["candidate", "target", "staged"]);
+export const CompanyStatusSchema = z.enum([
+  "unknown",
+  "candidate",
+  "target",
+  "staged",
+]);
 export type CompanyStatus = z.infer<typeof CompanyStatusSchema>;
 
 /**
@@ -393,6 +398,19 @@ export const CompanySchema = z.object({
   /** Empty = no hard exclusion. */
   blacklist_flags: z.array(z.string()).default([]),
   status: CompanyStatusSchema.default("candidate"),
+  /**
+   * Ω classify (Job 6) on mixed-list bijvangst. CARA must agree before promote.
+   */
+  classify: z
+    .object({
+      verdict: z.enum(["home_service", "not_service", "unknown"]),
+      suggestedSubsector: z.string().optional(),
+      confidence: z.enum(["high", "medium", "low"]).optional(),
+      websiteChecked: z.boolean().optional(),
+      producer: ProducerSchema,
+      updatedAt: IsoDateSchema,
+    })
+    .optional(),
   /**
    * What the company can do — free strings, sector-specific.
    * e.g. ["interior painting", "exterior painting", "spray painting"]
@@ -606,3 +624,6 @@ export * from "./source-richness";
 export * from "./coverage";
 export * from "./access-barriers";
 export * from "./masterlist";
+export * from "./place-clusters";
+export * from "./company-match";
+export * from "./local-directory";

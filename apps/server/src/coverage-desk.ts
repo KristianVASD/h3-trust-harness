@@ -1,4 +1,4 @@
-import { countriesEquivalent, type Mission, type Source } from "@h3-trust/schema";
+import { countriesEquivalent, isLocalDirectoryMission, type Mission, type Source } from "@h3-trust/schema";
 import type { Store } from "@h3-trust/store";
 import { countriesMatch, isNationalPack, packKey } from "./pack-match.js";
 
@@ -100,10 +100,18 @@ export async function buildCoverageDesk(
   }
 
   const packs = [...byPack.values()].map((pack) => {
+    const sample = pack.missions[0];
+    const directory = sample
+      ? isLocalDirectoryMission({
+          sector: pack.sector,
+          subsector: pack.subsector,
+        })
+      : false;
     const hasNational = pack.missions.some((m) => m.nationalPack && m.companyCount > 0);
-    const hasLocal = pack.missions.some((m) => !m.nationalPack && m.companyCount > 0);
+    const hasLocal = pack.localSourceCount > 0;
     let status: CoveragePackRow["status"] = "empty";
     if (pack.companyCount === 0) status = "empty";
+    else if (directory) status = "searchable";
     else if (hasNational && !hasLocal) status = "needs_overlay";
     else status = "searchable";
     return { ...pack, status, searchable: pack.companyCount > 0 };
@@ -128,19 +136,28 @@ export function findPackMission(
     m.subsector.trim().toLowerCase() === subsector.toLowerCase() &&
     m.sector.trim().toLowerCase() === sector.toLowerCase();
 
-  if (loc && !countriesEquivalent(loc, country) && loc.toLowerCase() !== "national") {
-    return (
-      missions.find(
-        (m) => sameTrade(m) && m.location.trim().toLowerCase() === loc.toLowerCase(),
-      ) ?? null
-    );
-  }
-
   return (
     missions.find((m) => sameTrade(m) && isNationalPack(m)) ??
     missions.find(
       (m) => sameTrade(m) && countriesEquivalent(m.location, country),
     ) ??
-    null
+    (loc && !countriesEquivalent(loc, country) && loc.toLowerCase() !== "national"
+      ? missions.find(
+          (m) => sameTrade(m) && m.location.trim().toLowerCase() === loc.toLowerCase(),
+        ) ?? null
+      : null)
   );
+}
+
+/** Always the country × sector national pack — never a town mission. */
+export function findNationalPackMission(
+  missions: Mission[],
+  input: { country: string; sector: string; subsector: string },
+): Mission | null {
+  return findPackMission(missions, {
+    country: input.country,
+    sector: input.sector,
+    subsector: input.subsector,
+    location: input.country,
+  });
 }

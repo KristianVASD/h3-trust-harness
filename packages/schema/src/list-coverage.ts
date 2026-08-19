@@ -19,6 +19,17 @@ export function listWeight(source: CoverageSource): number {
   return source.suggestedWeight ?? source.suggestedConfidence ?? 50;
 }
 
+/** Source ids that actually have at least one company row pointing at them. */
+export function harvestedSourceIds(companies: CoverageCompany[]): Set<string> {
+  const ids = new Set<string>();
+  for (const company of companies) {
+    for (const id of company.source_ids ?? []) {
+      if (id) ids.add(id);
+    }
+  }
+  return ids;
+}
+
 export type ListCoverage = {
   onCount: number;
   totalCount: number;
@@ -33,12 +44,19 @@ export type ListCoverage = {
 /**
  * Weighted list coverage: two companies on "3 lists" can rank differently
  * when those lists carry different weights.
+ *
+ * When `packCompanies` is passed, the denominator is only trusted lists that
+ * actually have member rows in this pack (empty warm-starts do not inflate 1/11).
  */
 export function computeListCoverage(
   company: CoverageCompany,
   missionSources: CoverageSource[],
+  packCompanies?: CoverageCompany[],
 ): ListCoverage {
-  const trusted = missionSources.filter(isTrustedList);
+  const harvested = packCompanies ? harvestedSourceIds(packCompanies) : null;
+  const trusted = missionSources.filter(
+    (s) => isTrustedList(s) && (!harvested || harvested.has(s.id)),
+  );
   const totalWeight = trusted.reduce((sum, s) => sum + listWeight(s), 0);
   const lists = trusted.filter((s) => company.source_ids.includes(s.id));
   const coveredWeight = lists.reduce((sum, s) => sum + listWeight(s), 0);
@@ -51,8 +69,10 @@ export function computeListCoverage(
 
   const explanation =
     trusted.length === 0
-      ? "No CARA-accepted/adjusted lists in this mission yet."
-      : `On ${lists.length} of ${trusted.length} trusted lists` +
+      ? packCompanies
+        ? "No trusted lists with member rows in this pack yet."
+        : "No CARA-accepted/adjusted lists in this mission yet."
+      : `On ${lists.length} of ${trusted.length} lists with members` +
         ` · weight ${coveredWeight}/${totalWeight} (${score}%)` +
         (listBits ? ` — ${listBits}` : "");
 

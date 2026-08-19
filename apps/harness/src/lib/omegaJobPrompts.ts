@@ -409,3 +409,48 @@ OUTPUT: strict JSON only. No markdown.
   ]
 }`;
 }
+
+export function buildClassifyJobPrompt(args: {
+  mission: { country: string; location: string };
+  companies: Array<{
+    id: string;
+    name: string;
+    website_url?: string;
+    address?: string;
+    region?: string;
+  }>;
+}): string {
+  const slice = args.companies.slice(0, 80);
+  return `You are OmegaClaw classifying mixed-list bijvangst for H3 Trust Harness.
+
+These companies came from an ondernemersvereniging, sportclub, or similar mixed list.
+They are NOT a trade until classified. Bakers stay unknown.
+
+Cheap pass: name tokens (schilder, elektra, dak, hovenier, groen, tuin, klus, onderhoud, installatie, loodgieter).
+Website check ONLY for potentials. Do not harvest Can/For/Notable.
+
+Country: ${args.mission.country}
+Place context: ${args.mission.location}
+
+Companies:
+${JSON.stringify(slice, null, 2)}
+
+OUTPUT: strict JSON only.
+
+{
+  "producer": "OmegaClaw",
+  "verdicts": [
+    {
+      "companyId": "uuid from input",
+      "name": "…",
+      "verdict": "home_service" | "not_service" | "unknown",
+      "suggestedSubsector": "Painters | Electricians | Roofing | Groen | Klus",
+      "confidence": "high" | "medium" | "low",
+      "websiteChecked": false,
+      "notes": "optional"
+    }
+  ]
+}
+
+A human CARA step must agree before anyone is promoted onto a sector pack.`;
+}

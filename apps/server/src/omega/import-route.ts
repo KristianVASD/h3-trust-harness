@@ -21,6 +21,7 @@ import {
   ExtractOutputSchema,
   HarvestOutputSchema,
   ProbeOutputSchema,
+  ClassifyOutputSchema,
   type DiscoverCandidate,
   type DiscoverOutput,
   type ExtractCompany,
@@ -35,6 +36,7 @@ import {
   buildHarvestCompanyPatch,
   buildProbeSourcePatch,
 } from "./adapter.js";
+import { applyClassifyVerdicts } from "../stacked-import.js";
 
 const SCOPES = new Set<SourceScope>(["national", "regional", "local"]);
 const CATEGORIES = new Set<string>([
@@ -83,7 +85,7 @@ const BARRIER_KIND_ALIASES: Record<string, BarrierKind> = {
   vision: "unknown",
 };
 
-export type ImportJob = "discover" | "probe" | "extract" | "harvest";
+export type ImportJob = "discover" | "probe" | "extract" | "harvest" | "classify";
 
 export type ImportRouteResult = {
   job: ImportJob;
@@ -126,9 +128,9 @@ export async function runOmegaImport(
   }
   const raw = body as Record<string, unknown>;
   const job = String(raw.job ?? "").trim() as ImportJob;
-  if (!["discover", "probe", "extract", "harvest"].includes(job)) {
+  if (!["discover", "probe", "extract", "harvest", "classify"].includes(job)) {
     throw new ImportRouteError(
-      'job must be "discover" | "probe" | "extract" | "harvest"',
+      'job must be "discover" | "probe" | "extract" | "harvest" | "classify"',
     );
   }
   const payload = raw.payload ?? raw.output ?? raw;
@@ -144,7 +146,46 @@ export async function runOmegaImport(
   if (job === "extract") {
     return importExtract(store, missionId, payload);
   }
+  if (job === "classify") {
+    return importClassify(store, missionId, payload);
+  }
   return importHarvest(store, missionId, payload);
+}
+
+async function importClassify(
+  store: Store,
+  missionId: string,
+  payload: unknown,
+): Promise<ImportRouteResult> {
+  const raw =
+    payload && typeof payload === "object"
+      ? (payload as Record<string, unknown>)
+      : {};
+  const verdictsRaw = Array.isArray(raw.verdicts)
+    ? raw.verdicts
+    : Array.isArray(payload)
+      ? payload
+      : [];
+  const output = ClassifyOutputSchema.parse({
+    producer: "OmegaClaw",
+    missionId,
+    sourceId: typeof raw.sourceId === "string" ? raw.sourceId : undefined,
+    verdicts: verdictsRaw,
+  });
+  const result = await applyClassifyVerdicts(
+    store,
+    missionId,
+    output.verdicts,
+    "OmegaClaw",
+  );
+  return {
+    job: "classify",
+    imported: result.updated,
+    skipped: result.skipped
+      ? [{ reason: `${result.skipped} rows did not match a company` }]
+      : [],
+    warnings: [],
+  };
 }
 
 /* ----------------------------- discover ---------------------------------- */

@@ -2,7 +2,12 @@ import { randomUUID } from "node:crypto";
 import {
   DEFAULT_SEARCH_PLAN_VERSION,
   SOURCE_CATEGORIES,
+  countClusterHits,
+  defaultAudienceForCategory,
+  defaultWeightForList,
+  isMixedSourceCategory,
   type Mission,
+  type ServiceContext,
   type Source,
   type SourceCategory,
   type SourceScope,
@@ -13,8 +18,13 @@ import {
   importCompaniesForMission,
   type CompanyImportRow,
 } from "./companies-import-route.js";
-import { findPackMission } from "./coverage-desk.js";
+import { findNationalPackMission } from "./coverage-desk.js";
 import { isNationalPack } from "./pack-match.js";
+import {
+  ensureLocalDirectoryMission,
+  importNicheForPack,
+  importStackedMixedList,
+} from "./stacked-import.js";
 
 const defaultPhases: Mission["phases"] = [
   { key: "observation", status: "active" },
@@ -40,6 +50,9 @@ export type PackOnboardInput = {
   };
   listLabel?: string;
   rows: CompanyImportRow[];
+  mixed?: boolean;
+  suggestedWeight?: number;
+  defaultAudience?: ServiceContext;
 };
 
 function categoryToType(category: SourceCategory): SourceType {
@@ -54,14 +67,6 @@ function categoryToType(category: SourceCategory): SourceType {
   if (category === "municipal_initiative") return "municipality";
   if (category === "local_media") return "news";
   return "directory";
-}
-
-function defaultWeight(category: SourceCategory, layer: SourceScope): number {
-  if (category === "registry") return 90;
-  if (category === "quality_mark" || category === "sector_qualification") return 75;
-  if (layer === "national") return 70;
-  if (layer === "local") return 65;
-  return 55;
 }
 
 export class PackOnboardError extends Error {
@@ -84,6 +89,10 @@ export async function onboardCountrySectorPack(
   updated: number;
   skipped: number;
   nationalPack: boolean;
+  mixed: boolean;
+  createdUnknown: number;
+  clusterHits: number;
+  directoryMissionId?: string;
 }> {
   const country = input.country.trim();
   const sector = input.sector.trim();
@@ -98,36 +107,28 @@ export async function onboardCountrySectorPack(
     throw new PackOnboardError("source.category is not a known list type", 400);
   }
 
-  const location = (input.location ?? "").trim() || country;
+  const overlayPlace = (input.location ?? "").trim();
+  const mixed =
+    input.mixed === true || isMixedSourceCategory(input.source.category);
   const missions = await store.listMissions();
-  let mission = findPackMission(missions, {
-    country,
-    sector,
-    subsector,
-    location,
-  });
+  let mission = findNationalPackMission(missions, { country, sector, subsector });
   let createdMission = false;
   const now = new Date().toISOString();
 
   if (!mission) {
-    const national = location.toLowerCase() === country.toLowerCase();
     mission = {
       id: randomUUID(),
-      location,
+      location: country,
       country,
       sector,
       subsector,
       goal:
         input.goal?.trim() ||
-        (national
-          ? `National ${subsector} base layer for ${country}.`
-          : `Local overlay: ${subsector} in ${location}, ${country}.`),
-      notes: national
-        ? "National pack — onboarded as ImportedDataset. CARA can lock weights later."
-        : "Local overlay pack — onboarded as ImportedDataset. CARA can lock weights later.",
+        `National ${subsector} base layer for ${country}.`,
+      notes: "National pack — local lists attach here (source.region). Not a town mission.",
       search_plan_version: DEFAULT_SEARCH_PLAN_VERSION,
       discoveryBrief: {
-        approach: "Base layer first, then overlay, then CARA.",
+        approach: "Base layer first, attach local lists, then CARA.",
         candidateListTypes: [input.source.category],
         successCriteria: "Companies searchable from the pack; Align is optional.",
         producer: "Human",
@@ -146,6 +147,8 @@ export async function onboardCountrySectorPack(
 
   const layer = input.source.layer;
   const sourceName = input.source.name.trim();
+  const weight =
+    input.suggestedWeight ?? defaultWeightForList(input.source.category, layer);
   const existingSources = (await store.listByMission(
     "sources",
     mission.id,
@@ -167,12 +170,12 @@ export async function onboardCountrySectorPack(
       type: categoryToType(input.source.category),
       category: input.source.category,
       scope: layer,
-      region: layer === "national" ? "" : location,
+      region: layer === "national" ? "" : overlayPlace,
       url: input.source.url?.trim() || undefined,
       listUrl: input.source.url?.trim() || undefined,
       reason: "Bulk pack onboard — accepted as imported dataset; CARA may adjust later.",
-      suggestedWeight: defaultWeight(input.source.category, layer),
-      suggestedConfidence: defaultWeight(input.source.category, layer),
+      suggestedWeight: weight,
+      suggestedConfidence: weight,
       signalIds: [],
       evidenceIds: [],
       status: "accepted",
@@ -182,25 +185,73 @@ export async function onboardCountrySectorPack(
     });
   }
 
+  const audience =
+    input.defaultAudience ?? defaultAudienceForCategory(input.source.category);
+  const serviceContexts = audience ? [audience] : undefined;
   const rows = input.rows ?? [];
-  const importResult =
-    rows.length === 0
-      ? { created: 0, updated: 0, skipped: 0 }
-      : await importCompaniesForMission(store, {
-          missionId: mission.id,
-          sourceId: source.id,
-          listLabel: input.listLabel?.trim() || source.name,
-          rows,
-          producer: "ImportedDataset",
-        });
+  let created = 0;
+  let updated = 0;
+  let skipped = 0;
+  let createdUnknown = 0;
+  let directoryMissionId: string | undefined;
+
+  if (mixed) {
+    const dir = await ensureLocalDirectoryMission(store, country);
+    directoryMissionId = dir.mission.id;
+    await store.linkSourceToMission(dir.mission.id, source.id, "ImportedDataset");
+    if (rows.length) {
+      const stacked = await importStackedMixedList(store, {
+        country,
+        sourceId: source.id,
+        listLabel: input.listLabel?.trim() || source.name,
+        rows,
+        producer: "ImportedDataset",
+        place: overlayPlace,
+        serviceContexts,
+      });
+      updated = stacked.matched;
+      createdUnknown = stacked.createdUnknown;
+      skipped = stacked.skipped;
+    }
+  } else if (rows.length) {
+    const niche = await importNicheForPack(store, {
+      missionId: mission.id,
+      country,
+      sourceId: source.id,
+      listLabel: input.listLabel?.trim() || source.name,
+      rows,
+      producer: "ImportedDataset",
+      place: overlayPlace,
+      serviceContexts,
+    });
+    created = niche.created ?? 0;
+    updated = niche.updated ?? niche.matched;
+    skipped = niche.skipped;
+  } else {
+    const empty = await importCompaniesForMission(store, {
+      missionId: mission.id,
+      sourceId: source.id,
+      listLabel: input.listLabel?.trim() || source.name,
+      rows: [],
+      producer: "ImportedDataset",
+      serviceContexts,
+    });
+    skipped = empty.skipped;
+  }
+
+  const clusterHits = overlayPlace ? countClusterHits(rows, overlayPlace) : 0;
 
   return {
     mission,
     createdMission,
     source,
-    created: importResult.created,
-    updated: importResult.updated,
-    skipped: importResult.skipped,
+    created,
+    updated,
+    skipped,
     nationalPack: isNationalPack(mission),
+    mixed,
+    createdUnknown,
+    clusterHits,
+    directoryMissionId,
   };
 }

@@ -34,6 +34,7 @@ export type WorkerStepId =
   | "probe"
   | "align"
   | "extract"
+  | "classify"
   | "profile"
   | "coverage"
   | "search";
@@ -48,9 +49,10 @@ export const WORKER_STEPS: {
   { id: "probe", label: "Probe", short: "3" },
   { id: "align", label: "Align (optional)", short: "4" },
   { id: "extract", label: "Extract", short: "5" },
-  { id: "profile", label: "Profile", short: "6" },
-  { id: "coverage", label: "Coverage", short: "7" },
-  { id: "search", label: "Search", short: "8" },
+  { id: "classify", label: "Classify", short: "6" },
+  { id: "profile", label: "Profile", short: "7" },
+  { id: "coverage", label: "Coverage", short: "8" },
+  { id: "search", label: "Search", short: "9" },
 ];
 
 /** Legacy 4-step paths → new spine. */
@@ -212,6 +214,12 @@ export function deriveWorkerStepState(args: {
               ? `${trustedCount} trusted`
               : "",
       settled: loaded && companies.length > 0 && barrierCount === 0,
+    },
+    {
+      id: "classify",
+      enabled: loaded,
+      todoLabel: "bijvangst · optional",
+      settled: true,
     },
     {
       id: "profile",

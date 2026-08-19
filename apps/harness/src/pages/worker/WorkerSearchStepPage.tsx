@@ -28,7 +28,7 @@ export function WorkerSearchStepPage() {
 
   const ranked = [...companies]
     .map((c) => {
-      const list = computeListCoverage(c, sources);
+      const list = computeListCoverage(c, sources, companies);
       const coverageConfidence = computeResultCoverage(c, coverage);
       const why = explainResultCoverage(c, coverage);
       return { company: c, list, coverageConfidence, why };

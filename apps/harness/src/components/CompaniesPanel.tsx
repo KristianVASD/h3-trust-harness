@@ -46,8 +46,8 @@ export function CompaniesPanel({
         ? companies
         : companies.filter((c) => c.status === filter);
     return [...base].sort((a, b) => {
-      const ca = computeListCoverage(a, sources).score;
-      const cb = computeListCoverage(b, sources).score;
+      const ca = computeListCoverage(a, sources, companies).score;
+      const cb = computeListCoverage(b, sources, companies).score;
       return cb - ca;
     });
   }, [companies, filter, sources]);
@@ -56,7 +56,7 @@ export function CompaniesPanel({
     companies.find((c) => c.id === selectedId) ?? filtered[0] ?? null;
 
   const coverage = useMemo(
-    () => (selected ? computeListCoverage(selected, sources) : null),
+    () => (selected ? computeListCoverage(selected, sources, companies) : null),
     [selected, sources],
   );
 
@@ -141,7 +141,7 @@ export function CompaniesPanel({
               <p className="muted">
                 coverage{" "}
                 {(() => {
-                  const cov = computeListCoverage(c, sources);
+                  const cov = computeListCoverage(c, sources, companies);
                   return `${cov.onCount}/${cov.totalCount} · ${cov.score}%`;
                 })()}
                 {" · "}

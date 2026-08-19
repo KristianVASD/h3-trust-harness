@@ -7,6 +7,10 @@ import {
   computeResultCoverage,
   explainResultCoverage,
   DEFAULT_SEARCH_PLAN_VERSION,
+  companyMatchesPlaceCluster,
+  harvestedSourceIds,
+  isLocalDirectoryMission,
+  placeCluster,
   type Company,
   type Mission,
   type Review,
@@ -17,7 +21,6 @@ import { api } from "../api";
 import { listReviews } from "../api-extra";
 import { useAuth } from "../auth/AuthContext";
 import { useCanInteract } from "../hooks/useCanInteract";
-import { countTrustedLists } from "../lib/worker";
 import { isNationalPack, missionMatchesPackTrade } from "../lib/packMatch";
 import { CompanyProfileTags } from "../components/CompanyProfileTags";
 import { StatusChip } from "../components/Badges";
@@ -116,52 +119,21 @@ function normalizeLabel(value: string): string {
     .trim();
 }
 
-/** Places that should count as local for each other in NL painter demos. */
-const PLACE_CLUSTERS: string[][] = [
-  [
-    "hoofddorp",
-    "haarlemmermeer",
-    "rijsenhout",
-    "nieuw vennep",
-    "badhoevedorp",
-    "beinsdorp",
-    "zwanenburg",
-    "lisserbroek",
-  ],
-];
-
-function placeCluster(place: string): Set<string> {
-  const n = normalizeLabel(place);
-  const set = new Set<string>([n]);
-  for (const cluster of PLACE_CLUSTERS) {
-    // Exact town only — "lisse" must not pull in "lisserbroek".
-    if (cluster.includes(n)) {
-      for (const p of cluster) set.add(p);
-    }
-  }
-  return set;
-}
-
 function companyPlaceText(company: Company): string {
-  return normalizeLabel(`${company.region} ${company.address}`);
+  return `${company.region ?? ""} ${company.address ?? ""}`;
 }
 
 /** Whole-token match so "lisse" does not hit "lisserbroek" or "Zwanenburg". */
 function hayHasPlace(hay: string, place: string): boolean {
   const needle = normalizeLabel(place);
-  if (!needle || !hay) return false;
-  if (hay === needle) return true;
-  return ` ${hay} `.includes(` ${needle} `);
+  const nHay = normalizeLabel(hay);
+  if (!needle || !nHay) return false;
+  if (nHay === needle) return true;
+  return ` ${nHay} `.includes(` ${needle} `);
 }
 
 function companyMatchesPlace(company: Company, place: string): boolean {
-  const hay = companyPlaceText(company);
-  if (!hay) return false;
-  const cluster = placeCluster(place);
-  for (const token of cluster) {
-    if (token && hayHasPlace(hay, token)) return true;
-  }
-  return false;
+  return companyMatchesPlaceCluster(companyPlaceText(company), place);
 }
 
 function companyExactPlace(company: Company, place: string): boolean {
@@ -496,7 +468,9 @@ export function SingleSearchPage() {
     if (!parsed.sector) parsed.sector = sectorPart;
     setParsedHint(parsed);
 
-    let candidates = missions.filter((m) => missionMatchesQuery(m, parsed));
+    let candidates = missions.filter(
+      (m) => missionMatchesQuery(m, parsed) && !isLocalDirectoryMission(m),
+    );
     type DemandOutcome =
       | "hit"
       | "no_match"
@@ -610,17 +584,45 @@ export function SingleSearchPage() {
       const allSources = [
         ...new Map(bundles.flatMap((b) => b.sources).map((s) => [s.id, s])).values(),
       ];
-      const byName = new Map<string, { company: Company; mission: Mission }>();
+      const byKey = new Map<string, { company: Company; mission: Mission }>();
+      const uniq = (values: string[]) => [...new Set(values.filter(Boolean))];
+      const mergeKey = (company: Company) => {
+        const kvk = (company.kvk_number ?? "").replace(/\D/g, "");
+        if (kvk.length === 8) return `kvk:${kvk}`;
+        return `name:${company.name.trim().toLowerCase().replace(/\s+/g, " ")}`;
+      };
       for (const bundle of bundles) {
         for (const company of bundle.companies) {
-          const key = company.name.trim().toLowerCase().replace(/\s+/g, " ");
-          const prev = byName.get(key);
-          if (!prev || (company.source_ids?.length ?? 0) > (prev.company.source_ids?.length ?? 0)) {
-            byName.set(key, { company, mission: bundle.mission });
+          if (company.status === "unknown") continue;
+          const key = mergeKey(company);
+          const prev = byKey.get(key);
+          if (!prev) {
+            byKey.set(key, { company, mission: bundle.mission });
+            continue;
           }
+          const source_ids = uniq([
+            ...(prev.company.source_ids ?? []),
+            ...(company.source_ids ?? []),
+          ]);
+          const list_membership = uniq([
+            ...(prev.company.list_membership ?? []),
+            ...(company.list_membership ?? []),
+          ]);
+          const keep =
+            (company.source_ids?.length ?? 0) >= (prev.company.source_ids?.length ?? 0)
+              ? company
+              : prev.company;
+          const mission =
+            isNationalPack(prev.mission) && prev.company.status !== "unknown"
+              ? prev.mission
+              : bundle.mission;
+          byKey.set(key, {
+            company: { ...keep, source_ids, list_membership },
+            mission,
+          });
         }
       }
-      const merged = [...byName.values()];
+      const merged = [...byKey.values()];
 
       const primary =
         bundles.find((b) => isNationalPack(b.mission) && b.companies.length > 0)?.mission ??
@@ -630,7 +632,9 @@ export function SingleSearchPage() {
       setMatchedMission(primary);
 
       const placeSources = sourcesForQueryPlace(allSources, parsed.location);
-      setTrustedCount(countTrustedLists(placeSources));
+      const harvested = harvestedSourceIds(merged.map((row) => row.company));
+      const memberSources = placeSources.filter((s) => harvested.has(s.id));
+      setTrustedCount(memberSources.length);
 
       const reviewMap = new Map<string, Review>();
       for (const bundle of bundles) {
@@ -666,7 +670,7 @@ export function SingleSearchPage() {
       const localSources = placeSources.filter((s) => s.scope === "local" || s.scope === "regional");
       if (placed.length && localSources.length === 0 && parsed.location) {
         setOverlayNote(
-          `National pack hit for ${parsed.location} — no local overlay list yet. Demand is queued in Mission Control.`,
+          `National pack hit for ${parsed.location} — attach a local list (OV / sportclub) from Mission Control.`,
         );
       } else {
         setOverlayNote(null);
@@ -682,7 +686,7 @@ export function SingleSearchPage() {
         )
         .map((row) => {
           const c = row.company;
-          const cov = computeListCoverage(c, placeSources);
+          const cov = computeListCoverage(c, placeSources, packCompanies);
           const human = reviewMap.get(c.id);
           const localBoost = companyExactPlace(c, parsed.location ?? "")
             ? 12
@@ -1275,12 +1279,17 @@ export function SingleSearchPage() {
 
                   {/* Can / For / Notable + profile snippet */}
                   <CompanyProfileTags company={r.company} />
+                  {r.lists.length ? (
+                    <p className="muted" style={{ fontSize: "0.85rem", margin: "0.35rem 0 0" }}>
+                      On: {r.lists.map((s) => s.name).join(", ")}
+                    </p>
+                  ) : null}
 
                   {/* Why */}
                   <details className="search-why">
                     <summary>
                       Why {r.displayScore}/100? · {r.onCount}/
-                      {r.totalCount} trusted lists · conf{" "}
+                      {r.totalCount} lists with members · conf{" "}
                       {r.coverageConfidence}
                     </summary>
                     <div className="search-why-body">

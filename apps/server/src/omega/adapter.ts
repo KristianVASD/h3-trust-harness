@@ -11,6 +11,7 @@ import {
   collectMatchedElementCodes,
   computeRichness,
   isBlockingBarrier,
+  nameLooksLikeHomeService,
   normalizeCapabilities,
   SOURCE_FIELD_KEYS,
   type AccessBarrier,
@@ -33,6 +34,8 @@ import {
   type ProbeOutput,
   type RefreshInput,
   type RefreshOutput,
+  type ClassifyInput,
+  type ClassifyOutput,
 } from "@h3-trust/schema/omega";
 
 export type OcCommandInput = {
@@ -41,6 +44,7 @@ export type OcCommandInput = {
   extract: ExtractInput;
   harvest: HarvestInput;
   refresh: RefreshInput;
+  classify: ClassifyInput;
 };
 
 export type OcCommandOutput = {
@@ -49,6 +53,7 @@ export type OcCommandOutput = {
   extract: ExtractOutput;
   harvest: HarvestOutput;
   refresh: RefreshOutput;
+  classify: ClassifyOutput;
 };
 
 function nowIso(): string {
@@ -627,6 +632,26 @@ function stubRefresh(input: RefreshInput): RefreshOutput {
   });
 }
 
+function stubClassify(input: ClassifyInput): ClassifyOutput {
+  return mirrorStamp({
+    producer: "OmegaClaw",
+    missionId: input.missionId,
+    sourceId: input.sourceId,
+    verdicts: input.companies.map((co) => ({
+      companyId: co.id,
+      name: co.name,
+      verdict: nameLooksLikeHomeService(co.name)
+        ? ("home_service" as const)
+        : ("unknown" as const),
+      websiteChecked: false,
+      confidence: nameLooksLikeHomeService(co.name)
+        ? ("medium" as const)
+        : ("low" as const),
+      notes: "Stub classify — name tokens only. Replace with live Ω later.",
+    })),
+  });
+}
+
 const stubImpl: {
   [K in OmegaCommand]: (input: OcCommandInput[K]) => OcCommandOutput[K];
 } = {
@@ -635,6 +660,7 @@ const stubImpl: {
   extract: stubExtract,
   harvest: stubHarvest,
   refresh: stubRefresh,
+  classify: stubClassify,
 };
 
 /**

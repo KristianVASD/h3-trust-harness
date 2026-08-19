@@ -17,6 +17,7 @@ import { WorkerSourcesPage } from "./pages/worker/WorkerSourcesPage";
 import { WorkerProbePage } from "./pages/worker/WorkerProbePage";
 import { WorkerCaraPage } from "./pages/worker/WorkerCaraPage";
 import { WorkerImportPage } from "./pages/worker/WorkerImportPage";
+import { WorkerClassifyPage } from "./pages/worker/WorkerClassifyPage";
 import { WorkerProfilePage } from "./pages/worker/WorkerProfilePage";
 import { WorkerCoveragePage } from "./pages/worker/WorkerCoveragePage";
 import { WorkerSearchStepPage } from "./pages/worker/WorkerSearchStepPage";
@@ -108,6 +109,7 @@ export function App() {
           <Route path="probe" element={<WorkerProbePage />} />
           <Route path="align" element={<WorkerCaraPage />} />
           <Route path="extract" element={<WorkerImportPage />} />
+          <Route path="classify" element={<WorkerClassifyPage />} />
           <Route path="profile" element={<WorkerProfilePage />} />
           <Route path="coverage" element={<WorkerCoveragePage />} />
           <Route path="search" element={<WorkerSearchStepPage />} />

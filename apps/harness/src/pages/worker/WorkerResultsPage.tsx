@@ -32,7 +32,7 @@ export function WorkerResultsPage() {
   const ranked = useMemo(() => {
     return [...companies]
       .map((c) => {
-        const cov = computeListCoverage(c, sources);
+        const cov = computeListCoverage(c, sources, companies);
         const human = companyReviews.get(c.id);
         const displayScore =
           human?.humanScore != null ? human.humanScore : cov.score;

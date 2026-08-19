@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useOutletContext, useParams } from "react-router-dom";
-import { isBlockingBarrier } from "@h3-trust/schema";
+import { isBlockingBarrier, isMixedSourceCategory } from "@h3-trust/schema";
 import { api } from "../../api";
 import { ProducerBadge } from "../../components/Badges";
 import {
@@ -163,6 +163,10 @@ export function WorkerImportPage() {
         sourceId,
         listLabel,
         rows,
+        mixed: selectedSource
+          ? isMixedSourceCategory(selectedSource.category)
+          : false,
+        place: mission?.location,
         onProgress: (nextCompleted, total) => {
           completed = nextCompleted;
           setImportProgress({ completed: nextCompleted, total });

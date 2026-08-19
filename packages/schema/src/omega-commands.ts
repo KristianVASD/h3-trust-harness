@@ -31,6 +31,7 @@ export const OmegaCommandSchema = z.enum([
   "extract",
   "harvest",
   "refresh",
+  "classify",
 ]);
 export type OmegaCommand = z.infer<typeof OmegaCommandSchema>;
 export const OmegaProducerSchema = z.literal("OmegaClaw");
@@ -213,6 +214,44 @@ export const RefreshOutputSchema = z.object({
 });
 export type RefreshOutput = z.infer<typeof RefreshOutputSchema>;
 
+/* ----------------------------- classify (Job 6) ---------------------------- */
+export const ClassifyVerdictSchema = z.enum([
+  "home_service",
+  "not_service",
+  "unknown",
+]);
+export const ClassifyRowSchema = z.object({
+  companyId: z.string().uuid().optional(),
+  name: z.string().min(1),
+  verdict: ClassifyVerdictSchema,
+  suggestedSubsector: z.string().optional(),
+  confidence: z.enum(["high", "medium", "low"]).optional(),
+  websiteChecked: z.boolean().optional(),
+  notes: z.string().optional(),
+});
+export type ClassifyRow = z.infer<typeof ClassifyRowSchema>;
+export const ClassifyInputSchema = z.object({
+  missionId: z.string().uuid(),
+  sourceId: z.string().uuid().optional(),
+  companies: z.array(
+    z.object({
+      id: z.string().uuid(),
+      name: z.string(),
+      website_url: z.string().optional(),
+      address: z.string().optional(),
+      region: z.string().optional(),
+    }),
+  ),
+});
+export type ClassifyInput = z.infer<typeof ClassifyInputSchema>;
+export const ClassifyOutputSchema = z.object({
+  producer: OmegaProducerSchema,
+  missionId: z.string().uuid(),
+  sourceId: z.string().uuid().optional(),
+  verdicts: z.array(ClassifyRowSchema).default([]),
+});
+export type ClassifyOutput = z.infer<typeof ClassifyOutputSchema>;
+
 /** Command → {input, output} schema pair. The adapter validates against these. */
 export const OMEGA_CONTRACTS = {
   discover: { input: DiscoverInputSchema, output: DiscoverOutputSchema },
@@ -220,4 +259,5 @@ export const OMEGA_CONTRACTS = {
   extract: { input: ExtractInputSchema, output: ExtractOutputSchema },
   harvest: { input: HarvestInputSchema, output: HarvestOutputSchema },
   refresh: { input: RefreshInputSchema, output: RefreshOutputSchema },
+  classify: { input: ClassifyInputSchema, output: ClassifyOutputSchema },
 } as const;
