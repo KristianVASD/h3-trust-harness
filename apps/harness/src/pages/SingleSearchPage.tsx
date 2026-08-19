@@ -59,8 +59,35 @@ function companyMatchesAudience(
 
 const SECTOR_ALIASES: Record<string, string[]> = {
   painter: ["schilder", "painter", "painters", "schilderwerk", "schilders"],
-  plumber: ["loodgieter", "plumber", "plumbers", "loodgieters"],
-  electrician: ["elektricien", "electrician", "elektriciens", "elektra"],
+  plumber: [
+    "loodgieter",
+    "plumber",
+    "plumbers",
+    "loodgieters",
+    "watertechnisch",
+    "gastechnisch",
+    "installateur w",
+    "installers",
+    "installateurs",
+    "cv",
+  ],
+  electrician: [
+    "elektricien",
+    "electrician",
+    "elektriciens",
+    "elektra",
+    "elektrotechnisch",
+    "installateur e",
+    "installers",
+    "installateurs",
+  ],
+  installer: [
+    "installateur",
+    "installateurs",
+    "installatie",
+    "installers",
+    "echte installateur",
+  ],
   roofing: ["dakdekker", "roofer", "roofing", "dakdekkers"],
   carpentry: ["timmerman", "carpenter", "timmerwerk"],
   drainage: ["riool", "drainage", "riolering", "ontstopping"],
@@ -256,6 +283,7 @@ const SECTOR_DISPLAY: Record<string, string> = {
   painter: "Painters",
   plumber: "Plumbers",
   electrician: "Electricians",
+  installer: "Installers",
   roofing: "Roofing",
   carpentry: "Carpentry",
   drainage: "Drainage",
@@ -927,7 +955,7 @@ export function SingleSearchPage() {
                   type="text"
                   value={country}
                   onChange={(e) => setCountry(e.target.value)}
-                  placeholder="e.g. Netherlands"
+                  placeholder="e.g. Netherlands / Nederland"
                 />
               </label>
             </div>

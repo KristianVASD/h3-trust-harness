@@ -1,6 +1,6 @@
-import type { Mission, Source } from "@h3-trust/schema";
+import { countriesEquivalent, type Mission, type Source } from "@h3-trust/schema";
 import type { Store } from "@h3-trust/store";
-import { isNationalPack, packKey } from "./pack-match.js";
+import { countriesMatch, isNationalPack, packKey } from "./pack-match.js";
 
 export type CoverageMissionRow = {
   id: string;
@@ -124,11 +124,11 @@ export function findPackMission(
   const sector = input.sector.trim();
 
   const sameTrade = (m: Mission) =>
-    m.country.trim().toLowerCase() === country.toLowerCase() &&
+    countriesMatch(m, country) &&
     m.subsector.trim().toLowerCase() === subsector.toLowerCase() &&
     m.sector.trim().toLowerCase() === sector.toLowerCase();
 
-  if (loc && loc.toLowerCase() !== country.toLowerCase()) {
+  if (loc && !countriesEquivalent(loc, country) && loc.toLowerCase() !== "national") {
     return (
       missions.find(
         (m) => sameTrade(m) && m.location.trim().toLowerCase() === loc.toLowerCase(),
@@ -139,7 +139,7 @@ export function findPackMission(
   return (
     missions.find((m) => sameTrade(m) && isNationalPack(m)) ??
     missions.find(
-      (m) => sameTrade(m) && m.location.trim().toLowerCase() === country.toLowerCase(),
+      (m) => sameTrade(m) && countriesEquivalent(m.location, country),
     ) ??
     null
   );

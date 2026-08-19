@@ -601,6 +601,7 @@ export * from "./list-coverage";
 export * from "./resolve-source-gaps";
 export * from "./search-plan";
 export * from "./capability-aliases";
+export * from "./country-aliases";
 export * from "./source-richness";
 export * from "./coverage";
 export * from "./access-barriers";

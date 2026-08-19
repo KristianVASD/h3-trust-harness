@@ -1,4 +1,8 @@
-import type { Mission } from "@h3-trust/schema";
+import {
+  canonicalCountry,
+  countriesEquivalent,
+  type Mission,
+} from "@h3-trust/schema";
 
 export function normPlace(value: string): string {
   return value
@@ -11,17 +15,14 @@ export function normPlace(value: string): string {
 
 export function isNationalPack(mission: Mission): boolean {
   const loc = normPlace(mission.location);
-  const country = normPlace(mission.country);
   if (!loc) return false;
-  if (loc === "national" || loc === "nationwide" || loc === "nl") return true;
-  if (country && (loc === country || country.includes(loc) || loc.includes(country))) {
-    return true;
-  }
+  if (loc === "national" || loc === "nationwide") return true;
+  if (countriesEquivalent(mission.location, mission.country)) return true;
   return false;
 }
 
 export function packKey(mission: Mission): string {
-  return `${normPlace(mission.country)}|${normPlace(mission.sector)}|${normPlace(mission.subsector)}`;
+  return `${canonicalCountry(mission.country) || normPlace(mission.country)}|${normPlace(mission.sector)}|${normPlace(mission.subsector)}`;
 }
 
 export function tradesMatch(mission: Mission, what: string): boolean {
@@ -35,8 +36,7 @@ export function countriesMatch(
   mission: Mission,
   country: string | null | undefined,
 ): boolean {
-  const want = country ? normPlace(country) : "";
+  const want = (country ?? "").trim();
   if (!want) return true;
-  const have = normPlace(mission.country);
-  return have === want || have.includes(want) || want.includes(have);
+  return countriesEquivalent(mission.country, want);
 }
