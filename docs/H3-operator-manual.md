@@ -269,7 +269,7 @@ If not ready: chase Gaps / Probe / Align / barriers / Profile from the links on 
 
 **Worker Search:** top 5 **in this job** + link to full search.
 
-**Single Search** (`/search`): type e.g. `painter / Hoofddorp / consumer`. Reads the **country × sector pack**, filters by town / 4-digit postcode cluster, excludes `unknown` and local-directory missions. Score = coverage of **trusted lists that actually have member rows**.
+**Single Search** (`/search`): type e.g. `painter / Hoofddorp / consumer`. Reads the **country × sector pack**, filters by town / 4-digit postcode cluster, excludes `unknown` and local-directory missions. Score = **independent trusted-list evidence**: one accepted list is a real signal (~65–75 depending on weight); a second list corroborates and ranks higher. Lists the firm is not on do not pull the score down.
 
 **CARA — optional, on the result:**
 
@@ -346,7 +346,7 @@ Producer badges: `Human`, `OmegaClaw`, `ExternalAI`, `ImportedDataset`. You alwa
 | Symptom | Likely cause | What to do |
 |---------|--------------|------------|
 | 0–1 painters in a town | National list has no postcodes in that cluster; no local overlay | Attach a local mixed/niche list; check cluster hit count on onboard |
-| Score 1/11 lists | Empty warm-started sources in the denominator | Align + import members; coverage only counts lists **with rows** |
+| Score still looks thin | Source weight is low, or only one list hit | Align the list weight; attach another independent painter list. Extra pack lists no longer dilute a single-hit firm |
 | Mixed OV names as “painters” | Mixed box off, or promoted blindly | Re-import as mixed; Classify instead of dumping onto the pack |
 | Cannot save | Not approved CURAD | Sign in; wait for admin on `/admin/volunteers` |
 

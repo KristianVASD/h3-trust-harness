@@ -83,7 +83,7 @@ export function WorkerSearchStepPage() {
                 <strong>{company.name}</strong>
                 <span className="muted">
                   {" "}
-                  · list coverage {list.score}
+                  · evidence {list.score}
                 </span>
                 <div
                   className="worker-result-confidence"

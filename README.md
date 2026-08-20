@@ -227,7 +227,7 @@ One question, one ranked answer — reads **existing** investigations only (does
 
 1. Type e.g. `painters in Haarlemmermeer` or `schilder voor VvE`
 2. Keyword parse matches location / sector / service context to a mission
-3. Companies ranked by weighted trusted-list coverage (KvK-fail excluded); optional context filter
+3. Companies ranked by independent trusted-list evidence (KvK-fail excluded); optional context filter
 4. Top 5 cards: score, **Can / For / Notable**, expandable **Why** (which lists), one-click backwards CARA (Correct / Adjust / Wrong)
 
 Links out to full Investigation and Data Worker for the matched mission.

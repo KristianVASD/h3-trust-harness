@@ -3,6 +3,7 @@ import type { SearchPlanEntry } from "./search-plan";
 import type { SourceFieldKey } from "./source-richness";
 import type { ExtractionGuide, ProbeStatus, Richness } from "./source-richness";
 import { isBlockingBarrier, type AccessBarrier } from "./access-barriers";
+import { listMentionFactor } from "./list-coverage";
 
 /** A "cell" = one (layer × category) slot in the search plan. */
 export const TARGET_COMPANIES = 5; // ties to the ≥5 mission-success gate
@@ -161,14 +162,14 @@ export function computeMissionCoverage(args: {
  * Per search result: how complete/confident is THIS suggestion, given the
  * mission's completeness and this company's own evidence? 0..100.
  *   0.5 * mission completeness   (the investigation is this far along)
- * + 0.3 * list coverage          (3+ trusted lists = 1.0)
+ * + 0.3 * independent mentions   (1 list ≈ 0.62, 2 ≈ 0.86, 3+ saturates)
  * + 0.2 * kvk factor             (pass 1.0 / unchecked 0.5 / fail 0.0)
  */
 export function computeResultCoverage(
   company: { source_ids?: string[]; kvk_gate?: string },
   mission: Pick<MissionCoverage, "completenessScore">,
 ): number {
-  const listScore = Math.min((company.source_ids?.length ?? 0) / 3, 1);
+  const listScore = listMentionFactor(company.source_ids?.length ?? 0);
   const kvkFactor =
     company.kvk_gate === "pass"
       ? 1
@@ -194,5 +195,11 @@ export function explainResultCoverage(
       : company.kvk_gate === "fail"
         ? "KvK fail"
         : "KvK unchecked";
-  return `mission ${mission.completenessScore}% complete · on ${lists} trusted list${lists === 1 ? "" : "s"} · ${kvk}`;
+  const mention =
+    lists === 0
+      ? "on no trusted lists"
+      : lists === 1
+        ? "on 1 trusted list (not yet corroborated)"
+        : `on ${lists} independent lists`;
+  return `mission ${mission.completenessScore}% complete · ${mention} · ${kvk}`;
 }

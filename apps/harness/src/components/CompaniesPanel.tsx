@@ -185,22 +185,20 @@ export function CompaniesPanel({
 
             <CompanyProfileTags company={selected} />
 
-            <h4 style={{ marginBottom: "0.35rem" }}>Weighted list coverage</h4>
+            <h4 style={{ marginBottom: "0.35rem" }}>List evidence</h4>
             {coverage ? (
               <>
                 <p style={{ marginTop: 0 }}>
                   <strong>
                     {coverage.onCount} of {coverage.totalCount}
                   </strong>{" "}
-                  trusted lists · weight{" "}
-                  <strong>
-                    {coverage.coveredWeight}/{coverage.totalWeight}
-                  </strong>{" "}
-                  ({coverage.score}%)
+                  trusted lists · evidence{" "}
+                  <strong>{coverage.score}/100</strong>
                 </p>
                 <p className="hint">{coverage.explanation}</p>
                 <p className="muted">
-                  Same list-count can rank differently when list weights differ.
+                  One trusted mention is a real signal. Extra independent lists
+                  raise the score; lists this firm is not on do not pull it down.
                 </p>
               </>
             ) : null}

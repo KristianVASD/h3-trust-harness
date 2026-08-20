@@ -186,7 +186,8 @@ export function WorkerResultsPage() {
       <div className="worker-step-intro">
         <h2>Trust results</h2>
         <p className="hint">
-          Companies ranked by weighted trusted-list coverage. Human check is the
+          Companies ranked by independent trusted-list evidence. One accepted
+          list is a real signal; extra lists corroborate. Human check is the
           second CARA layer — agree, adjust, or disagree with a reason.
         </p>
         <div className="row" style={{ marginTop: "0.5rem", flexWrap: "wrap" }}>
@@ -283,7 +284,7 @@ export function WorkerResultsPage() {
                     <td>
                       <span className="worker-trust-score">{displayScore}</span>
                       <div className="muted" style={{ fontSize: "0.8rem" }}>
-                        lists {cov.score} · {cov.onCount}/{cov.totalCount}
+                        evidence {cov.score} · {cov.onCount}/{cov.totalCount} lists
                       </div>
                       {human ? (
                         <StatusChip

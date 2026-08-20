@@ -1315,16 +1315,31 @@ export function SingleSearchPage() {
                   <details className="search-why">
                     <summary>
                       Why {r.displayScore}/100? · {r.onCount}/
-                      {r.totalCount} lists with members · conf{" "}
-                      {r.coverageConfidence}
+                      {r.totalCount} lists
+                      {r.onCount === 1
+                        ? " · not yet corroborated"
+                        : r.onCount > 1
+                          ? " · corroborated"
+                          : ""}{" "}
+                      · conf {r.coverageConfidence}
                     </summary>
                     <div className="search-why-body">
                       {r.lists.length ? (
-                        <ul>
-                          {r.lists.map((s) => (
-                            <li key={s.id}>{s.name}</li>
-                          ))}
-                        </ul>
+                        <>
+                          <ul>
+                            {r.lists.map((s) => (
+                              <li key={s.id}>{s.name}</li>
+                            ))}
+                          </ul>
+                          {r.onCount === 1 ? (
+                            <p className="muted">
+                              One trusted list is a real signal. Another
+                              independent list would corroborate and rank higher
+                              — lists this firm is not on do not pull the score
+                              down.
+                            </p>
+                          ) : null}
+                        </>
                       ) : (
                         <p className="muted">No trusted list mentions yet.</p>
                       )}
