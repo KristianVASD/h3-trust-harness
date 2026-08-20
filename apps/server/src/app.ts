@@ -63,6 +63,7 @@ import {
 import {
   importNicheForPack,
   importStackedMixedList,
+  peelMixedOnlyFromMission,
   promoteUnknownToSectorPack,
 } from "./stacked-import.js";
 import {
@@ -652,6 +653,26 @@ export function createApp(options: CreateAppOptions) {
         (co) => co.status === "unknown" && co.classify?.verdict === "home_service",
       ).length,
     });
+  });
+
+  app.post("/api/missions/:missionId/companies/peel-mixed", async (c) => {
+    try {
+      const body = await c.req.json().catch(() => ({}));
+      const sourceId =
+        typeof body?.sourceId === "string" && body.sourceId.trim()
+          ? body.sourceId.trim()
+          : undefined;
+      const result = await peelMixedOnlyFromMission(store, {
+        missionId: c.req.param("missionId"),
+        sourceId,
+      });
+      return c.json(result);
+    } catch (err) {
+      if (err instanceof CompanyImportError) {
+        return c.json({ error: err.message }, err.status as 400 | 404);
+      }
+      throw err;
+    }
   });
 
   app.post("/api/directory/companies/:companyId/promote", async (c) => {

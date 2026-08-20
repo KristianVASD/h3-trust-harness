@@ -7,6 +7,7 @@ import {
   countClusterHits,
   defaultAudienceForCategory,
   defaultWeightForList,
+  isLocalDirectoryMission,
   isMixedSourceCategory,
   type Mission,
   type SourceCategory,
@@ -102,6 +103,7 @@ export function MissionControl() {
     total: number;
   } | null>(null);
   const [doneMsg, setDoneMsg] = useState<string | null>(null);
+  const [peelingId, setPeelingId] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     location: "",
@@ -325,6 +327,30 @@ export function MissionControl() {
       URL.revokeObjectURL(url);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Export failed");
+    }
+  }
+
+  async function onPeelMixed(missionId: string, label: string) {
+    if (
+      !window.confirm(
+        `Peel mixed-list-only members off “${label}”?\n\nOV / sportclub firms with no sector list (florist, baker) move to Local Directory as unknown.\nCompanies that also sit on Vakwerk+ / Echte Installateur stay (double listing).\nOVZH itself is not deleted.`,
+      )
+    ) {
+      return;
+    }
+    setPeelingId(missionId);
+    setError(null);
+    setDoneMsg(null);
+    try {
+      const result = await api.peelMixedOnly(missionId);
+      setDoneMsg(
+        `Peeled ${result.peeled} mixed-only members off ${label} → Local Directory (${result.mixedSourceNames.join(", ") || "mixed lists"}). Kept ${result.keptDoubles} doubles. Then re-attach OVZH as Mixed from the form above so installers get the second badge.`,
+      );
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Peel failed");
+    } finally {
+      setPeelingId(null);
     }
   }
 
@@ -735,6 +761,18 @@ export function MissionControl() {
                     >
                       Investigation
                     </Link>
+                    {isLocalDirectoryMission(m) ? null : (
+                      <button
+                        type="button"
+                        className="btn secondary small"
+                        disabled={!canInteract || peelingId === m.id}
+                        onClick={() =>
+                          void onPeelMixed(m.id, `${m.location} · ${m.subsector}`)
+                        }
+                      >
+                        {peelingId === m.id ? "Peeling…" : "Peel mixed-only"}
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="btn danger small"

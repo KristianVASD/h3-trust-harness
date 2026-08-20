@@ -460,6 +460,20 @@ export const api = {
       `/directory/companies/${companyId}/promote`,
       { method: "POST", body: JSON.stringify(body) },
     ),
+  peelMixedOnly: (
+    missionId: string,
+    sourceId?: string,
+  ) =>
+    request<{
+      peeled: number;
+      keptDoubles: number;
+      skipped: number;
+      directoryMissionId: string;
+      mixedSourceNames: string[];
+    }>(`/missions/${missionId}/companies/peel-mixed`, {
+      method: "POST",
+      body: JSON.stringify(sourceId ? { sourceId } : {}),
+    }),
   exportHhhLeads: (country?: string, subsector?: string) => {
     const params = new URLSearchParams();
     if (country) params.set("country", country);

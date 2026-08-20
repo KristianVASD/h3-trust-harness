@@ -56,12 +56,14 @@ This is Trust Discovery: evidence-based, human-validated, AI-ready.
 | Entrance | Path | Job |
 |----------|------|-----|
 | **Home** | `/` | Welcome — mission, CARA volunteers, partnership |
-| **Data Worker** | `/work/:id/…` | Linear **production**: Brief → Gaps → Probe → Align → Extract → Profile → Coverage → Search |
+| **Data Worker** | `/work/:id/…` | Linear **production**: Brief → Gaps → Probe → Align → Extract → Classify → Profile → Coverage → Search |
 | **Investigation** | `/missions/:id` | Deep **notebook + reviews**: Journal / Observations / Hypotheses, Align, Signals, Situation, Memory |
 | **Single Search** | `/search` | One question → ranked answer from existing investigations |
 | **Mission Control** | `/control` | Open / create jobs and investigations |
 
 Switch anytime via the top bar.
+
+**How to operate (what to feed, what to CARA):** see [`docs/H3-operator-manual.md`](docs/H3-operator-manual.md).
 
 ---
 

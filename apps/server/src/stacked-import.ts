@@ -8,10 +8,12 @@ import {
   countriesEquivalent,
   findCompanyMatchIndex,
   isLocalDirectoryMission,
+  isMixedSourceCategory,
   type Company,
   type Mission,
   type Producer,
   type ServiceContext,
+  type Source,
 } from "@h3-trust/schema";
 import type { Store } from "@h3-trust/store";
 import {
@@ -449,4 +451,158 @@ export async function applyClassifyVerdicts(
     updated += 1;
   }
   return { updated, skipped };
+}
+
+export type PeelMixedResult = {
+  peeled: number;
+  keptDoubles: number;
+  skipped: number;
+  directoryMissionId: string;
+  mixedSourceNames: string[];
+};
+
+/**
+ * Move companies that only have mixed-list badges (OV / sportclub / networking)
+ * off a sector job into the country local directory as unknown.
+ * Firms that also sit on a niche sector list (Vakwerk+, Echte Installateur, …) stay.
+ */
+export async function peelMixedOnlyFromMission(
+  store: Store,
+  args: { missionId: string; sourceId?: string },
+): Promise<PeelMixedResult> {
+  const mission = await store.getMission(args.missionId);
+  if (!mission) throw new CompanyImportError("Mission not found", 404);
+  if (isLocalDirectoryMission(mission)) {
+    throw new CompanyImportError("Local directory is the destination, not a peel target", 400);
+  }
+
+  const missionSources = (await store.listByMission(
+    "sources",
+    args.missionId,
+  )) as Source[];
+  const companies = (await store.listByMission(
+    "companies",
+    args.missionId,
+  )) as Company[];
+
+  const sourceIds = new Set<string>();
+  for (const co of companies) {
+    for (const id of co.source_ids ?? []) sourceIds.add(id);
+  }
+  const sourceById = new Map(missionSources.map((s) => [s.id, s]));
+  for (const id of sourceIds) {
+    if (sourceById.has(id)) continue;
+    const extra = (await store.get("sources", id)) as Source | null;
+    if (extra) sourceById.set(id, extra);
+  }
+
+  const mixedOnJob = [...sourceById.values()].filter((s) =>
+    args.sourceId ? s.id === args.sourceId : isMixedSourceCategory(s.category),
+  );
+  if (args.sourceId && mixedOnJob.length === 0) {
+    const named = sourceById.get(args.sourceId);
+    if (named) mixedOnJob.push(named);
+  }
+  if (mixedOnJob.length === 0) {
+    throw new CompanyImportError(
+      "No mixed list (OV / sportclub / networking) on this job",
+      400,
+    );
+  }
+  const peelSourceIds = new Set(mixedOnJob.map((s) => s.id));
+
+  function isNicheSource(sourceId: string): boolean {
+    const src = sourceById.get(sourceId);
+    if (!src) return true;
+    if (peelSourceIds.has(sourceId)) return false;
+    return !isMixedSourceCategory(src.category);
+  }
+
+  const { mission: directory } = await ensureLocalDirectoryMission(
+    store,
+    mission.country,
+  );
+  for (const src of mixedOnJob) {
+    await store.linkSourceToMission(directory.id, src.id, "ImportedDataset");
+  }
+
+  const dirCompanies = (await store.listByMission(
+    "companies",
+    directory.id,
+  )) as Company[];
+  let dirIndexList = [...dirCompanies];
+  let indexes = buildCompanyIndexes(dirIndexList);
+
+  const now = new Date().toISOString();
+  let peeled = 0;
+  let keptDoubles = 0;
+  let skipped = 0;
+
+  for (const company of companies) {
+    const ids = company.source_ids ?? [];
+    const onMixed = ids.some((id) => peelSourceIds.has(id));
+    const onNiche = ids.some((id) => isNicheSource(id));
+    if (!onMixed) {
+      skipped += 1;
+      continue;
+    }
+    if (onNiche) {
+      keptDoubles += 1;
+      continue;
+    }
+
+    const matchIdx = findCompanyMatchIndex(company, indexes);
+    if (matchIdx != null) {
+      const existing = dirIndexList[matchIdx]!;
+      const merged = mergeCompany(existing, {
+        sourceId: ids[0] ?? mixedOnJob[0]!.id,
+        label: (company.list_membership ?? [])[0] ?? mixedOnJob[0]!.name,
+        address: company.address,
+        region: company.region,
+        sector: company.sector,
+        kvk_number: company.kvk_number,
+        website_url: company.website_url,
+        specialism: company.specialism,
+        incomingCaps: [],
+        phone: company.phone,
+        email: company.email,
+        now,
+      });
+      const saved = (await store.upsert("companies", {
+        ...merged,
+        source_ids: [...new Set([...(existing.source_ids ?? []), ...ids])],
+        list_membership: [
+          ...new Set([
+            ...(existing.list_membership ?? []),
+            ...(company.list_membership ?? []),
+          ]),
+        ],
+        status: "unknown",
+        updatedAt: now,
+      })) as Company;
+      dirIndexList[matchIdx] = saved;
+      indexes = buildCompanyIndexes(dirIndexList);
+      if (company.id !== saved.id) {
+        await store.remove("companies", company.id);
+      }
+    } else {
+      const moved = (await store.upsert("companies", {
+        ...company,
+        missionId: directory.id,
+        status: "unknown",
+        updatedAt: now,
+      })) as Company;
+      dirIndexList.push(moved);
+      indexes = buildCompanyIndexes(dirIndexList);
+    }
+    peeled += 1;
+  }
+
+  return {
+    peeled,
+    keptDoubles,
+    skipped,
+    directoryMissionId: directory.id,
+    mixedSourceNames: mixedOnJob.map((s) => s.name),
+  };
 }
