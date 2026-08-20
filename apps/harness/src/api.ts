@@ -87,6 +87,7 @@ export type CoverageMissionRow = {
   subsector: string;
   companyCount: number;
   trustedCount: number;
+  listNames?: string[];
   nationalSourceCount: number;
   localSourceCount: number;
   nationalPack: boolean;

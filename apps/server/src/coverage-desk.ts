@@ -10,6 +10,7 @@ export type CoverageMissionRow = {
   subsector: string;
   companyCount: number;
   trustedCount: number;
+  listNames: string[];
   nationalSourceCount: number;
   localSourceCount: number;
   nationalPack: boolean;
@@ -60,6 +61,7 @@ export async function buildCoverageDesk(
       subsector: mission.subsector,
       companyCount: companies.length,
       trustedCount: trusted.length,
+      listNames: trusted.map((s) => s.name),
       nationalSourceCount,
       localSourceCount,
       nationalPack: isNationalPack(mission),

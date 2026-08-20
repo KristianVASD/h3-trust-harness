@@ -305,9 +305,10 @@ interface RankedCompany {
   /** Phase 8 — mission × list × kvk confidence (0..100). */
   coverageConfidence: number;
   coverageWhy: string;
+  nearby: boolean;
 }
 
-/* ── Page ── */
+const SEARCH_RESULT_CAP = 5;
 
 export function SingleSearchPage() {
   const navigate = useNavigate();
@@ -333,6 +334,8 @@ export function SingleSearchPage() {
   const [matchedMission, setMatchedMission] = useState<Mission | null>(null);
   const [overlayNote, setOverlayNote] = useState<string | null>(null);
   const [ranked, setRanked] = useState<RankedCompany[]>([]);
+  const [matchTotal, setMatchTotal] = useState(0);
+  const [packSize, setPackSize] = useState(0);
   const [trustedCount, setTrustedCount] = useState(0);
 
   const [busy, setBusy] = useState(false);
@@ -458,6 +461,8 @@ export function SingleSearchPage() {
     setMatchedMission(null);
     setOverlayNote(null);
     setRanked([]);
+    setMatchTotal(0);
+    setPackSize(0);
     setTrustedCount(0);
     setParsedHint(null);
     setNoMatchReason(null);
@@ -668,7 +673,11 @@ export function SingleSearchPage() {
         companyInQueryPlace(row.company, row.mission, parsed.location),
       );
       const localSources = placeSources.filter((s) => s.scope === "local" || s.scope === "regional");
-      if (placed.length && localSources.length === 0 && parsed.location) {
+      if (parsed.location && merged.length >= 20 && placed.length > 0 && placed.length < 3) {
+        setOverlayNote(
+          `Only ${placed.length} in the ${parsed.location} cluster on this national pack (${merged.length} companies nationwide). A local list (OVZH) is a second badge, not extra painters.`,
+        );
+      } else if (placed.length && localSources.length === 0 && parsed.location) {
         setOverlayNote(
           `National pack hit for ${parsed.location} — attach a local list (OV / sportclub) from Mission Control.`,
         );
@@ -688,7 +697,8 @@ export function SingleSearchPage() {
           const c = row.company;
           const cov = computeListCoverage(c, placeSources, packCompanies);
           const human = reviewMap.get(c.id);
-          const localBoost = companyExactPlace(c, parsed.location ?? "")
+          const exact = companyExactPlace(c, parsed.location ?? "");
+          const localBoost = exact
             ? 12
             : companyMatchesPlace(c, parsed.location ?? "")
               ? 8
@@ -706,6 +716,7 @@ export function SingleSearchPage() {
             displayScore,
             coverageConfidence,
             coverageWhy: explainResultCoverage(c, missionCov),
+            nearby: Boolean(parsed.location) && !exact && localBoost > 0,
           };
         })
         .sort((a, b) => b.displayScore - a.displayScore);
@@ -725,7 +736,9 @@ export function SingleSearchPage() {
         companyMatchesAudience(r.company, audience),
       );
 
-      setRanked(results.slice(0, 5));
+      setMatchTotal(results.length);
+      setPackSize(merged.length);
+      setRanked(results.slice(0, SEARCH_RESULT_CAP));
 
       if (!results.length) {
         const audienceOnly =
@@ -1145,9 +1158,19 @@ export function SingleSearchPage() {
                 tone={trustedCount >= 5 ? "done" : "active"}
               />
               <StatusChip
-                label={`${ranked.length} results`}
+                label={
+                  matchTotal > SEARCH_RESULT_CAP
+                    ? `top ${ranked.length} of ${matchTotal}`
+                    : `${matchTotal} in place`
+                }
                 tone={ranked.length ? "active" : "waiting"}
               />
+              {packSize > matchTotal ? (
+                <StatusChip
+                  label={`${packSize} on national pack`}
+                  tone="waiting"
+                />
+              ) : null}
               <Link
                 className="btn secondary small"
                 to={`/missions/${matchedMission.id}`}
@@ -1188,6 +1211,9 @@ export function SingleSearchPage() {
                         >
                           {r.company.region}
                         </span>
+                      ) : null}
+                      {r.nearby ? (
+                        <StatusChip label="nearby in cluster" tone="waiting" />
                       ) : null}
                     </div>
                     <div className="row" style={{ gap: "0.35rem" }}>

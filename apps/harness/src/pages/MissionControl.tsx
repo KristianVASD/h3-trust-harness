@@ -744,12 +744,25 @@ export function MissionControl() {
                         }
                       />
                       <StatusChip
-                        label={`${stats?.trustedCount ?? 0} lists`}
+                        label={`${stats?.trustedCount ?? 0} list${
+                          (stats?.trustedCount ?? 0) === 1 ? "" : "s"
+                        }`}
                       />
                       {stats?.nationalPack ? (
                         <StatusChip label="national pack" tone="active" />
-                      ) : null}
+                      ) : (
+                        <StatusChip label="town job" tone="waiting" />
+                      )}
                     </div>
+                    {stats?.listNames && stats.listNames.length > 0 ? (
+                      <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.85rem" }}>
+                        Linked: {stats.listNames.join(" · ")}
+                      </p>
+                    ) : (
+                      <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.85rem" }}>
+                        No accepted lists linked to this job yet.
+                      </p>
+                    )}
                   </Link>
                   <div className="row" style={{ marginTop: "0.75rem" }}>
                     <Link className="btn small" to={workerPath(m.id)}>
