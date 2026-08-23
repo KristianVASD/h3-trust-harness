@@ -6,6 +6,7 @@ import {
   defaultAudienceForCategory,
   defaultWeightForList,
   isMixedSourceCategory,
+  primaryTradeId,
   type Mission,
   type ServiceContext,
   type Source,
@@ -96,7 +97,7 @@ export async function onboardCountrySectorPack(
 }> {
   const country = input.country.trim();
   const sector = input.sector.trim();
-  const subsector = input.subsector.trim();
+  const subsector = primaryTradeId(input.subsector) ?? input.subsector.trim();
   if (!country || !sector || !subsector) {
     throw new PackOnboardError("country, sector, and subsector are required", 400);
   }

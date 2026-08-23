@@ -21,6 +21,25 @@ Open a pack from Mission Control → **National · N** (or a location job) → D
 
 ---
 
+## 12 trade doors (HHH specialties)
+
+Mission Control coverage, Single Search, and HHH lead export all use the same 12 doors: `paint`, `electro`, `hvac`, `bath`, `drain`, `roof`, `glazing`, `garden`, `security`, `solar`, `pest`, `handyman`.
+
+| Is a door | Is not a door |
+|-----------|----------------|
+| The 12 HHH specialties above | **VvE** — For tag (`hoa`), same trade, different client |
+| | **Gevel / buitenschil** — Can under paint, glazing, or roof |
+| | Masterlist category G (VvE common spaces) — SEIN, not the coverage list |
+| | Kozijnen / carpentry as a 13th pack |
+
+Vocabulary lives in `searchplans/trades.v1.json` (ids, aliases, pack aliases, specialisations). Can synonyms live in `searchplans/capability_aliases.v1.json` and point at those doors via `parentTrade` — do not add a 13th overview.
+
+**Installers:** one live list may still serve `electro` + `hvac` + `bath`. Overviews still show three rows; empty ones stay empty until a niche list lands. Onboarding `paint` attaches to the existing **Painters** pack.
+
+**Search:** a specialisation (`wespen`) opens the parent door (`pest`) and **boosts** matching Can tags. Rows with empty Can stay visible. `vve` / `particulier` only set For.
+
+---
+
 ## Two ways of working
 
 ### A. Fast path (what you do most days)
@@ -29,7 +48,7 @@ You already have a member list (CSV). You do **not** need Gaps → Probe first.
 
 1. Polish the CSV (see [CSV format](#csv-format)).
 2. **Mission Control → Attach local list to national pack.**
-3. Fill country / sector / subsector / source name / URL / layer / category / weight / audience.
+3. Fill country / sector / **trade** (one of the 12 ids) / source name / URL / layer / category / weight / audience.
 4. Tick **Mixed list** for OV, sportclub, networking (or pick a mixed category — the box ticks itself).
 5. Paste or upload CSV → **Onboard**.
 6. Open the national pack in Data Worker → **Align** and CARA the source weight.
@@ -64,13 +83,13 @@ Same CARA rules. Same CSV / JSON feeds. Align does **not** block Extract; it loc
 
 **Path:** top bar → Mission Control.
 
-One **national pack** per country × trade (example: Netherlands · Painters). Location is the **source region** (Hoofddorp), not a new town mission. Search later filters that pack by place / postcode cluster.
+One **national pack** per country × trade door (example: Netherlands · `paint` / Schilders). Location is the **source region** (Hoofddorp), not a new town mission. Search later filters that pack by place / postcode cluster.
 
 ### Fill in
 
 | Field | What to put |
 |-------|-------------|
-| Country / Sector / Subsector | Pack identity. Must match the trade (Painters, not “Hoofddorp”). |
+| Country / Sector / Trade | Pack identity. Trade is one of the 12 ids (`paint`, not “Hoofddorp” and not VvE). |
 | Location | Optional. Region of *this list* (town, gemeente). Attaches to the national pack. |
 | Source name + URL | The list’s identity (Vakwerk+, OVHZ, SV Hoofddorp Business Club). |
 | Layer | `national` / `regional` / `local`. |
@@ -93,7 +112,7 @@ After import you should see something like:
 
 Then open the **National** job → Align (source CARA) → Search.
 
-**Download HHH high-trust leads** exports sector-confirmed companies on **≥2 independent lists**. HandyHouseHelp later; not an H3 company table copy.
+**Download HHH high-trust leads** exports companies on **≥2 independent lists**. Each row has `specialty` (door id: `paint`, `pest`, …), `tags` (Can), and `audience` (For: `private` / `hoa` / …). Filter `?subsector=paint` or `Painters`. Pest rows appear only after a pest pack has ≥2-list companies. HandyHouseHelp still adds the specialty in that app.
 
 ---
 
@@ -159,7 +178,7 @@ Then **Probe** and/or **Continue to Align**.
 
 ## Lists vs jobs (OVZH never gets a painter tag)
 
-Search does **not** read a painter flag on the company or on OVZH. It finds a **job** (`missions.subsector = Painters`) and loads every company sitting on that job.
+Search does **not** read a painter flag on the company or on OVZH. It finds a **job** (`missions.subsector` is `paint`, or a live alias such as Painters) and loads every company sitting on that job.
 
 | Object | Holds the trade? |
 |--------|------------------|
@@ -269,7 +288,7 @@ If not ready: chase Gaps / Probe / Align / barriers / Profile from the links on 
 
 **Worker Search:** top 5 **in this job** + link to full search.
 
-**Single Search** (`/search`): type e.g. `painter / Hoofddorp / consumer`. Reads the **country × sector pack**, filters by town / 4-digit postcode cluster, excludes `unknown` and local-directory missions. Score = **independent trusted-list evidence**: one accepted list is a real signal (~65–75 depending on weight); a second list corroborates and ranks higher. Lists the firm is not on do not pull the score down.
+**Single Search** (`/search`): type e.g. `wespen / Lisse / vve`. Reads the **country × trade door** (`pest`), filters by town / 4-digit postcode cluster and For (`hoa`), excludes `unknown` and local-directory missions. Specialisation queries **boost** matching Can tags; empty Can is still shown. Score = **independent trusted-list evidence**: one accepted list is a real signal (~65–75 depending on weight); a second list corroborates and ranks higher. Lists the firm is not on do not pull the score down.
 
 **CARA — optional, on the result:**
 

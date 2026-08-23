@@ -1,4 +1,16 @@
-import { countriesEquivalent, isLocalDirectoryMission, type Mission, type Source } from "@h3-trust/schema";
+import {
+  countriesEquivalent,
+  HOME_MAINTENANCE_SECTOR,
+  TRADE_IDS,
+  isLocalDirectoryMission,
+  packMatchesTrade,
+  primaryTradeId,
+  tradeIdsForPackLabel,
+  tradeLabel,
+  type Mission,
+  type Source,
+  type TradeId,
+} from "@h3-trust/schema";
 import type { Store } from "@h3-trust/store";
 import { countriesMatch, isNationalPack, packKey } from "./pack-match.js";
 
@@ -23,6 +35,8 @@ export type CoveragePackRow = {
   country: string;
   sector: string;
   subsector: string;
+  tradeId?: string;
+  tradeLabel?: string;
   companyCount: number;
   missionCount: number;
   trustedCount: number;
@@ -35,6 +49,144 @@ export type CoveragePackRow = {
 
 function isTrusted(source: Source): boolean {
   return source.status === "accepted" || source.status === "adjusted";
+}
+
+function missionServesTrade(mission: {
+  country: string;
+  sector: string;
+  subsector: string;
+}, country: string, requested: string): boolean {
+  if (!countriesEquivalent(mission.country, country) && mission.country !== country) {
+    if (!countriesMatch(mission as Mission, country)) return false;
+  } else if (!countriesEquivalent(mission.country, country)) {
+    return false;
+  }
+  const wantIds = tradeIdsForPackLabel(requested);
+  const packIds = tradeIdsForPackLabel(mission.subsector);
+  if (wantIds.length && packIds.length) {
+    return wantIds.some((id) => packIds.includes(id));
+  }
+  if (packMatchesTrade(mission.subsector, requested)) return true;
+  return (
+    mission.subsector.trim().toLowerCase() === requested.trim().toLowerCase()
+  );
+}
+
+function packStatus(
+  pack: Pick<
+    CoveragePackRow,
+    "companyCount" | "localSourceCount" | "sector" | "subsector" | "missions"
+  >,
+): CoveragePackRow["status"] {
+  const sample = pack.missions[0];
+  const directory = sample
+    ? isLocalDirectoryMission({
+        sector: pack.sector,
+        subsector: pack.subsector,
+      })
+    : false;
+  const hasNational = pack.missions.some((m) => m.nationalPack && m.companyCount > 0);
+  const hasLocal = pack.localSourceCount > 0;
+  if (pack.companyCount === 0) return "empty";
+  if (directory) return "searchable";
+  if (hasNational && !hasLocal) return "needs_overlay";
+  return "searchable";
+}
+
+function emptyDoor(country: string, tradeId: TradeId): CoveragePackRow {
+  return {
+    key: `${country.toLowerCase()}|door|${tradeId}`,
+    country,
+    sector: HOME_MAINTENANCE_SECTOR,
+    subsector: tradeId,
+    tradeId,
+    tradeLabel: tradeLabel(tradeId),
+    companyCount: 0,
+    missionCount: 0,
+    trustedCount: 0,
+    nationalSourceCount: 0,
+    localSourceCount: 0,
+    searchable: false,
+    status: "empty",
+    missions: [],
+  };
+}
+
+function expandTradeDoors(
+  rows: CoverageMissionRow[],
+  missions: Mission[],
+): CoveragePackRow[] {
+  const countries = [
+    ...new Set(
+      rows
+        .filter((r) => r.nationalPack && !isLocalDirectoryMission(r))
+        .map((r) => r.country.trim())
+        .filter(Boolean),
+    ),
+  ];
+  if (!countries.length) countries.push("Netherlands");
+
+  const byId = new Map(missions.map((m) => [m.id, m]));
+  const doors: CoveragePackRow[] = [];
+
+  for (const country of countries.sort((a, b) => a.localeCompare(b))) {
+    for (const tradeId of TRADE_IDS) {
+      const matching = rows.filter(
+        (r) =>
+          countriesEquivalent(r.country, country) &&
+          !isLocalDirectoryMission(r) &&
+          packMatchesTrade(r.subsector, tradeId),
+      );
+      if (!matching.length) {
+        doors.push(emptyDoor(country, tradeId));
+        continue;
+      }
+      const pack: CoveragePackRow = {
+        key: `${country.toLowerCase()}|door|${tradeId}`,
+        country,
+        sector: HOME_MAINTENANCE_SECTOR,
+        subsector: tradeId,
+        tradeId,
+        tradeLabel: tradeLabel(tradeId),
+        companyCount: matching.reduce((s, r) => s + r.companyCount, 0),
+        missionCount: matching.length,
+        trustedCount: matching.reduce((s, r) => s + r.trustedCount, 0),
+        nationalSourceCount: matching.reduce((s, r) => s + r.nationalSourceCount, 0),
+        localSourceCount: matching.reduce((s, r) => s + r.localSourceCount, 0),
+        searchable: false,
+        status: "empty",
+        missions: matching,
+      };
+      pack.status = packStatus(pack);
+      pack.searchable = pack.companyCount > 0;
+      doors.push(pack);
+    }
+  }
+
+  const used = new Set(doors.flatMap((d) => d.missions.map((m) => m.id)));
+  const leftovers = rows.filter(
+    (r) => !used.has(r.id) && isLocalDirectoryMission(r),
+  );
+  const leftoverPacks: CoveragePackRow[] = [];
+  for (const row of leftovers) {
+    const mission = byId.get(row.id);
+    leftoverPacks.push({
+      key: mission ? packKey(mission) : `dir|${row.id}`,
+      country: row.country,
+      sector: row.sector,
+      subsector: row.subsector,
+      companyCount: row.companyCount,
+      missionCount: 1,
+      trustedCount: row.trustedCount,
+      nationalSourceCount: row.nationalSourceCount,
+      localSourceCount: row.localSourceCount,
+      searchable: row.companyCount > 0,
+      status: "searchable",
+      missions: [row],
+    });
+  }
+
+  return [...doors, ...leftoverPacks];
 }
 
 export async function buildCoverageDesk(
@@ -70,58 +222,7 @@ export async function buildCoverageDesk(
     });
   }
 
-  const byPack = new Map<string, CoveragePackRow>();
-  for (const row of rows) {
-    const mission = missions.find((m) => m.id === row.id)!;
-    const key = packKey(mission);
-    const existing = byPack.get(key);
-    if (!existing) {
-      byPack.set(key, {
-        key,
-        country: row.country,
-        sector: row.sector,
-        subsector: row.subsector,
-        companyCount: row.companyCount,
-        missionCount: 1,
-        trustedCount: row.trustedCount,
-        nationalSourceCount: row.nationalSourceCount,
-        localSourceCount: row.localSourceCount,
-        searchable: row.companyCount > 0,
-        status: "empty",
-        missions: [row],
-      });
-      continue;
-    }
-    existing.companyCount += row.companyCount;
-    existing.missionCount += 1;
-    existing.trustedCount += row.trustedCount;
-    existing.nationalSourceCount += row.nationalSourceCount;
-    existing.localSourceCount += row.localSourceCount;
-    existing.searchable = existing.companyCount > 0;
-    existing.missions.push(row);
-  }
-
-  const packs = [...byPack.values()].map((pack) => {
-    const sample = pack.missions[0];
-    const directory = sample
-      ? isLocalDirectoryMission({
-          sector: pack.sector,
-          subsector: pack.subsector,
-        })
-      : false;
-    const hasNational = pack.missions.some((m) => m.nationalPack && m.companyCount > 0);
-    const hasLocal = pack.localSourceCount > 0;
-    let status: CoveragePackRow["status"] = "empty";
-    if (pack.companyCount === 0) status = "empty";
-    else if (directory) status = "searchable";
-    else if (hasNational && !hasLocal) status = "needs_overlay";
-    else status = "searchable";
-    return { ...pack, status, searchable: pack.companyCount > 0 };
-  });
-
-  packs.sort((a, b) => b.companyCount - a.companyCount || a.country.localeCompare(b.country));
-
-  return { packs, missions: rows };
+  return { packs: expandTradeDoors(rows, missions), missions: rows };
 }
 
 export function findPackMission(
@@ -131,24 +232,41 @@ export function findPackMission(
   const loc = (input.location ?? "").trim();
   const country = input.country.trim();
   const subsector = input.subsector.trim();
-  const sector = input.sector.trim();
 
-  const sameTrade = (m: Mission) =>
-    countriesMatch(m, country) &&
-    m.subsector.trim().toLowerCase() === subsector.toLowerCase() &&
-    m.sector.trim().toLowerCase() === sector.toLowerCase();
+  const sameTrade = (m: Mission) => missionServesTrade(m, country, subsector);
 
-  return (
-    missions.find((m) => sameTrade(m) && isNationalPack(m)) ??
-    missions.find(
-      (m) => sameTrade(m) && countriesEquivalent(m.location, country),
-    ) ??
-    (loc && !countriesEquivalent(loc, country) && loc.toLowerCase() !== "national"
-      ? missions.find(
-          (m) => sameTrade(m) && m.location.trim().toLowerCase() === loc.toLowerCase(),
-        ) ?? null
-      : null)
+  const exactSubsector = (m: Mission) =>
+    m.subsector.trim().toLowerCase() === subsector.toLowerCase() ||
+    primaryTradeId(m.subsector) === subsector.toLowerCase();
+
+  const national = missions.filter((m) => sameTrade(m) && isNationalPack(m));
+  const exactNational = national.find(exactSubsector);
+  if (exactNational) return exactNational;
+  if (national[0]) return national[0]!;
+
+  const colocated = missions.filter(
+    (m) => sameTrade(m) && countriesEquivalent(m.location, country),
   );
+  const exactColocated = colocated.find(exactSubsector);
+  if (exactColocated) return exactColocated;
+  if (colocated[0]) return colocated[0]!;
+
+  if (loc && !countriesEquivalent(loc, country) && loc.toLowerCase() !== "national") {
+    return (
+      missions.find(
+        (m) =>
+          sameTrade(m) &&
+          m.location.trim().toLowerCase() === loc.toLowerCase() &&
+          exactSubsector(m),
+      ) ??
+      missions.find(
+        (m) =>
+          sameTrade(m) && m.location.trim().toLowerCase() === loc.toLowerCase(),
+      ) ??
+      null
+    );
+  }
+  return null;
 }
 
 /** Always the country × sector national pack — never a town mission. */

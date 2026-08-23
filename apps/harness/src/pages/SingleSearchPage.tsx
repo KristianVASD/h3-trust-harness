@@ -7,10 +7,19 @@ import {
   computeResultCoverage,
   explainResultCoverage,
   DEFAULT_SEARCH_PLAN_VERSION,
+  CAN_MATCH_BOOST,
+  HOME_MAINTENANCE_SECTOR,
+  capabilitiesMatchFilter,
   companyMatchesPlaceCluster,
   harvestedSourceIds,
   isLocalDirectoryMission,
+  packMatchesTrade,
   placeCluster,
+  primaryTradeId,
+  resolveSearchQuery,
+  tradeIdsForPackLabel,
+  tradeLabel,
+  type CapabilityFilter,
   type Company,
   type Mission,
   type Review,
@@ -30,6 +39,7 @@ import "./Search.css";
 
 interface ParsedQuery {
   sector?: string;
+  capabilityFilter?: CapabilityFilter;
   location?: string;
   country?: string;
   context?: string;
@@ -60,54 +70,32 @@ function companyMatchesAudience(
   return ctxs.some((c) => PRO_SERVICE_CONTEXTS.includes(c));
 }
 
-const SECTOR_ALIASES: Record<string, string[]> = {
-  painter: ["schilder", "painter", "painters", "schilderwerk", "schilders"],
-  plumber: [
-    "loodgieter",
-    "plumber",
-    "plumbers",
-    "loodgieters",
-    "watertechnisch",
-    "gastechnisch",
-    "installateur w",
-    "installers",
-    "installateurs",
-    "cv",
-  ],
-  electrician: [
-    "elektricien",
-    "electrician",
-    "elektriciens",
-    "elektra",
-    "elektrotechnisch",
-    "installateur e",
-    "installers",
-    "installateurs",
-  ],
-  installer: [
-    "installateur",
-    "installateurs",
-    "installatie",
-    "installers",
-    "echte installateur",
-  ],
-  roofing: ["dakdekker", "roofer", "roofing", "dakdekkers"],
-  carpentry: ["timmerman", "carpenter", "timmerwerk"],
-  drainage: ["riool", "drainage", "riolering", "ontstopping"],
-};
-
-const CONTEXT_ALIASES: Record<string, string> = {
-  particulier: "private",
-  private: "private",
-  vve: "hoa",
-  hoa: "hoa",
-  gemeente: "municipal",
-  municipal: "municipal",
-  commercieel: "commercial",
-  commercial: "commercial",
-  industrieel: "industrial",
-  industrial: "industrial",
-};
+function parseQuery(raw: string, missions: Mission[]): ParsedQuery {
+  const places = [...new Set(missions.map((m) => m.location).filter(Boolean))];
+  const resolved = resolveSearchQuery(raw, places);
+  let sector = resolved.tradeId as string | undefined;
+  if (!sector) {
+    const lower = normalizeLabel(raw);
+    const labels = [
+      ...new Set(
+        missions.flatMap((m) => [m.subsector, m.sector].filter(Boolean)),
+      ),
+    ].sort((a, b) => b.length - a.length);
+    for (const label of labels) {
+      const norm = normalizeLabel(label);
+      if (norm.length >= 3 && lower.includes(norm)) {
+        sector = primaryTradeId(label) ?? label;
+        break;
+      }
+    }
+  }
+  return {
+    sector,
+    capabilityFilter: resolved.capabilityFilter,
+    location: resolved.location,
+    context: resolved.context,
+  };
+}
 
 /** Strip labels like "(DEMO)" so "Painters (DEMO)" matches "painters". */
 function normalizeLabel(value: string): string {
@@ -180,65 +168,12 @@ function aliasHit(hay: string, needle: string): boolean {
   const n = normalizeLabel(needle);
   if (!n) return false;
   if (hay.includes(n) || n.includes(hay)) return true;
-  const fromKey = SECTOR_ALIASES[n];
-  if (fromKey?.some((a) => hay.includes(a))) return true;
-  for (const [key, list] of Object.entries(SECTOR_ALIASES)) {
-    const inFamily =
-      key === n ||
-      list.some((a) => a === n || n.includes(a) || a.includes(n));
-    if (!inFamily) continue;
-    if (hay.includes(key) || list.some((a) => hay.includes(a))) return true;
+  const wantIds = tradeIdsForPackLabel(needle);
+  const hayIds = tradeIdsForPackLabel(hay);
+  if (wantIds.length && hayIds.length) {
+    return wantIds.some((id) => hayIds.includes(id));
   }
-  return false;
-}
-
-function parseQuery(raw: string, missions: Mission[]): ParsedQuery {
-  const lower = normalizeLabel(raw);
-
-  // Longest location first so "Nieuw-Vennep" wins over shorter overlaps.
-  let location: string | undefined;
-  const locations = [...new Set(missions.map((m) => m.location))].sort(
-    (a, b) => b.length - a.length,
-  );
-  for (const loc of locations) {
-    if (lower.includes(normalizeLabel(loc))) {
-      location = loc;
-      break;
-    }
-  }
-
-  let sector: string | undefined;
-  for (const [key, aliases] of Object.entries(SECTOR_ALIASES)) {
-    if (aliases.some((a) => lower.includes(a)) || lower.includes(key)) {
-      sector = key;
-      break;
-    }
-  }
-  if (!sector) {
-    // Match against actual mission sector / subsector labels (any language).
-    const labels = [
-      ...new Set(
-        missions.flatMap((m) => [m.subsector, m.sector].filter(Boolean)),
-      ),
-    ].sort((a, b) => b.length - a.length);
-    for (const label of labels) {
-      const norm = normalizeLabel(label);
-      if (norm.length >= 3 && lower.includes(norm)) {
-        sector = label;
-        break;
-      }
-    }
-  }
-
-  let context: string | undefined;
-  for (const [alias, value] of Object.entries(CONTEXT_ALIASES)) {
-    if (lower.includes(alias)) {
-      context = value;
-      break;
-    }
-  }
-
-  return { sector, location, context };
+  return packMatchesTrade(hay, n);
 }
 
 function missionMatchesQuery(m: Mission, parsed: ParsedQuery): boolean {
@@ -249,10 +184,18 @@ function companyMatchesSector(company: Company, sector: string): boolean {
   const hay = normalizeLabel(
     `${company.sector} ${company.category} ${company.name}`,
   );
-  // Name-only match is weak; require sector or category signal when present.
   const sectorHay = normalizeLabel(`${company.sector} ${company.category}`);
   if (sectorHay.trim()) return aliasHit(sectorHay, sector);
   return aliasHit(hay, sector);
+}
+
+function displaySubsector(sector: string): string {
+  const id = primaryTradeId(sector);
+  if (id) return tradeLabel(id);
+  return sector
+    .replace(/\([^)]*\)/g, "")
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 type MissionBundle = {
@@ -261,26 +204,6 @@ type MissionBundle = {
   companies: Company[];
   reviews: Review[];
 };
-
-const SECTOR_DISPLAY: Record<string, string> = {
-  painter: "Painters",
-  plumber: "Plumbers",
-  electrician: "Electricians",
-  installer: "Installers",
-  roofing: "Roofing",
-  carpentry: "Carpentry",
-  drainage: "Drainage",
-};
-
-function displaySubsector(sector: string): string {
-  const key = normalizeLabel(sector);
-  if (SECTOR_DISPLAY[key]) return SECTOR_DISPLAY[key];
-  // Title-case free-form labels from missions
-  return sector
-    .replace(/\([^)]*\)/g, "")
-    .trim()
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
 
 const defaultPhases: Mission["phases"] = [
   { key: "observation", status: "active" },
@@ -470,7 +393,9 @@ export function SingleSearchPage() {
     const parsed = parseQuery(composed, missions);
     parsed.location = loc;
     parsed.country = countryPart || parsed.country;
-    if (!parsed.sector) parsed.sector = sectorPart;
+    if (!parsed.sector) {
+      parsed.sector = primaryTradeId(sectorPart) ?? sectorPart;
+    }
     setParsedHint(parsed);
 
     let candidates = missions.filter(
@@ -703,9 +628,24 @@ export function SingleSearchPage() {
             : companyMatchesPlace(c, parsed.location ?? "")
               ? 8
               : 0;
+          const canHit = capabilitiesMatchFilter(
+            c.capabilities,
+            parsed.capabilityFilter,
+          );
+          const canBoost = canHit ? CAN_MATCH_BOOST : 0;
           const displayScore =
-            (human?.humanScore != null ? human.humanScore : cov.score) + localBoost;
+            (human?.humanScore != null ? human.humanScore : cov.score) +
+            localBoost +
+            canBoost;
           const coverageConfidence = computeResultCoverage(c, missionCov);
+          const why = [explainResultCoverage(c, missionCov)];
+          if (parsed.capabilityFilter) {
+            why.push(
+              canHit
+                ? `Can match: ${parsed.capabilityFilter.id}`
+                : `No Can tag for ${parsed.capabilityFilter.id} (still shown)`,
+            );
+          }
           return {
             company: c,
             score: cov.score,
@@ -715,7 +655,7 @@ export function SingleSearchPage() {
             humanReview: human,
             displayScore,
             coverageConfidence,
-            coverageWhy: explainResultCoverage(c, missionCov),
+            coverageWhy: why.join(" · "),
             nearby: Boolean(parsed.location) && !exact && localBoost > 0,
           };
         })
@@ -745,7 +685,7 @@ export function SingleSearchPage() {
           audienceConsumer !== audienceProfessional
             ? audienceConsumer
               ? "consumer (private homes)"
-              : "professional (VvE / commercial)"
+              : "VvE / zakelijk"
             : null;
         setNoMatchReason(
           audienceOnly
@@ -784,16 +724,19 @@ export function SingleSearchPage() {
     setError(null);
     try {
       const now = new Date().toISOString();
-      const subsector = displaySubsector(sectorRaw);
+      const subsector =
+        primaryTradeId(sectorRaw) ??
+        resolveSearchQuery(sectorRaw).tradeId ??
+        sectorRaw;
       const missionCountry =
         (parsedHint?.country || country).trim() || "Unspecified";
       const mission: Mission = {
         id: uuid(),
         location: loc,
         country: missionCountry,
-        sector: "Home Maintenance",
+        sector: HOME_MAINTENANCE_SECTOR,
         subsector,
-        goal: `Find trustworthy ${subsector.toLowerCase()} in ${loc}${missionCountry !== "Unspecified" ? ` (${missionCountry})` : ""} and validate source reliability.`,
+        goal: `Find trustworthy ${displaySubsector(subsector).toLowerCase()} in ${loc}${missionCountry !== "Unspecified" ? ` (${missionCountry})` : ""} and validate source reliability.`,
         search_plan_version: DEFAULT_SEARCH_PLAN_VERSION,
         discoveryBrief: {
           approach:
@@ -1024,7 +967,7 @@ export function SingleSearchPage() {
                   <strong>Professional</strong>
                   <span className="muted">
                     {" "}
-                    VvE, commercial, municipal
+                    VvE / zakelijk (zelfde vak, andere opdrachtgever)
                   </span>
                 </span>
               </label>
@@ -1039,7 +982,7 @@ export function SingleSearchPage() {
               </p>
             ) : !audienceConsumer && audienceProfessional ? (
               <p className="muted search-audience-hint">
-                Prefer companies that serve VvE / pro property clients.
+                Prefer companies that serve VvE / zakelijk — same trade, different client.
               </p>
             ) : null}
           </fieldset>
@@ -1077,6 +1020,8 @@ export function SingleSearchPage() {
                 parsedHint.location && `place=${parsedHint.location}`,
                 parsedHint.country && `country=${parsedHint.country}`,
                 parsedHint.sector && `trade=${parsedHint.sector}`,
+                parsedHint.capabilityFilter &&
+                  `can=${parsedHint.capabilityFilter.id}`,
                 audienceConsumer && !audienceProfessional && "for=consumer",
                 !audienceConsumer && audienceProfessional && "for=professional",
                 audienceConsumer &&
@@ -1144,10 +1089,17 @@ export function SingleSearchPage() {
           <div className="search-mission-bar">
             <div>
               <h2>
-                {matchedMission.country} · {matchedMission.subsector}
+                {matchedMission.country} ·{" "}
+                {primaryTradeId(matchedMission.subsector) ??
+                  matchedMission.subsector}
                 {parsedHint?.location ? ` · ${parsedHint.location}` : ""}
               </h2>
               <p className="muted">
+                {tradeLabel(
+                  primaryTradeId(matchedMission.subsector) ??
+                    matchedMission.subsector,
+                )}
+                {". "}
                 {matchedMission.goal}
                 {overlayNote ? ` ${overlayNote}` : ""}
               </p>

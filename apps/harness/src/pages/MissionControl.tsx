@@ -3,15 +3,23 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { v4 as uuid } from "uuid";
 import {
   DEFAULT_SEARCH_PLAN_VERSION,
+  HOME_MAINTENANCE_SECTOR,
   SOURCE_CATEGORIES,
+  TRADE_IDS,
+  countriesEquivalent,
   countClusterHits,
   defaultAudienceForCategory,
   defaultWeightForList,
   isLocalDirectoryMission,
   isMixedSourceCategory,
+  packMatchesTrade,
+  primaryTradeId,
+  resolveSearchQuery,
+  tradeLabel,
   type Mission,
   type SourceCategory,
   type SourceScope,
+  type TradeId,
 } from "@h3-trust/schema";
 import {
   api,
@@ -21,6 +29,7 @@ import {
 import { StatusChip } from "../components/Badges";
 import { useCanInteract } from "../hooks/useCanInteract";
 import { importCompanyRowsInChunks } from "../lib/importCompanyRows";
+import { isNationalPack } from "../lib/packMatch";
 import { parseCompanyImport } from "../lib/parseCompanyImport";
 
 const defaultPhases: Mission["phases"] = [
@@ -52,6 +61,14 @@ function packStatusLabel(status: CoveragePackRow["status"]): string {
 
 function workerPath(id: string): string {
   return `/work/${id}/brief`;
+}
+
+function doorIdFromInput(raw: string): TradeId {
+  const trimmed = raw.trim();
+  if (!trimmed) return "paint";
+  const resolved = resolveSearchQuery(trimmed);
+  if (resolved.tradeId) return resolved.tradeId;
+  return primaryTradeId(trimmed) ?? "paint";
 }
 
 function SourceWeighPrompt({ csv }: { csv: string }) {
@@ -108,8 +125,8 @@ export function MissionControl() {
   const [form, setForm] = useState({
     location: "",
     country: "Netherlands",
-    sector: "Home Maintenance",
-    subsector: "Painters",
+    sector: HOME_MAINTENANCE_SECTOR,
+    subsector: "paint",
     sourceName: "Vakwerk+ Garantie",
     sourceUrl: "https://www.vakwerkplusgarantie.nl",
     sourceLayer: "national" as SourceScope,
@@ -154,7 +171,7 @@ export function MissionControl() {
       ...f,
       location: location?.trim() || f.location,
       country: country?.trim() || f.country,
-      subsector: subsector?.trim() || f.subsector,
+      subsector: subsector ? doorIdFromInput(subsector) : f.subsector,
       sourceLayer: location?.trim() ? "local" : "national",
       sourceCategory: location?.trim()
         ? "local_business_association"
@@ -169,7 +186,7 @@ export function MissionControl() {
       ...f,
       location: d.location,
       country: d.country || f.country,
-      subsector: d.what,
+      subsector: doorIdFromInput(d.what),
       sourceLayer: "local",
       sourceCategory: "local_business_association",
       sourceName: `${d.location} local list`,
@@ -214,8 +231,8 @@ export function MissionControl() {
       const mixed = form.mixed || isMixedSourceCategory(form.sourceCategory);
       const setup = await api.onboardPack({
         country: form.country,
-        sector: form.sector,
-        subsector: form.subsector,
+        sector: HOME_MAINTENANCE_SECTOR,
+        subsector: doorIdFromInput(form.subsector),
         location: form.location.trim(),
         source: {
           name: form.sourceName,
@@ -276,15 +293,34 @@ export function MissionControl() {
     setSaving(true);
     setError(null);
     try {
+      const tradeId = doorIdFromInput(form.subsector);
+      const existing = missions.filter(
+        (m) =>
+          isNationalPack(m) &&
+          !isLocalDirectoryMission(m) &&
+          countriesEquivalent(m.country, form.country) &&
+          packMatchesTrade(m.subsector, tradeId),
+      );
+      const exact = existing.find(
+        (m) =>
+          m.subsector.trim().toLowerCase() === tradeId ||
+          primaryTradeId(m.subsector) === tradeId,
+      );
+      const reuse = exact ?? existing[0];
+      if (reuse) {
+        await load();
+        navigate(workerPath(reuse.id));
+        return;
+      }
       const now = new Date().toISOString();
       const location = form.country;
       const mission: Mission = {
         id: uuid(),
         location,
         country: form.country,
-        sector: form.sector,
-        subsector: form.subsector,
-        goal: `Find trustworthy ${form.subsector.toLowerCase()} in ${location} (${form.country}).`,
+        sector: HOME_MAINTENANCE_SECTOR,
+        subsector: tradeId,
+        goal: `Find trustworthy ${tradeLabel(tradeId).toLowerCase()} in ${location} (${form.country}).`,
         search_plan_version: DEFAULT_SEARCH_PLAN_VERSION,
         discoveryBrief: {
           approach: "Base layer first, then overlay, then CARA.",
@@ -397,9 +433,10 @@ export function MissionControl() {
   return (
     <div>
       <p className="thesis">
-        <strong>Coverage desk.</strong> One national pack per country × trade.
-        Attach local lists (region on the source). Mixed OV/sportclub rows stack
-        as unknown bijvangst. CARA reviews Human and OmegaClaw steps.
+        <strong>Coverage desk.</strong> Always the 12 HHH trade doors for the
+        selected country. Empty doors stay empty until you attach a list. Mixed
+        OV/sportclub rows stack as unknown bijvangst. CARA reviews Human and
+        OmegaClaw steps.
       </p>
 
       {error ? <div className="error">{error}</div> : null}
@@ -412,8 +449,9 @@ export function MissionControl() {
       <section className="panel" aria-labelledby="coverage-heading">
         <h2 id="coverage-heading">Coverage</h2>
         <p className="hint">
-          Country × sector packs. Searchable means companies are already in the
-          catalogue. Attach a local list instead of opening a town mission.
+          Country × 12 HHH trade doors. Searchable means companies are already in
+          the catalogue. Empty doors are real — attach a list instead of opening a
+          town mission. Gevel is Can, not a door. VvE is a For tag.
         </p>
         <button
           type="button"
@@ -424,7 +462,7 @@ export function MissionControl() {
         </button>
         {packs.length === 0 ? (
           <div className="empty">
-            No packs yet. Onboard a national list below (e.g. NL Painters +
+            No packs yet. Onboard a national list below (e.g. NL paint +
             Vakwerk+ CSV).
           </div>
         ) : (
@@ -433,9 +471,10 @@ export function MissionControl() {
               <article key={pack.key} className="coverage-pack-card">
                 <div className="demand-card-main">
                   <h3>
-                    {pack.country} · {pack.subsector}
+                    {pack.country} · {pack.tradeId ?? pack.subsector}
                   </h3>
                   <p className="muted">
+                    {pack.tradeLabel ? `${pack.tradeLabel} · ` : null}
                     {pack.companyCount} companies · {pack.missionCount} job
                     {pack.missionCount === 1 ? "" : "s"} ·{" "}
                     {pack.nationalSourceCount} national / {pack.localSourceCount}{" "}
@@ -510,12 +549,20 @@ export function MissionControl() {
               />
             </label>
             <label>
-              Subsector
-              <input
+              Trade
+              <select
                 value={form.subsector}
-                onChange={(e) => setForm({ ...form, subsector: e.target.value })}
+                onChange={(e) =>
+                  setForm({ ...form, subsector: e.target.value })
+                }
                 required
-              />
+              >
+                {TRADE_IDS.map((id) => (
+                  <option key={id} value={id}>
+                    {id} — {tradeLabel(id)}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
           <div className="split-2">

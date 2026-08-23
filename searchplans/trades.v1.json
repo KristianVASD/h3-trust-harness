@@ -1,0 +1,151 @@
+{
+  "version": "trades.v1",
+  "sector": "Home Maintenance",
+  "audiences": [
+    { "id": "private", "aliases": ["particulier", "private", "consumer", "b2c"] },
+    { "id": "hoa", "aliases": ["vve", "hoa", "vereniging van eigenaars"] },
+    { "id": "municipal", "aliases": ["gemeente", "municipal"] },
+    { "id": "commercial", "aliases": ["commercieel", "commercial", "zakelijk", "b2b"] },
+    { "id": "industrial", "aliases": ["industrieel", "industrial"] }
+  ],
+  "trades": [
+    {
+      "id": "paint",
+      "label": "Schilders",
+      "label_en": "Painters",
+      "aliases": ["schilder", "schilders", "painter", "painters", "schilderwerk", "schildersbedrijf"],
+      "packAliases": ["Painters", "Painters (DEMO)", "paint"],
+      "specialisations": [
+        { "id": "interior painting", "aliases": ["binnenwerk", "binnenschilderwerk", "interior painting"] },
+        { "id": "exterior painting", "aliases": ["buitenwerk", "buitenschilderwerk", "exterior painting", "gevelverf"] },
+        { "id": "spray painting", "aliases": ["spuitwerk", "spuiten", "airless", "spray painting"] },
+        { "id": "wood-rot repair", "aliases": ["houtrotreparatie", "houtrot", "wood-rot repair"] },
+        { "id": "wallpapering", "aliases": ["behang", "behangen", "behangwerk", "wallpapering"] },
+        { "id": "colour advice", "aliases": ["kleuradvies", "colour advice", "color advice"] }
+      ]
+    },
+    {
+      "id": "electro",
+      "label": "Elektriciens",
+      "label_en": "Electricians",
+      "aliases": ["elektricien", "elektriciens", "electrician", "elektra", "elektrotechnisch", "installateur e"],
+      "packAliases": ["Installers", "Electricians", "electro"],
+      "specialisations": [
+        { "id": "consumer unit", "aliases": ["meterkast", "groepen", "aardlek"] },
+        { "id": "ev charger", "aliases": ["laadpaal", "ev charger"] }
+      ]
+    },
+    {
+      "id": "hvac",
+      "label": "Installateurs W",
+      "label_en": "HVAC",
+      "aliases": ["hvac", "cv", "warmtepomp", "installateur w", "verwarming", "ventilatie"],
+      "packAliases": ["Installers", "Plumbers", "hvac"],
+      "specialisations": [
+        { "id": "heat pump", "aliases": ["warmtepomp", "heat pump"] },
+        { "id": "boiler", "aliases": ["cv-ketel", "ketel", "combi"] },
+        { "id": "ventilation", "aliases": ["wtw", "ventilatie", "mv"] }
+      ]
+    },
+    {
+      "id": "bath",
+      "label": "Loodgieters",
+      "label_en": "Plumbing / bath",
+      "aliases": ["loodgieter", "loodgieters", "plumber", "plumbers", "sanitair", "badkamer"],
+      "packAliases": ["Installers", "Plumbers", "bath"],
+      "specialisations": [
+        { "id": "sanitary fittings", "aliases": ["sanitair", "tappunt", "kraan"] },
+        { "id": "bathroom", "aliases": ["badkamer", "badkamer renovatie"] }
+      ]
+    },
+    {
+      "id": "drain",
+      "label": "Riool",
+      "label_en": "Drainage",
+      "aliases": ["riool", "riolering", "drainage", "ontstopping", "rioolservice", "rioolontstopper"],
+      "packAliases": ["Drainage", "drain"],
+      "specialisations": [
+        { "id": "drain unblocking", "aliases": ["ontstopping", "ontstoppen", "afvoer vrijmaken"] },
+        { "id": "camera inspection", "aliases": ["camera-inspectie", "rioolcamera"] },
+        { "id": "drain cleaning", "aliases": ["rioolreiniging", "spoelen"] }
+      ]
+    },
+    {
+      "id": "roof",
+      "label": "Dakdekkers",
+      "label_en": "Roofing",
+      "aliases": ["dakdekker", "dakdekkers", "roofer", "roofing", "dakbedekking"],
+      "packAliases": ["Roofing", "roof"],
+      "specialisations": [
+        { "id": "roof covering", "aliases": ["dakbedekking", "dakpannen", "bitumen"] },
+        { "id": "gutters", "aliases": ["goot", "dakgoot", "hemelwaterafvoer"] }
+      ]
+    },
+    {
+      "id": "glazing",
+      "label": "Glaszetters",
+      "label_en": "Glazing",
+      "aliases": ["glaszetter", "glaszetters", "glasservice", "beglazing", "glazenwasser", "glazing"],
+      "packAliases": ["Glazing", "glazing"],
+      "specialisations": [
+        { "id": "glazing", "aliases": ["glaszetten", "beglazing", "isolatieglas", "dubbel glas"] }
+      ]
+    },
+    {
+      "id": "garden",
+      "label": "Hoveniers",
+      "label_en": "Gardeners",
+      "aliases": ["hovenier", "hoveniers", "garden", "gardener", "tuinman", "groenvoorziening"],
+      "packAliases": ["Gardeners", "garden"],
+      "specialisations": [
+        { "id": "trees", "aliases": ["bomen", "boomverzorging"] },
+        { "id": "paving", "aliases": ["bestrating", "terras"] }
+      ]
+    },
+    {
+      "id": "security",
+      "label": "Beveiliging",
+      "label_en": "Security",
+      "aliases": ["slotenmaker", "slotenservice", "beveiliging", "security", "inbraak", "toegangscontrole"],
+      "packAliases": ["Security", "security"],
+      "specialisations": [
+        { "id": "locks", "aliases": ["sloten", "cilinder", "meerpuntsluiting"] },
+        { "id": "alarm", "aliases": ["inbraakalarm", "alarm"] },
+        { "id": "cctv", "aliases": ["camera", "cctv", "camerabewaking"] }
+      ]
+    },
+    {
+      "id": "solar",
+      "label": "Zonnepanelen",
+      "label_en": "Solar",
+      "aliases": ["zonnepanelen", "zonnepaneel", "zonnespecialist", "thuisbatterij", "pv", "solar"],
+      "packAliases": ["Solar", "solar"],
+      "specialisations": [
+        { "id": "solar pv", "aliases": ["zonnepanelen", "pv"] },
+        { "id": "inverter", "aliases": ["omvormer"] },
+        { "id": "home battery", "aliases": ["thuisbatterij", "batterij"] }
+      ]
+    },
+    {
+      "id": "pest",
+      "label": "Ongedierte",
+      "label_en": "Pest control",
+      "aliases": ["ongedierte", "ongediertebestrijding", "ongediertewering", "pest control", "pest", "plaagdier"],
+      "packAliases": ["Pest Control", "pest"],
+      "specialisations": [
+        { "id": "wasps", "aliases": ["wespen", "wespennest"] },
+        { "id": "rodents", "aliases": ["muizen", "ratten", "knaagdieren"] }
+      ]
+    },
+    {
+      "id": "handyman",
+      "label": "Klusjesmannen",
+      "label_en": "Handymen",
+      "aliases": ["klusjesman", "klusser", "allround", "klussenier", "handyman", "klussenbedrijf"],
+      "packAliases": ["Handymen", "handyman"],
+      "specialisations": [
+        { "id": "odd jobs", "aliases": ["klussen", "klein onderhoud"] }
+      ]
+    }
+  ]
+}

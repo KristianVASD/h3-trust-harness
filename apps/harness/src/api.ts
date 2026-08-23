@@ -100,6 +100,8 @@ export type CoveragePackRow = {
   country: string;
   sector: string;
   subsector: string;
+  tradeId?: string;
+  tradeLabel?: string;
   companyCount: number;
   missionCount: number;
   trustedCount: number;

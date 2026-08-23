@@ -627,3 +627,4 @@ export * from "./masterlist";
 export * from "./place-clusters";
 export * from "./company-match";
 export * from "./local-directory";
+export * from "./trades";

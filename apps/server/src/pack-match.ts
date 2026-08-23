@@ -1,6 +1,8 @@
 import {
   canonicalCountry,
   countriesEquivalent,
+  packMatchesTrade,
+  tradeIdsForPackLabel,
   type Mission,
 } from "@h3-trust/schema";
 
@@ -28,6 +30,12 @@ export function packKey(mission: Mission): string {
 export function tradesMatch(mission: Mission, what: string): boolean {
   const needle = normPlace(what);
   if (!needle) return false;
+  if (packMatchesTrade(mission.subsector, needle)) return true;
+  const packIds = tradeIdsForPackLabel(mission.subsector);
+  const wantIds = tradeIdsForPackLabel(what);
+  if (packIds.length && wantIds.length) {
+    return wantIds.some((id) => packIds.includes(id));
+  }
   const hay = normPlace(`${mission.subsector} ${mission.sector}`);
   return hay.includes(needle) || needle.includes(normPlace(mission.subsector));
 }

@@ -11,6 +11,11 @@ export const CapabilityAliasesSchema = z.object({
   version: z.string().min(1),
   /** canonical → list of synonyms (case-insensitive match). */
   aliases: z.record(z.string(), z.array(z.string())),
+  /**
+   * Canonical Can key → HHH door id. Parents are defined on trades.v1.json
+   * specialisations; this map must not invent a 13th door.
+   */
+  parentTrade: z.record(z.string(), z.string()).optional(),
 });
 export type CapabilityAliases = z.infer<typeof CapabilityAliasesSchema>;
 

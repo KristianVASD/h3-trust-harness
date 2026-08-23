@@ -1,4 +1,4 @@
-import { countriesEquivalent, isLocalDirectoryMission, type Mission } from "@h3-trust/schema";
+import { countriesEquivalent, isLocalDirectoryMission, packMatchesTrade, tradeIdsForPackLabel, type Mission } from "@h3-trust/schema";
 
 export function normalizePackLabel(value: string): string {
   return value
@@ -27,6 +27,13 @@ export function missionMatchesPackTrade(
   }
   if (!parsed.sector) return true;
   if (isLocalDirectoryMission(mission)) return false;
+  const want = parsed.sector;
+  const packIds = tradeIdsForPackLabel(mission.subsector);
+  const wantIds = tradeIdsForPackLabel(want);
+  if (packIds.length && wantIds.length) {
+    return wantIds.some((id) => packIds.includes(id));
+  }
+  if (packMatchesTrade(mission.subsector, want)) return true;
   const hay = normalizePackLabel(`${mission.subsector} ${mission.sector}`);
   return aliasHit(hay, parsed.sector);
 }
