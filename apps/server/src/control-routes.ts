@@ -1,8 +1,8 @@
 import type { Hono } from "hono";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  NationLandscapeSchema,
   TRADE_IDS,
+  coerceLandscapeInput,
   countrySlug,
   displayCountry,
   emptyNationLandscape,
@@ -172,19 +172,30 @@ export function registerControlRoutes(
   app.put("/api/control/countries/:country/landscape", async (c) => {
     const raw = decodeURIComponent(c.req.param("country"));
     const body = await c.req.json().catch(() => null);
-    const parsed = NationLandscapeSchema.safeParse({
-      ...(body && typeof body === "object" && "landscape" in body
-        ? (body as { landscape: unknown }).landscape
-        : body),
-      country: displayCountry(raw),
-      countrySlug: countrySlug(raw),
-      updatedAt: new Date().toISOString(),
-    });
-    if (!parsed.success) {
-      return c.json({ error: parsed.error.flatten() }, 400);
+    const rec = body && typeof body === "object" ? (body as Record<string, unknown>) : null;
+    const incoming =
+      typeof rec?.text === "string"
+        ? rec.text
+        : rec && "landscape" in rec
+          ? rec.landscape
+          : body;
+    const existing = await landscapes.get(raw);
+    const landscape = coerceLandscapeInput(incoming, raw, existing);
+    try {
+      const saved = await landscapes.upsert(landscape);
+      return c.json({ landscape: saved });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to save landscape";
+      const missingTable = /nation_landscapes/i.test(message);
+      return c.json(
+        {
+          error: missingTable
+            ? "Supabase table nation_landscapes is missing. Apply migration 20260831_nation_landscape.sql, then import again."
+            : message,
+        },
+        500,
+      );
     }
-    const landscape = await landscapes.upsert(parsed.data);
-    return c.json({ landscape });
   });
 
   app.get("/api/control/countries/:country/doors/:tradeId", async (c) => {

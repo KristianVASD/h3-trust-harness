@@ -454,10 +454,13 @@ export const api = {
     request<{ landscape: NationLandscape }>(
       `/control/countries/${encodeURIComponent(country)}/landscape`,
     ),
-  putControlLandscape: (country: string, landscape: NationLandscape) =>
+  putControlLandscape: (
+    country: string,
+    landscape: NationLandscape | { text: string } | { landscape: NationLandscape },
+  ) =>
     request<{ landscape: NationLandscape }>(
       `/control/countries/${encodeURIComponent(country)}/landscape`,
-      { method: "PUT", body: JSON.stringify({ landscape }) },
+      { method: "PUT", body: JSON.stringify(landscape) },
     ),
   getControlDoor: (country: string, tradeId: string) =>
     request<{

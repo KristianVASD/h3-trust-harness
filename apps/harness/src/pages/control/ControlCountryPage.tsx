@@ -68,6 +68,7 @@ export function ControlCountryPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [paste, setPaste] = useState("");
+  const [importMsg, setImportMsg] = useState<string | null>(null);
   const [data, setData] = useState<{
     country: string;
     countrySlug: string;
@@ -111,18 +112,30 @@ export function ControlCountryPage() {
     if (!data || !paste.trim()) return;
     setBusy(true);
     setError(null);
+    setImportMsg(null);
     try {
-      const parsed = JSON.parse(paste) as NationLandscape;
-      await api.putControlLandscape(data.countrySlug, {
-        ...data.landscape,
-        ...parsed,
-        country: data.country,
-        countrySlug: data.countrySlug,
+      const { landscape } = await api.putControlLandscape(data.countrySlug, {
+        text: paste,
       });
       setPaste("");
       await load();
+      const filled = landscape.channels.filter(
+        (ch) => ch.howToFind.trim() || ch.platforms.length,
+      ).length;
+      setImportMsg(
+        `Saved to Supabase · ${filled}/12 channels · landscape ${landscape.status}`,
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Invalid landscape JSON");
+      const raw = err instanceof Error ? err.message : "Import failed";
+      let message = raw;
+      try {
+        const parsed = JSON.parse(raw) as { error?: unknown };
+        if (typeof parsed.error === "string") message = parsed.error;
+      } catch {
+        /* keep raw */
+      }
+      setError(message);
+      setImportMsg(message);
     } finally {
       setBusy(false);
     }
@@ -189,14 +202,20 @@ export function ControlCountryPage() {
                   style={{ minHeight: "8rem" }}
                   placeholder='{"overview":"…","channels":[…]}'
                 />
+                <p className="hint">
+                  Paste Qwen / Cursor JSON or a fenced block. The server maps it
+                  onto the 12 discovery channels and stores it in Supabase
+                  (`nation_landscapes`). Plain prose becomes the overview.
+                </p>
                 <button
                   type="button"
-                  className="btn secondary small"
+                  className="btn small"
                   disabled={busy || !paste.trim()}
                   onClick={() => void onImportPlan()}
                 >
-                  Import playbook
+                  {busy ? "Saving…" : "Import playbook"}
                 </button>
+                {importMsg ? <p className="muted">{importMsg}</p> : null}
               </details>
             ) : null}
           </>
