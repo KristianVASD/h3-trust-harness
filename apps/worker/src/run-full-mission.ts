@@ -2,6 +2,7 @@ import type { SearchPlan } from "@h3-trust/schema";
 import { decideNextStep } from "./decide.js";
 import { h3 } from "./h3-api.js";
 import { getRun, heartbeat, loadRecentLessons, markStatus, writeEvent } from "./progress.js";
+import { processNationMap } from "./run-nation-map.js";
 import { executeDecision } from "./run-step.js";
 import type { WorkerRun } from "./types.js";
 
@@ -17,6 +18,11 @@ async function loadPlan(version: string | undefined): Promise<SearchPlan | null>
 }
 
 export async function processRun(run: WorkerRun): Promise<void> {
+  if (run.command === "nation_map") {
+    await processNationMap(run);
+    return;
+  }
+
   const missionId = run.mission_id;
   if (!missionId) {
     await markStatus(run.id, "failed", {

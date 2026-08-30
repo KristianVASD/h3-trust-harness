@@ -12,12 +12,14 @@ You must be signed in as an **approved CURAD volunteer** to write (import, CARA,
 
 | Screen | URL | Use it for |
 |--------|-----|------------|
-| **Mission Control** | `/control` | Onboard a list onto a **national pack** (country × trade). Attach local / mixed lists. Download HHH leads. |
+| **Mission Control** | `/control` | Country desk → nation trust landscape → 12 trade doors → list styles. Attach lists on the sector page. |
 | **Data Worker** | `/work/:id/…` | The 9 production steps for one pack. |
 | **Single Search** | `/search` | End-user question → ranked companies from packs already imported. |
 | **Investigation** | `/missions/:id` | Notebook + extra CARA queues (sources **and** companies). Optional depth, not the daily spine. |
 
-Open a pack from Mission Control → **National · N** (or a location job) → Data Worker starts at **Brief**.
+Open Mission Control → country → sector door → attach a list or open the national pack. Data Worker starts at **Brief**.
+
+Nation mapping is a 12-channel playbook (registry, qualifications, keurmerken, traineeships, local business clubs, sport-club platforms, yearly festivities, …). It tells you **how to find local proof**. It is not the 12 HHH trade doors. Empty town jobs stay off this desk; unmet searches appear as overlay demand (max 5).
 
 ---
 
@@ -47,8 +49,8 @@ Vocabulary lives in `searchplans/trades.v1.json` (ids, aliases, pack aliases, sp
 You already have a member list (CSV). You do **not** need Gaps → Probe first.
 
 1. Polish the CSV (see [CSV format](#csv-format)).
-2. **Mission Control → Attach local list to national pack.**
-3. Fill country / sector / **trade** (one of the 12 ids) / source name / URL / layer / category / weight / audience.
+2. **Mission Control → country → trade door → Attach list.**
+3. Fill source name / URL / layer / category / weight / audience. Location is the source region, not a town mission.
 4. Tick **Mixed list** for OV, sportclub, networking (or pick a mixed category — the box ticks itself).
 5. Paste or upload CSV → **Onboard**.
 6. Open the national pack in Data Worker → **Align** and CARA the source weight.

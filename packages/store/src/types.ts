@@ -50,6 +50,12 @@ export interface Store {
     missionId: string,
   ): Promise<EntityMap[K][]>;
 
+  /** Count only — do not load payloads (coverage desk). */
+  countByMission(
+    collection: MissionScopedCollection,
+    missionId: string,
+  ): Promise<number>;
+
   get<K extends CollectionName>(
     collection: K,
     id: string,

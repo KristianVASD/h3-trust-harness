@@ -129,6 +129,19 @@ export class FileStore implements Store {
       }) as EntityMap[K][];
   }
 
+  async countByMission(
+    collection: MissionScopedCollection,
+    missionId: string,
+  ): Promise<number> {
+    if (collection === "sources") {
+      await this.ensureMissionSourceLinks(missionId);
+      const links = await this.readAll("missionSources");
+      return links.filter((l) => l.mission_id === missionId).length;
+    }
+    const all = await this.readAll(collection);
+    return all.filter((item) => missionKey(item) === missionId).length;
+  }
+
   private async listSourcesForMission(missionId: string): Promise<Source[]> {
     const links = (await this.readAll("missionSources")).filter(
       (l) => l.mission_id === missionId,

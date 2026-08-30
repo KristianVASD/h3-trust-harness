@@ -20,7 +20,7 @@ const store = createStore({
 const app = createApp({
   store,
   searchPlansRoot,
-  writableRoot: driver === "file" ? writableRoot : undefined,
+  writableRoot,
 });
 
 const port = Number(process.env.PORT ?? 8787);

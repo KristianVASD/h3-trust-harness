@@ -543,3 +543,27 @@
     grid-template-columns: 1fr;
   }
 }
+
+.search-how {
+  margin: 0 0 1.5rem;
+  padding: 1.1rem 1.2rem;
+  border: 1px solid var(--line, #c9c0ae);
+  border-left: 3px solid var(--teal, #0f6e56);
+  background: rgba(250, 248, 243, 0.65);
+}
+
+.search-how h2 {
+  margin: 0 0 0.45rem;
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+
+.search-how ol {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.search-how li {
+  margin: 0.25rem 0;
+}

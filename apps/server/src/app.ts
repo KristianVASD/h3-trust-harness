@@ -55,6 +55,8 @@ import {
 } from "./companies-import-route.js";
 import { exportHhhHighTrustLeads } from "./hhh-export.js";
 import { buildCoverageDesk } from "./coverage-desk.js";
+import { registerControlRoutes } from "./control-routes.js";
+import { createNationLandscapeStore } from "./nation-landscape-store.js";
 import { countriesMatch, isNationalPack } from "./pack-match.js";
 import {
   PackOnboardError,
@@ -186,6 +188,10 @@ export function createApp(options: CreateAppOptions) {
   const authRequired = isAuthRequired();
   const searchMemory = new Map<string, number>();
   const searchDemandMemory: SearchDemand[] = [];
+  const landscapes = createNationLandscapeStore({
+    admin,
+    writableRoot: writableRoot ?? process.env.WRITABLE_ROOT,
+  });
 
   const corsOrigins = options.corsOrigins ?? [
     "http://localhost:5173",
@@ -602,6 +608,13 @@ export function createApp(options: CreateAppOptions) {
   app.get("/api/control/coverage", async (c) => {
     const desk = await buildCoverageDesk(store);
     return c.json(desk);
+  });
+
+  registerControlRoutes(app, {
+    store,
+    admin,
+    landscapes,
+    searchDemandMemory,
   });
 
   app.post("/api/packs/onboard", async (c) => {

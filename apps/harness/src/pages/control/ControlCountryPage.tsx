@@ -1,0 +1,299 @@
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { primaryTradeId, resolveSearchQuery } from "@h3-trust/schema";
+import { api, type ControlJobRow, type SearchDemandAggregate } from "../../api";
+import { StatusChip } from "../../components/Badges";
+import { EngineRunChip } from "../../components/control/EngineRunChip";
+import { PlanReader } from "../../components/control/PlanReader";
+import { useAuth } from "../../auth/AuthContext";
+import { useCanInteract } from "../../hooks/useCanInteract";
+import type { NationLandscape } from "@h3-trust/schema";
+import type { ControlDoorRow, WorkerEvent, WorkerRun } from "../../api";
+
+function packStatusLabel(status: ControlDoorRow["status"]): string {
+  if (status === "searchable") return "searchable";
+  if (status === "needs_overlay") return "needs local list";
+  return "empty";
+}
+
+function formatWhen(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function JobRow({ job }: { job: ControlJobRow }) {
+  return (
+    <div className="mission-card">
+      <h3>
+        {job.location} · {job.subsector}
+      </h3>
+      <p className="muted">{job.goal}</p>
+      <div className="mission-meta">
+        <StatusChip
+          label={`${job.companyCount} companies`}
+          tone={job.companyCount > 0 ? "done" : "waiting"}
+        />
+        <StatusChip label={`${job.trustedCount} lists`} />
+        {job.directory ? (
+          <StatusChip label="local directory" tone="active" />
+        ) : (
+          <StatusChip label="national pack" tone="active" />
+        )}
+      </div>
+      {job.listNames.length ? (
+        <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.85rem" }}>
+          Linked: {job.listNames.join(" · ")}
+        </p>
+      ) : null}
+      <div className="row" style={{ marginTop: "0.65rem" }}>
+        <Link className="btn small" to={`/work/${job.id}/brief`}>
+          Open job
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+export function ControlCountryPage() {
+  const { country = "" } = useParams();
+  const navigate = useNavigate();
+  const { isAdmin } = useAuth();
+  const { canInteract } = useCanInteract();
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [paste, setPaste] = useState("");
+  const [data, setData] = useState<{
+    country: string;
+    countrySlug: string;
+    landscape: NationLandscape;
+    doors: ControlDoorRow[];
+    directory: ControlDoorRow | null;
+    jobs: ControlJobRow[];
+    demands: SearchDemandAggregate[];
+    latestRun: WorkerRun | null;
+    events: WorkerEvent[];
+  } | null>(null);
+
+  async function load() {
+    try {
+      setError(null);
+      setData(await api.getControlCountry(country));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load country");
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, [country]);
+
+  async function onMap() {
+    if (!data) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.startControlCountry({ country: data.country, map: true });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Map failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onImportPlan() {
+    if (!data || !paste.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const parsed = JSON.parse(paste) as NationLandscape;
+      await api.putControlLandscape(data.countrySlug, {
+        ...data.landscape,
+        ...parsed,
+        country: data.country,
+        countrySlug: data.countrySlug,
+      });
+      setPaste("");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Invalid landscape JSON");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!data && !error) {
+    return <p className="muted">Loading country…</p>;
+  }
+
+  return (
+    <div>
+      <p className="control-crumb">
+        <Link to="/control">← Countries</Link>
+      </p>
+      <header className="control-hero">
+        <p className="control-eyebrow">Nation mapping</p>
+        <h1>{data?.country ?? country}</h1>
+        <p className="muted">
+          Trust landscape first — 12 discovery channels for how local proof is
+          found. Then explore a sector door.
+        </p>
+      </header>
+      {error ? <div className="error">{error}</div> : null}
+
+      <section className="panel">
+        <h2>Trust landscape</h2>
+        <p className="hint">
+          Traineeships, local business clubs, sport-club platforms, yearly
+          festivities. This playbook guides local overlay searches. CARA still
+          locks list weight.
+        </p>
+        {data ? (
+          <>
+            <EngineRunChip run={data.latestRun} events={data.events} />
+            <div className="row" style={{ marginBottom: "0.75rem", gap: "0.5rem" }}>
+              {isAdmin ? (
+                <button
+                  type="button"
+                  className="btn small"
+                  disabled={busy}
+                  onClick={() => void onMap()}
+                >
+                  {busy ? "Queuing…" : "Map trust landscape"}
+                </button>
+              ) : null}
+              <StatusChip
+                label={`landscape ${data.landscape.status}`}
+                tone={
+                  data.landscape.status === "ready"
+                    ? "done"
+                    : data.landscape.status === "mapping"
+                      ? "active"
+                      : "waiting"
+                }
+              />
+            </div>
+            <PlanReader landscape={data.landscape} />
+            {canInteract ? (
+              <details className="worker-advanced" style={{ marginTop: "1rem" }}>
+                <summary>Paste landscape JSON</summary>
+                <textarea
+                  value={paste}
+                  onChange={(e) => setPaste(e.target.value)}
+                  style={{ minHeight: "8rem" }}
+                  placeholder='{"overview":"…","channels":[…]}'
+                />
+                <button
+                  type="button"
+                  className="btn secondary small"
+                  disabled={busy || !paste.trim()}
+                  onClick={() => void onImportPlan()}
+                >
+                  Import playbook
+                </button>
+              </details>
+            ) : null}
+          </>
+        ) : null}
+      </section>
+
+      <section className="panel" style={{ marginTop: "1.25rem" }}>
+        <h2>Explored sectors</h2>
+        <p className="hint">
+          Always the 12 HHH trade doors. Empty doors stay empty until you attach
+          a list. Click a door to see list styles.
+        </p>
+        <div className="control-door-grid">
+          {(data?.doors ?? []).map((door) => (
+            <Link
+              key={door.key}
+              className="control-door-card"
+              to={`/control/${data?.countrySlug}/${door.tradeId ?? door.subsector}`}
+            >
+              <h3>{door.tradeLabel ?? door.subsector}</h3>
+              <p className="muted">
+                {door.tradeId} · {door.companyCount} companies ·{" "}
+                {door.nationalSourceCount} national / {door.localSourceCount} local
+              </p>
+              <StatusChip
+                label={packStatusLabel(door.status)}
+                tone={
+                  door.status === "searchable"
+                    ? "done"
+                    : door.status === "needs_overlay"
+                      ? "active"
+                      : "waiting"
+                }
+              />
+            </Link>
+          ))}
+          {data?.directory ? (
+            <Link
+              className="control-door-card"
+              to={`/control/${data.countrySlug}/unclassified`}
+            >
+              <h3>Unclassified</h3>
+              <p className="muted">
+                Mixed-list bijvangst · {data.directory.companyCount} companies
+              </p>
+              <StatusChip label="searchable" tone="done" />
+            </Link>
+          ) : null}
+        </div>
+      </section>
+
+      <div className="grid-missions" style={{ marginTop: "1.25rem" }}>
+        <section className="panel">
+          <h2>Recent packs</h2>
+          <p className="hint">National packs and Local Directory only — max 5.</p>
+          {(data?.jobs ?? []).length === 0 ? (
+            <div className="empty">No national packs yet. Explore a sector.</div>
+          ) : (
+            data?.jobs.map((job) => <JobRow key={job.id} job={job} />)
+          )}
+        </section>
+        <section className="panel">
+          <h2>Unmet demand</h2>
+          <p className="hint">Local overlay queue for this country — max 5.</p>
+          {(data?.demands ?? []).length === 0 ? (
+            <div className="empty">No demand rows for this country.</div>
+          ) : (
+            data?.demands.map((d) => (
+              <article key={d.key} className="demand-card">
+                <div className="demand-card-main">
+                  <h3>
+                    {d.location} · {d.what}
+                  </h3>
+                  <p className="muted">
+                    {d.count}× asked · last {formatWhen(d.lastAt)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="btn small"
+                  onClick={() => {
+                    const trade =
+                      resolveSearchQuery(d.what).tradeId ??
+                      primaryTradeId(d.what) ??
+                      "paint";
+                    navigate(`/control/${data?.countrySlug}/${trade}#attach`, {
+                      state: { location: d.location, what: d.what },
+                    });
+                  }}
+                >
+                  Prefill attach list
+                </button>
+              </article>
+            ))
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}

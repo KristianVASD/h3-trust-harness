@@ -56,6 +56,11 @@
       "layer": "local",
       "category": "municipal_initiative",
       "nuance_rule": "Municipal or local government initiatives (business desk, local company lists). Strong when the government curates; weak when it is an open signup form with no checks. Prefer the curated company list/search URL as listUrl."
+    },
+    {
+      "layer": "local",
+      "category": "trade_fair",
+      "nuance_rule": "Yearly festivities, jaarmarkten, kermissen, town fairs and recurring local events. Prefer a public exhibitor / vendor / sponsor listUrl over a poster. One-off flyers do not fill this gap; a multi-year named event with a searchable company list does. Record the month/season in filterHints so local overlay searches know when the list refreshes."
     }
   ]
 }

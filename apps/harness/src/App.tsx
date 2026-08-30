@@ -4,7 +4,10 @@ import { PendingBanner } from "./components/PendingBanner";
 import { MissionLayout } from "./layouts/MissionLayout";
 import { WorkerLayout } from "./layouts/WorkerLayout";
 import { HomePage } from "./pages/HomePage";
-import { MissionControl } from "./pages/MissionControl";
+import { ControlLayout } from "./pages/control/ControlLayout";
+import { ControlCountriesPage } from "./pages/control/ControlCountriesPage";
+import { ControlCountryPage } from "./pages/control/ControlCountryPage";
+import { ControlSectorPage } from "./pages/control/ControlSectorPage";
 import { SingleSearchPage } from "./pages/SingleSearchPage";
 import { WorkspacePage } from "./pages/WorkspacePage";
 import { CandidateTriagePage } from "./pages/CandidateTriagePage";
@@ -98,7 +101,11 @@ export function App() {
 
       <Routes>
         <Route path="/" element={<HomePage />} />
-        <Route path="/control" element={<MissionControl />} />
+        <Route path="/control" element={<ControlLayout />}>
+          <Route index element={<ControlCountriesPage />} />
+          <Route path=":country" element={<ControlCountryPage />} />
+          <Route path=":country/:tradeId" element={<ControlSectorPage />} />
+        </Route>
         <Route path="/search" element={<SingleSearchPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />

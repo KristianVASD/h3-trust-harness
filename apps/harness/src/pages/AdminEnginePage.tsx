@@ -10,6 +10,7 @@ import {
 
 const COMMANDS: WorkerCommand[] = [
   "full_mission",
+  "nation_map",
   "discover",
   "probe",
   "extract",

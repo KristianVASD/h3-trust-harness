@@ -6,6 +6,7 @@ export const WORKER_COMMANDS = [
   "coverage",
   "search",
   "full_mission",
+  "nation_map",
 ] as const;
 export type WorkerCommand = (typeof WORKER_COMMANDS)[number];
 
@@ -15,6 +16,7 @@ export const WORKER_TARGET_TYPES = [
   "company",
   "gap",
   "search",
+  "country",
 ] as const;
 export type WorkerTargetType = (typeof WORKER_TARGET_TYPES)[number];
 

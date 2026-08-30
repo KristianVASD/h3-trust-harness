@@ -874,6 +874,30 @@ export function SingleSearchPage() {
         ) : null}
       </header>
 
+      <section className="search-how" aria-label="How to ask">
+        <p className="search-eyebrow">How to ask</p>
+        <h2>Need, place, then who it is for</h2>
+        <p className="muted">
+          Single Search reads a trade and a town from finished national packs.
+          It does not open a mission per search. Unmet places queue on Mission
+          Control as local overlay work.
+        </p>
+        <ol>
+          <li>
+            <strong>Need</strong> — a door word (painter, loodgieter, dakdekker),
+            not a company name.
+          </li>
+          <li>
+            <strong>Place</strong> — city or municipality. Country is optional
+            when the town is unambiguous.
+          </li>
+          <li>
+            <strong>For</strong> — household, VvE / zakelijk, or both. Same trade,
+            different client.
+          </li>
+        </ol>
+      </section>
+
       <section className="search-panel" aria-label="Search">
         <form className="search-compose" onSubmit={onSearch}>
           <div className="search-need">

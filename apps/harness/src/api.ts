@@ -9,6 +9,7 @@ import type {
   Mission,
   MissionCoverage,
   MissionSource,
+  NationLandscape,
   Observation,
   SearchPlan,
   Source,
@@ -119,14 +120,85 @@ export type WorkerCommand =
   | "harvest"
   | "coverage"
   | "search"
-  | "full_mission";
+  | "full_mission"
+  | "nation_map";
 
 export type WorkerTargetType =
   | "mission"
   | "source"
   | "company"
   | "gap"
-  | "search";
+  | "search"
+  | "country";
+
+export type ControlDoorRow = {
+  key: string;
+  country: string;
+  sector: string;
+  subsector: string;
+  tradeId?: string;
+  tradeLabel?: string;
+  companyCount: number;
+  missionCount: number;
+  trustedCount: number;
+  nationalSourceCount: number;
+  localSourceCount: number;
+  searchable: boolean;
+  status: "searchable" | "needs_overlay" | "empty";
+  nationalPackId?: string;
+  directory?: boolean;
+  listNames: string[];
+};
+
+export type ControlJobRow = {
+  id: string;
+  location: string;
+  country: string;
+  sector: string;
+  subsector: string;
+  goal: string;
+  companyCount: number;
+  trustedCount: number;
+  listNames: string[];
+  nationalPack: boolean;
+  directory: boolean;
+  updatedAt: string;
+};
+
+export type ControlCountryRow = {
+  country: string;
+  countrySlug: string;
+  doorsFilled: number;
+  doorTotal: number;
+  companyCount: number;
+  listCount: number;
+  landscapeStatus: NationLandscape["status"] | "none";
+  lastRun: {
+    id: string;
+    status: WorkerStatus;
+    progress_pct: number;
+    current_action: string | null;
+    updated_at: string;
+  } | null;
+};
+
+export type ListStyleSource = {
+  id: string;
+  name: string;
+  category: string;
+  scope: string;
+  status: string;
+  suggestedWeight?: number;
+  url?: string;
+  listUrl?: string;
+};
+
+export type ListStyleGroup = {
+  layer: string;
+  category: string;
+  title: string;
+  sources: ListStyleSource[];
+};
 
 export type WorkerStatus =
   | "queued"
@@ -239,10 +311,11 @@ export const api = {
   listWorkerEvents: (id: string) =>
     request<{ events: WorkerEvent[] }>(`/admin/worker/runs/${id}/events`),
   enqueueWorkerRun: (body: {
-    missionId: string;
+    missionId?: string;
     command: WorkerCommand;
     targetType?: WorkerTargetType;
     targetId?: string;
+    country?: string;
     model?: string;
   }) =>
     request<{ run: WorkerRun }>("/admin/worker/runs", {
@@ -353,6 +426,53 @@ export const api = {
   getCoverageDesk: () =>
     request<{ packs: CoveragePackRow[]; missions: CoverageMissionRow[] }>(
       "/control/coverage",
+    ),
+  listControlCountries: () =>
+    request<{ countries: ControlCountryRow[] }>("/control/countries"),
+  startControlCountry: (body: { country: string; map?: boolean }) =>
+    request<{
+      landscape: NationLandscape;
+      created: boolean;
+      run: WorkerRun | null;
+    }>("/control/countries", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getControlCountry: (country: string) =>
+    request<{
+      country: string;
+      countrySlug: string;
+      landscape: NationLandscape;
+      doors: ControlDoorRow[];
+      directory: ControlDoorRow | null;
+      jobs: ControlJobRow[];
+      demands: SearchDemandAggregate[];
+      latestRun: WorkerRun | null;
+      events: WorkerEvent[];
+    }>(`/control/countries/${encodeURIComponent(country)}`),
+  getControlLandscape: (country: string) =>
+    request<{ landscape: NationLandscape }>(
+      `/control/countries/${encodeURIComponent(country)}/landscape`,
+    ),
+  putControlLandscape: (country: string, landscape: NationLandscape) =>
+    request<{ landscape: NationLandscape }>(
+      `/control/countries/${encodeURIComponent(country)}/landscape`,
+      { method: "PUT", body: JSON.stringify({ landscape }) },
+    ),
+  getControlDoor: (country: string, tradeId: string) =>
+    request<{
+      country: string;
+      countrySlug: string;
+      tradeId: string;
+      door: ControlDoorRow;
+      groups: ListStyleGroup[];
+      directorySources: ListStyleSource[];
+      jobs: ControlJobRow[];
+      demands: SearchDemandAggregate[];
+      latestRun: WorkerRun | null;
+      events: WorkerEvent[];
+    }>(
+      `/control/countries/${encodeURIComponent(country)}/doors/${encodeURIComponent(tradeId)}`,
     ),
   onboardPack: (body: {
     country: string;

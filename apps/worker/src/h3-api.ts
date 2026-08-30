@@ -2,6 +2,7 @@ import type {
   Company,
   Mission,
   MissionCoverage,
+  NationLandscape,
   Review,
   SearchPlan,
   Source,
@@ -64,5 +65,14 @@ export const h3 = {
     request<unknown>(
       `/api/missions/${missionId}/companies/${companyId}/harvest`,
       { method: "POST", body: "{}" },
+    ),
+  getLandscape: (country: string) =>
+    request<{ landscape: NationLandscape }>(
+      `/api/control/countries/${encodeURIComponent(country)}/landscape`,
+    ),
+  putLandscape: (country: string, landscape: NationLandscape) =>
+    request<{ landscape: NationLandscape }>(
+      `/api/control/countries/${encodeURIComponent(country)}/landscape`,
+      { method: "PUT", body: JSON.stringify({ landscape }) },
     ),
 };

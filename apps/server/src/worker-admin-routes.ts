@@ -159,15 +159,19 @@ export function registerWorkerAdminRoutes(
     const missionId =
       typeof rec.missionId === "string" ? rec.missionId.trim() : "";
     const command = typeof rec.command === "string" ? rec.command.trim() : "";
-    if (!UUID_RE.test(missionId)) {
-      return c.json({ error: "missionId (uuid) required" }, 400);
-    }
     if (!isWorkerCommand(command)) {
       return c.json({ error: "Invalid command" }, 400);
     }
 
-    const mission = await store.getMission(missionId);
-    if (!mission) return c.json({ error: "Mission not found" }, 404);
+    const isNationMap = command === "nation_map";
+    if (!isNationMap && !UUID_RE.test(missionId)) {
+      return c.json({ error: "missionId (uuid) required" }, 400);
+    }
+
+    const mission = missionId ? await store.getMission(missionId) : null;
+    if (!isNationMap && !mission) {
+      return c.json({ error: "Mission not found" }, 404);
+    }
 
     const targetTypeRaw =
       typeof rec.targetType === "string" ? rec.targetType.trim() : "";
@@ -175,31 +179,38 @@ export function registerWorkerAdminRoutes(
       ? isWorkerTargetType(targetTypeRaw)
         ? targetTypeRaw
         : null
-      : command === "full_mission"
-        ? "mission"
-        : null;
+      : isNationMap
+        ? "country"
+        : command === "full_mission"
+          ? "mission"
+          : null;
     if (targetTypeRaw && !targetType) {
       return c.json({ error: "Invalid targetType" }, 400);
     }
     const targetId =
       typeof rec.targetId === "string" ? rec.targetId.trim() || null : null;
+    const country =
+      typeof rec.country === "string" ? rec.country.trim() : "";
     const model =
       typeof rec.model === "string" ? rec.model.trim() || undefined : undefined;
 
     const input: Record<string, unknown> = {};
     if (model) input.model = model;
+    if (country) input.country = country;
 
     const { data, error } = await admin
       .from("worker_runs")
       .insert({
-        mission_id: missionId,
+        mission_id: isNationMap ? null : missionId,
         command,
         target_type: targetType,
         target_id: targetId,
         status: "queued",
-        current_action: "Queued",
+        current_action: isNationMap
+          ? `Queued nation map · ${country || targetId || "country"}`
+          : "Queued",
         input,
-        step_total: command === "full_mission" ? 8 : 1,
+        step_total: command === "full_mission" ? 8 : command === "nation_map" ? 12 : 1,
       })
       .select("*")
       .single();
@@ -209,10 +220,12 @@ export function registerWorkerAdminRoutes(
     const run = data as WorkerRun;
     await insertEvent(admin, {
       run_id: run.id,
-      mission_id: missionId,
+      mission_id: isNationMap ? null : missionId,
       event_type: "queued",
-      message: `Queued ${command} for ${mission.location} · ${mission.subsector}`,
-      data: { command, targetType, targetId, model: model ?? null },
+      message: isNationMap
+        ? `Queued ${command} for ${country || targetId || "country"}`
+        : `Queued ${command} for ${mission?.location} · ${mission?.subsector}`,
+      data: { command, targetType, targetId, model: model ?? null, country },
     });
     return c.json({ run }, 201);
   });
