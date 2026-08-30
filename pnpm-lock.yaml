@@ -105,6 +105,25 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
+  apps/worker:
+    dependencies:
+      '@h3-trust/schema':
+        specifier: workspace:*
+        version: link:../../packages/schema
+      '@supabase/supabase-js':
+        specifier: ^2.49.1
+        version: 2.110.9
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.20.1
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.1
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
   packages/schema:
     dependencies:
       zod:

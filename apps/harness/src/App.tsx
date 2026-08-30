@@ -26,6 +26,9 @@ import { LoginPage } from "./pages/LoginPage";
 import { SignupPage } from "./pages/SignupPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { AdminVolunteersPage } from "./pages/AdminVolunteersPage";
+import { AdminLayout } from "./layouts/AdminLayout";
+import { AdminEnginePage } from "./pages/AdminEnginePage";
+import { AdminEngineRunPage } from "./pages/AdminEngineRunPage";
 
 function AccountNav() {
   const { session, profile, isAdmin, loading, signOut } = useAuth();
@@ -45,7 +48,7 @@ function AccountNav() {
   return (
     <>
       {isAdmin && (
-        <NavLink className="topnav-link" to="/admin/volunteers">
+        <NavLink className="topnav-link" to="/admin">
           Admin
         </NavLink>
       )}
@@ -100,7 +103,12 @@ export function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/admin/volunteers" element={<AdminVolunteersPage />} />
+        <Route path="/admin" element={<AdminLayout />}>
+          <Route index element={<Navigate to="engine" replace />} />
+          <Route path="engine" element={<AdminEnginePage />} />
+          <Route path="engine/:runId" element={<AdminEngineRunPage />} />
+          <Route path="volunteers" element={<AdminVolunteersPage />} />
+        </Route>
 
         <Route path="/work/:missionId" element={<WorkerLayout />}>
           <Route index element={<Navigate to="brief" replace />} />

@@ -87,6 +87,7 @@ import {
   type Profile,
   type SearchDemand,
 } from "./auth.js";
+import { registerWorkerAdminRoutes } from "./worker-admin-routes.js";
 
 function normPlace(value: string): string {
   return value
@@ -255,6 +256,10 @@ export function createApp(options: CreateAppOptions) {
       hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
       hasServiceRole: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
       hasAdminEmail: Boolean(process.env.ADMIN_EMAIL),
+      hasWorkerToken: Boolean((process.env.H3_WORKER_TOKEN ?? "").trim()),
+      engineAvailable: Boolean(
+        process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY,
+      ),
       writableRoot: writableRoot ?? null,
     }),
   );
@@ -357,6 +362,8 @@ export function createApp(options: CreateAppOptions) {
     if (error) return c.json({ error: error.message }, 400);
     return c.json({ profile: data });
   });
+
+  registerWorkerAdminRoutes(app, { admin, store });
 
   // ---- Anonymous search session ------------------------------------------
 

@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { NavLink, Outlet, useParams, useLocation } from "react-router-dom";
 import { useMissionData } from "../hooks/useMissionData";
 import { WorkerStepRail } from "../components/worker/WorkerStepRail";
+import { EngineStatusChip } from "../components/worker/EngineStatusChip";
 import { TrustedPortfolioBar } from "../components/worker/TrustedPortfolioBar";
 import {
   deriveWorkerStepState,
@@ -71,6 +72,8 @@ export function WorkerLayout() {
         {mission ? <p className="muted worker-goal">{mission.goal}</p> : null}
 
         <WorkerStepRail current={current} stepStates={derived.steps} />
+
+        {mission ? <EngineStatusChip missionId={missionId} /> : null}
 
         {mission && current !== next.id ? (
           <p className="worker-next-banner">

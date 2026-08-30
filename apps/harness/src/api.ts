@@ -112,6 +112,65 @@ export type CoveragePackRow = {
   missions: CoverageMissionRow[];
 };
 
+export type WorkerCommand =
+  | "discover"
+  | "probe"
+  | "extract"
+  | "harvest"
+  | "coverage"
+  | "search"
+  | "full_mission";
+
+export type WorkerTargetType =
+  | "mission"
+  | "source"
+  | "company"
+  | "gap"
+  | "search";
+
+export type WorkerStatus =
+  | "queued"
+  | "running"
+  | "waiting_human"
+  | "succeeded"
+  | "failed"
+  | "cancelled";
+
+export type WorkerRun = {
+  id: string;
+  mission_id: string | null;
+  command: WorkerCommand;
+  target_type: WorkerTargetType | null;
+  target_id: string | null;
+  status: WorkerStatus;
+  phase: string | null;
+  step_index: number;
+  step_total: number;
+  progress_pct: number;
+  current_action: string | null;
+  input: Record<string, unknown>;
+  output_summary: Record<string, unknown>;
+  cursor: Record<string, unknown>;
+  error: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  heartbeat_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WorkerEvent = {
+  id: string;
+  run_id: string;
+  mission_id: string | null;
+  level: "debug" | "info" | "warn" | "error" | "success";
+  event_type: string;
+  step_name: string | null;
+  message: string;
+  data: Record<string, unknown>;
+  created_at: string;
+};
+
 export type PackOnboardResult = {
   mission: Mission;
   createdMission: boolean;
@@ -132,6 +191,8 @@ export const api = {
       ok: boolean;
       storeDriver?: string;
       authRequired?: boolean;
+      hasServiceRole?: boolean;
+      engineAvailable?: boolean;
     }>("/health"),
   me: () =>
     request<{
@@ -162,6 +223,44 @@ export const api = {
       method: "POST",
       body: "{}",
     }),
+  listWorkerRuns: (opts?: { missionId?: string; status?: string }) => {
+    const params = new URLSearchParams();
+    if (opts?.missionId) params.set("missionId", opts.missionId);
+    if (opts?.status) params.set("status", opts.status);
+    const q = params.toString();
+    return request<{ runs: WorkerRun[] }>(
+      `/admin/worker/runs${q ? `?${q}` : ""}`,
+    );
+  },
+  getWorkerRun: (id: string) =>
+    request<{ run: WorkerRun; events: WorkerEvent[] }>(
+      `/admin/worker/runs/${id}`,
+    ),
+  listWorkerEvents: (id: string) =>
+    request<{ events: WorkerEvent[] }>(`/admin/worker/runs/${id}/events`),
+  enqueueWorkerRun: (body: {
+    missionId: string;
+    command: WorkerCommand;
+    targetType?: WorkerTargetType;
+    targetId?: string;
+    model?: string;
+  }) =>
+    request<{ run: WorkerRun }>("/admin/worker/runs", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  cancelWorkerRun: (id: string) =>
+    request<{ run: WorkerRun }>(`/admin/worker/runs/${id}/cancel`, {
+      method: "POST",
+      body: "{}",
+    }),
+  retryWorkerRun: (id: string) =>
+    request<{ run: WorkerRun }>(`/admin/worker/runs/${id}/retry`, {
+      method: "POST",
+      body: "{}",
+    }),
+  getActiveWorkerRun: (missionId: string) =>
+    request<{ run: WorkerRun | null }>(`/missions/${missionId}/worker/active`),
   searchSession: () =>
     request<SearchSessionState>("/search/session", {
       method: "POST",

@@ -83,7 +83,7 @@ export function SettingsPage() {
         {isAdmin && (
           <>
             {" · "}
-            <Link to="/admin/volunteers">Admin: volunteers</Link>
+            <Link to="/admin">Admin: engine</Link>
           </>
         )}
       </p>

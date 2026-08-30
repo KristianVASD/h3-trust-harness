@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { Context, MiddlewareHandler, Next } from "hono";
 
 export type ProfileRole = "admin" | "curad_volunteer";
@@ -24,7 +24,23 @@ export type AuthUser = {
 export type AppVariables = {
   auth: AuthUser | null;
   authRequired: boolean;
+  isWorker: boolean;
 };
+
+/** Shared secret for the local engine worker. Never expose to the browser. */
+export function isWorkerBearer(
+  authorizationHeader: string | undefined,
+): boolean {
+  const expected = (process.env.H3_WORKER_TOKEN ?? "").trim();
+  if (!expected || expected.length < 16) return false;
+  if (!authorizationHeader?.startsWith("Bearer ")) return false;
+  const token = authorizationHeader.slice("Bearer ".length).trim();
+  if (!token) return false;
+  const a = Buffer.from(token);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
 
 const SEARCH_LIMIT = Number(process.env.SEARCH_SESSION_LIMIT ?? 5) || 5;
 const SEARCH_COOKIE = "h3_search_session";
@@ -148,11 +164,16 @@ export function authMiddleware(
 ): MiddlewareHandler<{ Variables: AppVariables }> {
   return async (c, next) => {
     c.set("authRequired", authRequired);
+    const header = c.req.header("Authorization");
+    const worker = isWorkerBearer(header);
+    c.set("isWorker", worker);
+    if (worker) {
+      c.set("auth", null);
+      await next();
+      return;
+    }
     try {
-      const auth = await resolveAuthFromRequest(
-        admin,
-        c.req.header("Authorization"),
-      );
+      const auth = await resolveAuthFromRequest(admin, header);
       c.set("auth", auth);
     } catch (err) {
       console.error("[auth] resolve failed", err);
@@ -178,6 +199,9 @@ export function requireWrite(): MiddlewareHandler<{ Variables: AppVariables }> {
       path === "/api/search/demand" ||
       path.startsWith("/api/admin/")
     ) {
+      return next();
+    }
+    if (c.get("isWorker")) {
       return next();
     }
     const authRequired = c.get("authRequired");
@@ -207,6 +231,7 @@ export function requireLoginForMissionReads(): MiddlewareHandler<{
   Variables: AppVariables;
 }> {
   return async (c, next) => {
+    if (c.get("isWorker")) return next();
     const authRequired = c.get("authRequired");
     if (!authRequired) return next();
     const auth = c.get("auth");

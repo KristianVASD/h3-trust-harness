@@ -27,6 +27,7 @@ import {
   type SearchDemandAggregate,
 } from "../api";
 import { StatusChip } from "../components/Badges";
+import { useAuth } from "../auth/AuthContext";
 import { useCanInteract } from "../hooks/useCanInteract";
 import { importCompanyRowsInChunks } from "../lib/importCompanyRows";
 import { isNationalPack } from "../lib/packMatch";
@@ -109,6 +110,7 @@ export function MissionControl() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { canInteract, isPending, needsLogin } = useCanInteract();
+  const { isAdmin } = useAuth();
   const [missions, setMissions] = useState<Mission[]>([]);
   const [packs, setPacks] = useState<CoveragePackRow[]>([]);
   const [demands, setDemands] = useState<SearchDemandAggregate[]>([]);
@@ -121,6 +123,7 @@ export function MissionControl() {
   } | null>(null);
   const [doneMsg, setDoneMsg] = useState<string | null>(null);
   const [peelingId, setPeelingId] = useState<string | null>(null);
+  const [startingEngineId, setStartingEngineId] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     location: "",
@@ -387,6 +390,23 @@ export function MissionControl() {
       setError(err instanceof Error ? err.message : "Peel failed");
     } finally {
       setPeelingId(null);
+    }
+  }
+
+  async function onStartEngine(missionId: string) {
+    if (!isAdmin) return;
+    setStartingEngineId(missionId);
+    setError(null);
+    try {
+      const { run } = await api.enqueueWorkerRun({
+        missionId,
+        command: "full_mission",
+      });
+      navigate(`/admin/engine/${run.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start engine");
+    } finally {
+      setStartingEngineId(null);
     }
   }
 
@@ -815,6 +835,26 @@ export function MissionControl() {
                     <Link className="btn small" to={workerPath(m.id)}>
                       Open job
                     </Link>
+                    {isAdmin ? (
+                      <>
+                        <button
+                          type="button"
+                          className="btn small"
+                          disabled={startingEngineId === m.id}
+                          onClick={() => void onStartEngine(m.id)}
+                        >
+                          {startingEngineId === m.id
+                            ? "Queuing…"
+                            : "Start engine run"}
+                        </button>
+                        <Link
+                          className="btn secondary small"
+                          to={`/admin/engine?missionId=${m.id}`}
+                        >
+                          Engine
+                        </Link>
+                      </>
+                    ) : null}
                     <Link
                       className="btn secondary small"
                       to={`/missions/${m.id}`}
