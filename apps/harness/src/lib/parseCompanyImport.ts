@@ -72,8 +72,8 @@ function cellFor(
 }
 
 /** Normalize scraped websites to absolute https URLs when scheme is missing. */
-export function normalizeWebsiteUrl(raw: string): string | undefined {
-  const value = raw.trim();
+export function normalizeWebsiteUrl(raw: string | undefined): string | undefined {
+  const value = (raw ?? "").trim();
   if (!value) return undefined;
   const lower = value.toLowerCase();
   if (lower === "n.v.t." || lower === "nvt" || lower === "n/a" || lower === "-") {

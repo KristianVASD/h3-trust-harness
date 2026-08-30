@@ -3,8 +3,8 @@ import { extractNlPostcode4 } from "./place-clusters";
 const LEGAL_SUFFIX =
   /\b(b\.?\s*v\.?|v\.?\s*o\.?\s*f\.?|n\.?\s*v\.?|bvba|vof|cvba|eenmanszaak)\b/gi;
 
-export function normalizeCompanyName(value: string): string {
-  return value
+export function normalizeCompanyName(value: string | undefined): string {
+  return (value ?? "")
     .trim()
     .toLowerCase()
     .replace(LEGAL_SUFFIX, " ")

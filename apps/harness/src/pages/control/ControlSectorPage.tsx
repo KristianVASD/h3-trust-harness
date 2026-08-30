@@ -97,18 +97,26 @@ export function ControlSectorPage() {
 
   const prefill = useMemo<AttachPrefill | undefined>(() => {
     if (!state?.location && !data) return undefined;
+    const fromDemand = Boolean(state?.location);
     return {
       country: data?.country,
-      location: state?.location,
+      ...(fromDemand
+        ? {
+            location: state?.location,
+            sourceLayer: "local" as const,
+            sourceCategory: "local_business_association" as SourceCategory,
+            mixed: true,
+            suggestedWeight: "65",
+            sourceName: `${state?.location} local list`,
+            listLabel: `${state?.location} overlay`,
+          }
+        : {
+            sourceLayer: "national" as const,
+            sourceCategory: "quality_mark" as SourceCategory,
+            mixed: false,
+            suggestedWeight: "75",
+          }),
       subsector: resolvedTrade === "unclassified" ? "paint" : resolvedTrade,
-      sourceLayer: state?.location ? "local" : "national",
-      sourceCategory: (state?.location
-        ? "local_business_association"
-        : "quality_mark") as SourceCategory,
-      mixed: Boolean(state?.location),
-      suggestedWeight: state?.location ? "65" : "75",
-      sourceName: state?.location ? `${state.location} local list` : undefined,
-      listLabel: state?.location ? `${state.location} overlay` : undefined,
     };
   }, [state, data, resolvedTrade]);
 

@@ -104,7 +104,17 @@ export function AttachListForm({
       ...f,
       country,
       subsector: tradeId,
-      ...(prefill ?? {}),
+      ...(prefill?.location != null ? { location: prefill.location } : {}),
+      ...(prefill?.sourceLayer ? { sourceLayer: prefill.sourceLayer } : {}),
+      ...(prefill?.sourceCategory
+        ? { sourceCategory: prefill.sourceCategory }
+        : {}),
+      ...(prefill?.mixed != null ? { mixed: prefill.mixed } : {}),
+      ...(prefill?.suggestedWeight
+        ? { suggestedWeight: prefill.suggestedWeight }
+        : {}),
+      ...(prefill?.sourceName ? { sourceName: prefill.sourceName } : {}),
+      ...(prefill?.listLabel ? { listLabel: prefill.listLabel } : {}),
     }));
   }, [country, tradeId, prefill]);
 
@@ -139,18 +149,20 @@ export function AttachListForm({
     let completed = 0;
     try {
       const mixed = form.mixed || isMixedSourceCategory(form.sourceCategory);
+      const place = (form.location ?? "").trim();
+      const listLabel = (form.listLabel ?? "").trim() || form.sourceName;
       const setup = await api.onboardPack({
         country: form.country,
         sector: HOME_MAINTENANCE_SECTOR,
         subsector: doorIdFromInput(form.subsector),
-        location: form.location.trim(),
+        location: place,
         source: {
           name: form.sourceName,
           url: form.sourceUrl || undefined,
           layer: form.sourceLayer,
           category: form.sourceCategory,
         },
-        listLabel: form.listLabel,
+        listLabel,
         rows: [],
         mixed,
         suggestedWeight: Number(form.suggestedWeight) || undefined,
@@ -160,11 +172,11 @@ export function AttachListForm({
         ? await importCompanyRowsInChunks({
             missionId: setup.mission.id,
             sourceId: setup.source.id,
-            listLabel: form.listLabel,
+            listLabel,
             rows,
             producer: "ImportedDataset",
             mixed,
-            place: form.location.trim() || undefined,
+            place: place || undefined,
             defaultAudience: form.defaultAudience || undefined,
             onProgress: (next, total) => {
               completed = next;
@@ -172,9 +184,7 @@ export function AttachListForm({
             },
           })
         : { created: 0, updated: 0, skipped: 0 };
-      const localHits = form.location.trim()
-        ? countClusterHits(rows, form.location.trim())
-        : 0;
+      const localHits = place ? countClusterHits(rows, place) : 0;
       setDoneMsg(
         `${setup.createdMission ? "Created" : "Updated"} national pack · ${setup.source.name}` +
           (mixed
