@@ -65,16 +65,68 @@
   margin-top: 1.5rem;
 }
 
+.plan-wrap {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.plan-progress {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.plan-progress-bar {
+  display: block;
+  height: 0.28rem;
+  background: var(--paper-2, #e8e2d4);
+  border: 1px solid var(--line, #c9c0ae);
+}
+
+.plan-progress-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--teal, #0f6e56);
+}
+
+.plan-overview-box {
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--line, #c9c0ae);
+  background: rgba(250, 248, 243, 0.65);
+}
+
+.plan-overview-box summary {
+  cursor: pointer;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--teal, #0f6e56);
+}
+
 .plan-reader {
   display: grid;
-  grid-template-columns: 13rem 1fr;
-  gap: 1rem;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  gap: 1.15rem;
   align-items: start;
 }
 
-@media (max-width: 800px) {
+@media (max-width: 640px) {
   .plan-reader {
     grid-template-columns: 1fr;
+  }
+
+  .plan-toc {
+    position: static;
+    max-height: 14rem;
+    overflow: auto;
+    padding-bottom: 0.35rem;
+    border-bottom: 1px solid var(--line, #c9c0ae);
   }
 }
 
@@ -83,54 +135,205 @@
   top: 0.75rem;
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.15rem;
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+}
+
+.plan-toc-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.plan-toc-layer {
+  margin: 0.7rem 0 0.2rem;
+  padding: 0 0.45rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--teal, #0f6e56);
+}
+
+.plan-toc-group:first-child .plan-toc-layer {
+  margin-top: 0;
 }
 
 .plan-toc button {
+  display: grid;
+  gap: 0.1rem;
   text-align: left;
   border: 0;
+  border-left: 2px solid transparent;
   background: transparent;
-  padding: 0.35rem 0.45rem;
+  padding: 0.4rem 0.5rem;
   color: var(--ink-soft);
   cursor: pointer;
 }
 
+.plan-toc button.plan-toc-empty {
+  opacity: 0.62;
+}
+
 .plan-toc button[aria-current="true"] {
   background: var(--teal-soft);
+  border-left-color: var(--teal, #0f6e56);
   color: var(--teal);
+  opacity: 1;
+}
+
+.plan-toc-title {
+  font-size: 0.9rem;
+  line-height: 1.25;
+}
+
+.plan-toc-meta {
+  font-size: 0.72rem;
+  color: var(--ink-soft);
 }
 
 .plan-chapter {
-  max-height: 28rem;
-  overflow: auto;
-  padding: 0.25rem 0.15rem 0.75rem;
+  min-height: 12rem;
+  padding: 0.15rem 0.1rem 0.5rem;
+}
+
+.plan-chapter-head {
+  margin: 0 0 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--line, #c9c0ae);
 }
 
 .plan-chapter h3 {
-  margin: 0 0 0.5rem;
+  margin: 0 0 0.45rem;
   font-family: var(--font-display, Georgia, serif);
+  font-weight: 500;
+}
+
+.plan-chapter-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.plan-section {
+  margin: 0 0 1.15rem;
+}
+
+.plan-section h4 {
+  margin: 0 0 0.45rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--teal, #0f6e56);
 }
 
 .plan-chapter p {
   white-space: pre-wrap;
-  margin: 0 0 0.85rem;
+  margin: 0 0 0.7rem;
+}
+
+.plan-chapter-empty {
+  padding: 1rem 1.05rem;
+  border: 1px dashed var(--line, #c9c0ae);
+  background: rgba(250, 248, 243, 0.45);
+}
+
+.plan-chapter-empty p {
+  margin: 0;
+}
+
+.plan-chapter-empty p + p {
+  margin-top: 0.4rem;
 }
 
 .plan-platform-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
-  gap: 0.55rem;
+  grid-template-columns: repeat(auto-fill, minmax(12.5rem, 1fr));
+  gap: 0.65rem;
 }
 
 .plan-platform {
-  padding: 0.65rem 0.75rem;
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--teal, #0f6e56);
+  background: var(--white);
+}
+
+.plan-platform strong {
+  font-family: var(--font-display, Georgia, serif);
+  font-weight: 500;
+}
+
+.plan-platform p {
+  margin: 0;
+}
+
+.plan-ext {
+  color: var(--teal, #0f6e56);
+  font-size: 0.85rem;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.plan-ext:hover {
+  color: #0b5a46;
+}
+
+.plan-source-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.plan-source-list li {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.55rem 0.7rem;
   border: 1px solid var(--line);
   background: var(--white);
 }
 
+.plan-source-name {
+  font-weight: 550;
+}
+
+.plan-source-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
 .plan-overview {
   white-space: pre-wrap;
-  margin: 0 0 1rem;
+  margin: 0 0 0.25rem;
+}
+
+.plan-import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+}
+
+.plan-file-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.plan-file-btn input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
 }
 
 .engine-run-chip {

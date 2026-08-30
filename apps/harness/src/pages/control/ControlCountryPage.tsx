@@ -108,14 +108,14 @@ export function ControlCountryPage() {
     }
   }
 
-  async function onImportPlan() {
-    if (!data || !paste.trim()) return;
+  async function importLandscape(text: string) {
+    if (!data || !text.trim()) return;
     setBusy(true);
     setError(null);
     setImportMsg(null);
     try {
       const { landscape } = await api.putControlLandscape(data.countrySlug, {
-        text: paste,
+        text,
       });
       setPaste("");
       await load();
@@ -139,6 +139,16 @@ export function ControlCountryPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function onImportPlan() {
+    await importLandscape(paste);
+  }
+
+  async function onUploadJson(file: File) {
+    const text = await file.text();
+    setPaste(text);
+    await importLandscape(text);
   }
 
   if (!data && !error) {
@@ -192,10 +202,13 @@ export function ControlCountryPage() {
                 }
               />
             </div>
-            <PlanReader landscape={data.landscape} />
+            <PlanReader
+              key={data.landscape.updatedAt}
+              landscape={data.landscape}
+            />
             {canInteract ? (
               <details className="worker-advanced" style={{ marginTop: "1rem" }}>
-                <summary>Paste landscape JSON</summary>
+                <summary>Paste or upload landscape JSON</summary>
                 <textarea
                   value={paste}
                   onChange={(e) => setPaste(e.target.value)}
@@ -207,14 +220,29 @@ export function ControlCountryPage() {
                   onto the 12 discovery channels and stores it in Supabase
                   (`nation_landscapes`). Plain prose becomes the overview.
                 </p>
-                <button
-                  type="button"
-                  className="btn small"
-                  disabled={busy || !paste.trim()}
-                  onClick={() => void onImportPlan()}
-                >
-                  {busy ? "Saving…" : "Import playbook"}
-                </button>
+                <div className="plan-import-actions">
+                  <button
+                    type="button"
+                    className="btn small"
+                    disabled={busy || !paste.trim()}
+                    onClick={() => void onImportPlan()}
+                  >
+                    {busy ? "Saving…" : "Import playbook"}
+                  </button>
+                  <label className="btn small secondary plan-file-btn">
+                    Upload JSON
+                    <input
+                      type="file"
+                      accept="application/json,.json,.txt"
+                      disabled={busy}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (file) void onUploadJson(file);
+                      }}
+                    />
+                  </label>
+                </div>
                 {importMsg ? <p className="muted">{importMsg}</p> : null}
               </details>
             ) : null}
