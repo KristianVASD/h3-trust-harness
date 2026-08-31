@@ -629,3 +629,4 @@ export * from "./company-match";
 export * from "./local-directory";
 export * from "./trades";
 export * from "./nation-landscape";
+export * from "./sector-playbook";

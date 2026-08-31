@@ -19,6 +19,7 @@ import {
 } from "../../api";
 import { StatusChip } from "../../components/Badges";
 import { AttachListForm, type AttachPrefill } from "../../components/control/AttachListForm";
+import { DoorPlaybookForm } from "../../components/control/DoorPlaybookForm";
 import { EngineRunChip } from "../../components/control/EngineRunChip";
 import { useAuth } from "../../auth/AuthContext";
 import { useCanInteract } from "../../hooks/useCanInteract";
@@ -224,6 +225,15 @@ export function ControlSectorPage() {
       </header>
       {error ? <div className="error">{error}</div> : null}
 
+      {resolvedTrade !== "unclassified" ? (
+        <DoorPlaybookForm
+          country={data?.country ?? country}
+          tradeId={resolvedTrade}
+          tradeLabel={title}
+          onDone={() => void load()}
+        />
+      ) : null}
+
       <section className="panel">
         <h2>How lists look on this door</h2>
         <p className="hint">
@@ -298,7 +308,11 @@ export function ControlSectorPage() {
         <h2>Packs</h2>
         <p className="hint">National pack for this door — max 5.</p>
         {(data?.jobs ?? []).length === 0 ? (
-          <div className="empty">No pack yet. Attach a list or create an empty job.</div>
+          <div className="empty">
+            No pack yet.{" "}
+            <a href="#seed">Seed the 12 channels</a>, attach a list, or create an
+            empty job.
+          </div>
         ) : (
           data?.jobs.map((job) => (
             <div key={job.id} className="mission-card">

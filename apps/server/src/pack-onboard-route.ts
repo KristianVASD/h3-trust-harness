@@ -56,6 +56,54 @@ export type PackOnboardInput = {
   defaultAudience?: ServiceContext;
 };
 
+export async function ensureNationalPack(
+  store: Store,
+  input: {
+    country: string;
+    sector: string;
+    subsector: string;
+    goal?: string;
+  },
+): Promise<{ mission: Mission; created: boolean }> {
+  const country = input.country.trim();
+  const sector = input.sector.trim();
+  const subsector = primaryTradeId(input.subsector) ?? input.subsector.trim();
+  if (!country || !sector || !subsector) {
+    throw new PackOnboardError("country, sector, and subsector are required", 400);
+  }
+  const missions = await store.listMissions();
+  const existing = findNationalPackMission(missions, { country, sector, subsector });
+  if (existing) return { mission: existing, created: false };
+
+  const now = new Date().toISOString();
+  const mission = await store.upsertMission({
+    id: randomUUID(),
+    location: country,
+    country,
+    sector,
+    subsector,
+    goal:
+      input.goal?.trim() ||
+      `National ${subsector} base layer for ${country}.`,
+    notes: "National pack — local lists attach here (source.region). Not a town mission.",
+    search_plan_version: DEFAULT_SEARCH_PLAN_VERSION,
+    discoveryBrief: {
+      approach: "Base layer first, attach local lists, then CARA.",
+      candidateListTypes: [],
+      successCriteria: "Companies searchable from the pack; Align is optional.",
+      producer: "Human",
+      updatedAt: now,
+    },
+    phases: defaultPhases,
+    producer: "Human",
+    origin: "human",
+    createdAt: now,
+    updatedAt: now,
+    v: 1,
+  });
+  return { mission, created: true };
+}
+
 function categoryToType(category: SourceCategory): SourceType {
   if (category === "registry") return "registry";
   if (
@@ -111,40 +159,12 @@ export async function onboardCountrySectorPack(
   const overlayPlace = (input.location ?? "").trim();
   const mixed =
     input.mixed === true || isMixedSourceCategory(input.source.category);
-  const missions = await store.listMissions();
-  let mission = findNationalPackMission(missions, { country, sector, subsector });
-  let createdMission = false;
+  const { mission: ensured, created: createdMission } = await ensureNationalPack(
+    store,
+    { country, sector, subsector, goal: input.goal },
+  );
+  let mission = ensured;
   const now = new Date().toISOString();
-
-  if (!mission) {
-    mission = {
-      id: randomUUID(),
-      location: country,
-      country,
-      sector,
-      subsector,
-      goal:
-        input.goal?.trim() ||
-        `National ${subsector} base layer for ${country}.`,
-      notes: "National pack — local lists attach here (source.region). Not a town mission.",
-      search_plan_version: DEFAULT_SEARCH_PLAN_VERSION,
-      discoveryBrief: {
-        approach: "Base layer first, attach local lists, then CARA.",
-        candidateListTypes: [input.source.category],
-        successCriteria: "Companies searchable from the pack; Align is optional.",
-        producer: "Human",
-        updatedAt: now,
-      },
-      phases: defaultPhases,
-      producer: "Human",
-      origin: "human",
-      createdAt: now,
-      updatedAt: now,
-      v: 1,
-    };
-    mission = await store.upsertMission(mission);
-    createdMission = true;
-  }
 
   const layer = input.source.layer;
   const sourceName = input.source.name.trim();

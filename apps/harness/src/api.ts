@@ -477,6 +477,22 @@ export const api = {
     }>(
       `/control/countries/${encodeURIComponent(country)}/doors/${encodeURIComponent(tradeId)}`,
     ),
+  seedControlDoorPlaybook: (
+    country: string,
+    tradeId: string,
+    body: { text: string } | { rows: unknown[] },
+  ) =>
+    request<{
+      missionId: string;
+      createdMission: boolean;
+      created: number;
+      updated: number;
+      skipped: number;
+      total: number;
+    }>(
+      `/control/countries/${encodeURIComponent(country)}/doors/${encodeURIComponent(tradeId)}/playbook`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
   onboardPack: (body: {
     country: string;
     sector: string;

@@ -26,6 +26,8 @@ import {
 } from "./control-desk.js";
 import type { NationLandscapeStore } from "./nation-landscape-store.js";
 import type { WorkerEvent, WorkerRun } from "./worker-progress.js";
+import { PackOnboardError } from "./pack-onboard-route.js";
+import { playbookIncoming, seedDoorPlaybook } from "./door-playbook-route.js";
 
 async function latestNationRuns(
   admin: SupabaseClient | null,
@@ -254,6 +256,29 @@ export function registerControlRoutes(
       latestRun,
       events,
     });
+  });
+
+  app.post("/api/control/countries/:country/doors/:tradeId/playbook", async (c) => {
+    const raw = decodeURIComponent(c.req.param("country"));
+    const tradeRaw = c.req.param("tradeId");
+    if (!TRADE_IDS.includes(tradeRaw as TradeId)) {
+      return c.json({ error: "Unknown trade door" }, 404);
+    }
+    const body = await c.req.json().catch(() => null);
+    try {
+      const result = await seedDoorPlaybook(store, {
+        country: raw,
+        tradeId: tradeRaw,
+        raw: playbookIncoming(body),
+      });
+      return c.json(result, result.createdMission ? 201 : 200);
+    } catch (err) {
+      if (err instanceof PackOnboardError) {
+        return c.json({ error: err.message }, err.status as 400);
+      }
+      const message = err instanceof Error ? err.message : "Failed to seed door";
+      return c.json({ error: message }, 500);
+    }
   });
 }
 

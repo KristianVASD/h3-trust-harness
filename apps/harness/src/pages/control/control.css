@@ -390,6 +390,25 @@
   width: 100%;
 }
 
+.door-seed {
+  margin: 0 0 1.25rem;
+  padding: 1.15rem 1.15rem 1rem;
+  background:
+    linear-gradient(155deg, rgba(15, 110, 86, 0.1) 0%, transparent 48%),
+    linear-gradient(180deg, rgba(250, 248, 243, 0.72) 0%, rgba(232, 226, 212, 0.55) 100%);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--teal);
+}
+
+.door-seed h2 {
+  margin: 0 0 0.4rem;
+}
+
+.door-seed textarea {
+  min-height: 8rem;
+  width: 100%;
+}
+
 .search-how {
   margin: 0 0 1.5rem;
   padding: 1.1rem 1.2rem;

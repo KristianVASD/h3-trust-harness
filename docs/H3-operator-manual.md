@@ -12,12 +12,12 @@ You must be signed in as an **approved CURAD volunteer** to write (import, CARA,
 
 | Screen | URL | Use it for |
 |--------|-----|------------|
-| **Mission Control** | `/control` | Country desk → nation trust landscape → 12 trade doors → list styles. Attach lists on the sector page. |
+| **Mission Control** | `/control` | Country desk → nation trust landscape → 12 trade doors → seed the door or attach lists. |
 | **Data Worker** | `/work/:id/…` | The 9 production steps for one pack. |
 | **Single Search** | `/search` | End-user question → ranked companies from packs already imported. |
 | **Investigation** | `/missions/:id` | Notebook + extra CARA queues (sources **and** companies). Optional depth, not the daily spine. |
 
-Open Mission Control → country → sector door → attach a list or open the national pack. Data Worker starts at **Brief**.
+Open Mission Control → country landscape (how to find lists) → sector door → **Seed this door** (which lists) or **Attach list** (members) → open the national pack. Data Worker starts at **Brief**.
 
 Nation mapping is a 12-channel playbook (registry, qualifications, keurmerken, traineeships, local business clubs, sport-club platforms, yearly festivities, …). It tells you **how to find local proof**. It is not the 12 HHH trade doors. Empty town jobs stay off this desk; unmet searches appear as overlay demand (max 5).
 
@@ -56,11 +56,23 @@ You already have a member list (CSV). You do **not** need Gaps → Probe first.
 6. Open the national pack in Data Worker → **Align** and CARA the source weight.
 7. **Search** to check the pack. Mixed leftovers → **Classify**.
 
-### B. Discovery path (when you do not have a list yet)
+### B. Seed the door first (sector playbook)
+
+You know **which lists** belong to this trade, but you do not have member CSVs yet.
+
+1. Map the **country landscape** first (`/control/netherlands`) — the 12 channels are how to find lists in that country.
+2. Open the trade door (e.g. Netherlands → Ongedierte).
+3. Under **Start this door**, paste or upload the sector CSV (channel, source_name, trust_weight, match_keys, notes). **Seed 12 channels.** This creates the national pack and fills Gaps with **candidates**. No companies are imported. CARA still locks weight later.
+4. **Open job → Gaps.** Keep / Probe / Align.
+5. **Attach list** when you have a member CSV.
+
+Re-run is safe: the same source name on that pack updates a candidate; accepted / CARA-locked sources are skipped. `sector_purity` and `service_context_default` are stored as notes (`purity=niche` / `audience=unknown`). Mixed-from-category at member import is unchanged.
+
+### C. Discovery path (when you do not have a list yet)
 
 Walk the Data Worker rail: Brief → Gaps → Probe → Align → Extract → Classify → Profile → Coverage → Search.
 
-Same CARA rules. Same CSV / JSON feeds. Align does **not** block Extract; it locks **ranking weights**.
+Same CARA rules. Same CSV / JSON feeds. Align does **not** block Extract; it locks **ranking weights**. Seed (B) is the usual start so Gaps is not empty.
 
 ---
 
@@ -78,6 +90,28 @@ Same CARA rules. Same CSV / JSON feeds. Align does **not** block Extract; it loc
 | 7 Profile | Optional harvest stub | No | Optional depth |
 | 8 Coverage | Nothing | No — read-only score | After companies exist |
 | 9 Search / Single Search | A query | **Optional — company Agree / Adjust / Disagree** | After results show |
+
+---
+
+## Mission Control — seed a trade door
+
+**Path:** Mission Control → country → trade door (example: Netherlands · Ongedierte).
+
+The country landscape is **how to find** lists. The door playbook is **which lists belong to this trade**. Seed names the sources (RPMV, KPMB, NVPB, …) without importing companies.
+
+| CSV column | Stored on the source |
+|------------|----------------------|
+| `channel` or `category` (`Chamber of commerce` / `national / registry`) | Discovery channel |
+| `source_name` | Name |
+| `trust_weight` | Suggested weight (proposal until Align) |
+| `notes` | Reason + notes |
+| `match_keys` | Filter hints |
+| `sector_purity` | Notes (`purity=niche` / `mixed`) |
+| `service_context_default` | Notes (`audience=unknown` / `commercial` / `private`) |
+
+Optional `url` / `listUrl`. CSV, JSON array, or a fenced block all work.
+
+After seed: the 12 cells show **candidate** chips → Packs → **Open job → Gaps**. Attach stays for when you have members.
 
 ---
 
