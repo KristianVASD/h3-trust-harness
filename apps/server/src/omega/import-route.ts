@@ -406,7 +406,8 @@ function pushDiscoverItem(
     extras.memberListPublic = s.memberListPublic;
   }
   if (via) extras.discoveredVia = via;
-  if (render) extras.listRenderType = render;
+  const renderType = asListRenderType(render);
+  if (renderType) extras.listRenderType = renderType;
   if (listUrl) extras.listUrl = listUrl;
   if (orgUrl && listUrl && orgUrl !== listUrl) extras.orgUrl = orgUrl;
   if (filterHints) extras.filterHints = filterHints;
@@ -1212,8 +1213,15 @@ function asDepth(v: unknown): "shallow" | "list_ready" | undefined {
 function asListRenderType(
   v: unknown,
 ): "text" | "images" | "js-app" | "pdf" | undefined {
-  const s = str(v);
+  const s = str(v)?.toLowerCase();
   if (s === "text" || s === "images" || s === "js-app" || s === "pdf") return s;
+  if (s === "search" || s === "search-form" || s === "directory" || s === "table" || s === "html") {
+    return "text";
+  }
+  if (s === "map" || s === "js" || s === "javascript" || s === "spa" || s === "app") {
+    return "js-app";
+  }
+  if (s === "image" || s === "img" || s === "logo") return "images";
   return undefined;
 }
 

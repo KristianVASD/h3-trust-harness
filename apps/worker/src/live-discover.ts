@@ -76,9 +76,48 @@ export async function liveDiscover(args: {
     system,
     user,
   });
-  const parsed = parseJsonObject(raw);
+  const parsed = sanitizeDiscoverEnums(parseJsonObject(raw));
   const verified = await verifyListUrls(parsed);
   return { payload: verified, verified: countFound(verified) };
+}
+
+const RENDER_TYPES = new Set(["text", "images", "js-app", "pdf"]);
+
+function coerceRenderType(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const s = value.trim().toLowerCase();
+  if (RENDER_TYPES.has(s)) return s;
+  if (["search", "search-form", "directory", "table", "html"].includes(s)) return "text";
+  if (["map", "js", "javascript", "spa", "app"].includes(s)) return "js-app";
+  if (["image", "img", "logo"].includes(s)) return "images";
+  return undefined;
+}
+
+function sanitizeDiscoverEnums(
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  const visit = (src: Record<string, unknown>) => {
+    const next = coerceRenderType(src.listRenderType);
+    if (next) src.listRenderType = next;
+    else delete src.listRenderType;
+  };
+  for (const key of ["candidates", "discovered_sources"] as const) {
+    const list = payload[key];
+    if (!Array.isArray(list)) continue;
+    for (const row of list) {
+      if (row && typeof row === "object") visit(row as Record<string, unknown>);
+    }
+  }
+  const gaps = Array.isArray(payload.gaps) ? payload.gaps : [];
+  for (const gap of gaps) {
+    if (!gap || typeof gap !== "object") continue;
+    const sources = (gap as { sources?: unknown[] }).sources;
+    if (!Array.isArray(sources)) continue;
+    for (const src of sources) {
+      if (src && typeof src === "object") visit(src as Record<string, unknown>);
+    }
+  }
+  return payload;
 }
 
 async function verifyListUrls(
