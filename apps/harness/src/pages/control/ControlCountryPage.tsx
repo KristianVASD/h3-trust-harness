@@ -13,6 +13,7 @@ import type { ControlDoorRow, WorkerEvent, WorkerRun } from "../../api";
 function packStatusLabel(status: ControlDoorRow["status"]): string {
   if (status === "searchable") return "searchable";
   if (status === "needs_overlay") return "needs local list";
+  if (status === "lists_found") return "lists found";
   return "empty";
 }
 
@@ -309,8 +310,8 @@ export function ControlCountryPage() {
       <section className="panel" style={{ marginTop: "1.25rem" }}>
         <h2>Explored sectors</h2>
         <p className="hint">
-          Always the 12 HHH trade doors. Empty doors stay empty until you attach
-          a list. Click a door to see list styles.
+          Always the 12 HHH trade doors. Candidate lists from the worker count
+          here — CARA later locks which ones rank. Click a door to see them.
         </p>
         <div className="control-door-grid">
           {(data?.doors ?? []).map((door) => (
@@ -322,6 +323,8 @@ export function ControlCountryPage() {
               <h3>{door.tradeLabel ?? door.subsector}</h3>
               <p className="muted">
                 {door.tradeId} · {door.companyCount} companies ·{" "}
+                {door.sourceCount ?? door.nationalSourceCount} lists
+                {" · "}
                 {door.nationalSourceCount} national / {door.localSourceCount} local
               </p>
               <StatusChip
@@ -329,7 +332,7 @@ export function ControlCountryPage() {
                 tone={
                   door.status === "searchable"
                     ? "done"
-                    : door.status === "needs_overlay"
+                    : door.status === "needs_overlay" || door.status === "lists_found"
                       ? "active"
                       : "waiting"
                 }

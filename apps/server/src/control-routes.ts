@@ -216,6 +216,7 @@ export function registerControlRoutes(
               sector: "Local Directory",
               subsector: "Unclassified",
               companyCount: 0,
+              sourceCount: 0,
               missionCount: 0,
               trustedCount: 0,
               nationalSourceCount: 0,

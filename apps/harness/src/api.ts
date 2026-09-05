@@ -146,10 +146,11 @@ export type ControlDoorRow = {
   nationalSourceCount: number;
   localSourceCount: number;
   searchable: boolean;
-  status: "searchable" | "needs_overlay" | "empty";
+  status: "searchable" | "needs_overlay" | "lists_found" | "empty";
   nationalPackId?: string;
   directory?: boolean;
   listNames: string[];
+  sourceCount: number;
 };
 
 export type ControlJobRow = {

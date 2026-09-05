@@ -27,6 +27,7 @@ import { useCanInteract } from "../../hooks/useCanInteract";
 function packStatusLabel(status: ControlDoorRow["status"]): string {
   if (status === "searchable") return "searchable";
   if (status === "needs_overlay") return "needs local list";
+  if (status === "lists_found") return "lists found";
   return "empty";
 }
 
@@ -207,7 +208,7 @@ export function ControlSectorPage() {
         </h1>
         <p className="muted">
           {data
-            ? `${data.door.companyCount} companies · ${data.door.nationalSourceCount} national / ${data.door.localSourceCount} local lists`
+            ? `${data.door.companyCount} companies · ${data.door.sourceCount ?? data.door.nationalSourceCount} lists (${data.door.nationalSourceCount} national / ${data.door.localSourceCount} local)`
             : "Loading…"}
         </p>
         {data ? (
@@ -216,7 +217,8 @@ export function ControlSectorPage() {
             tone={
               data.door.status === "searchable"
                 ? "done"
-                : data.door.status === "needs_overlay"
+                :                 data.door.status === "needs_overlay" ||
+                data.door.status === "lists_found"
                   ? "active"
                   : "waiting"
             }

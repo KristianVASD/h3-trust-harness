@@ -33,7 +33,8 @@ export type ControlDoorRow = {
   nationalSourceCount: number;
   localSourceCount: number;
   searchable: boolean;
-  status: "searchable" | "needs_overlay" | "empty";
+  status: "searchable" | "needs_overlay" | "lists_found" | "empty";
+  sourceCount: number;
   nationalPackId?: string;
   directory?: boolean;
   listNames: string[];
@@ -90,6 +91,10 @@ function isTrusted(source: Source): boolean {
   return source.status === "accepted" || source.status === "adjusted";
 }
 
+function isListed(source: Source): boolean {
+  return source.status !== "rejected";
+}
+
 function isDeskMission(mission: Mission): boolean {
   return isNationalPack(mission) || isLocalDirectoryMission(mission);
 }
@@ -100,11 +105,14 @@ function missionsForCountry(missions: Mission[], country: string): Mission[] {
 
 function packStatus(args: {
   companyCount: number;
+  sourceCount: number;
   localSourceCount: number;
   directory: boolean;
   hasNationalCompanies: boolean;
 }): ControlDoorRow["status"] {
-  if (args.companyCount === 0) return "empty";
+  if (args.companyCount === 0) {
+    return args.sourceCount > 0 ? "lists_found" : "empty";
+  }
   if (args.directory) return "searchable";
   if (args.hasNationalCompanies && args.localSourceCount === 0) {
     return "needs_overlay";
@@ -117,6 +125,7 @@ async function missionStats(
   mission: Mission,
 ): Promise<{
   companyCount: number;
+  sourceCount: number;
   sources: Source[];
   trusted: Source[];
   nationalSourceCount: number;
@@ -127,16 +136,18 @@ async function missionStats(
     store.countByMission("companies", mission.id),
     store.listByMission("sources", mission.id),
   ]);
-  const trusted = sources.filter(isTrusted);
+  const listed = sources.filter(isListed);
+  const trusted = listed.filter(isTrusted);
   return {
     companyCount,
     sources,
     trusted,
-    nationalSourceCount: trusted.filter((s) => s.scope === "national").length,
-    localSourceCount: trusted.filter(
+    sourceCount: listed.length,
+    nationalSourceCount: listed.filter((s) => s.scope === "national").length,
+    localSourceCount: listed.filter(
       (s) => s.scope === "local" || s.scope === "regional",
     ).length,
-    listNames: trusted.map((s) => s.name),
+    listNames: listed.map((s) => s.name),
   };
 }
 
@@ -199,7 +210,10 @@ export async function buildCountryIndex(
       listCount += stats.trusted.length;
       if (isLocalDirectoryMission(mission)) continue;
       for (const tradeId of TRADE_IDS) {
-        if (packMatchesTrade(mission.subsector, tradeId) && stats.companyCount > 0) {
+        if (
+          packMatchesTrade(mission.subsector, tradeId) &&
+          (stats.companyCount > 0 || stats.sourceCount > 0)
+        ) {
           filled.add(tradeId);
         }
       }
@@ -252,6 +266,7 @@ export async function buildCountryDoors(
         tradeId,
         tradeLabel: tradeLabel(tradeId),
         companyCount: 0,
+        sourceCount: 0,
         missionCount: 0,
         trustedCount: 0,
         nationalSourceCount: 0,
@@ -263,6 +278,7 @@ export async function buildCountryDoors(
       continue;
     }
     let companyCount = 0;
+    let sourceCount = 0;
     let trustedCount = 0;
     let nationalSourceCount = 0;
     let localSourceCount = 0;
@@ -272,6 +288,7 @@ export async function buildCountryDoors(
     for (const mission of matching) {
       const stats = await missionStats(store, mission);
       companyCount += stats.companyCount;
+      sourceCount += stats.sourceCount;
       trustedCount += stats.trusted.length;
       nationalSourceCount += stats.nationalSourceCount;
       localSourceCount += stats.localSourceCount;
@@ -283,6 +300,7 @@ export async function buildCountryDoors(
     }
     const status = packStatus({
       companyCount,
+      sourceCount,
       localSourceCount,
       directory: false,
       hasNationalCompanies,
@@ -295,6 +313,7 @@ export async function buildCountryDoors(
       tradeId,
       tradeLabel: tradeLabel(tradeId),
       companyCount,
+      sourceCount,
       missionCount: matching.length,
       trustedCount,
       nationalSourceCount,
@@ -316,6 +335,7 @@ export async function buildCountryDoors(
       sector: directoryMission.sector,
       subsector: directoryMission.subsector,
       companyCount: stats.companyCount,
+      sourceCount: stats.sourceCount,
       missionCount: 1,
       trustedCount: stats.trusted.length,
       nationalSourceCount: stats.nationalSourceCount,
