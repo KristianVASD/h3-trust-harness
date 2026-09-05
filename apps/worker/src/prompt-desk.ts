@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { listLlmCalls } from "./llm-trace.js";
 import { listPromptNames, loadPrompt, savePrompt } from "./load-prompt.js";
 
 const JOBS: Record<string, string> = {
@@ -31,28 +32,31 @@ function htmlPage(): string {
     nav button.active { border-color: #6ee7b7; background: #13261c; }
     nav small { display: block; color: #888; font-size: .75rem; margin-top: .2rem; }
     section { padding: 1rem 1.25rem; display: flex; flex-direction: column; gap: .7rem; }
-    textarea { flex: 1; min-height: 28rem; width: 100%; box-sizing: border-box;
+    textarea, pre { flex: 1; min-height: 22rem; width: 100%; box-sizing: border-box;
       background: #0b0b0b; color: #f3f3f3; border: 1px solid #333; border-radius: 8px;
-      padding: .8rem; font: 13px/1.5 ui-monospace, Consolas, monospace; }
-    .row { display: flex; gap: .6rem; align-items: center; }
+      padding: .8rem; font: 13px/1.5 ui-monospace, Consolas, monospace; overflow: auto; }
+    .row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
     button.save { background: #6ee7b7; color: #042; border: 0; border-radius: 6px;
       padding: .45rem .9rem; font-weight: 600; cursor: pointer; }
     .status { color: #9aa; font-size: .85rem; }
     .ok { color: #6ee7b7; }
     .err { color: #fca5a5; }
+    .call { border: 1px solid #333; border-radius: 8px; padding: .7rem .8rem; margin: 0 0 .6rem; }
+    .call.bad { border-color: #7f1d1d; }
+    #calls { overflow: auto; }
   </style>
 </head>
 <body>
   <header>
     <div>
       <h1>OmegaClaw prompt desk</h1>
-      <div class="sub">Local worker only — edits apply to the next LLM call. Vercel never sees these files.</div>
+      <div class="sub">Local worker only — prompts, and the last model replies (or 429s).</div>
     </div>
     <div class="sub" id="model"></div>
   </header>
   <main>
     <nav id="nav"></nav>
-    <section>
+    <section id="prompt-pane">
       <div class="row">
         <strong id="title">${first}</strong>
         <button class="save" type="button" id="save">Save</button>
@@ -61,25 +65,39 @@ function htmlPage(): string {
       <p class="sub" id="hint"></p>
       <textarea id="body" spellcheck="false"></textarea>
     </section>
+    <section id="calls-pane" hidden>
+      <div class="row">
+        <strong>Last model calls</strong>
+        <span class="status" id="call-status">Polling every 3s</span>
+      </div>
+      <p class="sub">Empty preview = the model returned nothing useful, or only a rate-limit error.</p>
+      <div id="calls"></div>
+    </section>
   </main>
   <script>
     const JOBS = ${JSON.stringify(JOBS)};
     const names = ${JSON.stringify(names)};
     let current = ${JSON.stringify(first)};
+    let mode = "prompt";
     const nav = document.getElementById("nav");
     const body = document.getElementById("body");
     const title = document.getElementById("title");
     const hint = document.getElementById("hint");
     const status = document.getElementById("status");
+    const promptPane = document.getElementById("prompt-pane");
+    const callsPane = document.getElementById("calls-pane");
 
     function mark() {
       for (const btn of nav.querySelectorAll("button")) {
-        btn.classList.toggle("active", btn.dataset.name === current);
+        btn.classList.toggle("active", btn.dataset.name === (mode === "calls" ? "calls" : current));
       }
     }
 
     async function load(name) {
+      mode = "prompt";
       current = name;
+      promptPane.hidden = false;
+      callsPane.hidden = true;
       title.textContent = name;
       hint.textContent = JOBS[name] || "";
       mark();
@@ -106,6 +124,42 @@ function htmlPage(): string {
       status.className = "status ok";
     }
 
+    async function loadCalls() {
+      const res = await fetch("/api/calls");
+      const data = await res.json();
+      const box = document.getElementById("calls");
+      const rows = data.calls || [];
+      document.getElementById("call-status").textContent = rows.length
+        ? rows.length + " calls in this worker process"
+        : "No calls yet — restart worker and let a run hit discover/probe";
+      box.innerHTML = rows.map((c) => {
+        const head = (c.ok ? "OK" : "FAIL") + " · " + c.job + " · " + (c.model || "")
+          + (c.status ? " · HTTP " + c.status : "")
+          + (c.chars ? " · " + c.chars + " chars" : "")
+          + (c.waitSec ? " · wait " + c.waitSec + "s" : "");
+        const text = c.error || c.preview || "(empty)";
+        return '<div class="call' + (c.ok ? "" : " bad") + '"><strong>' + head
+          + '</strong><div class="sub">' + c.at + '</div><pre>'
+          + text.replace(/[<>&]/g, (ch) => ({ "<":"&lt;", ">":"&gt;", "&":"&amp;" }[ch]))
+          + "</pre></div>";
+      }).join("");
+    }
+
+    function showCalls() {
+      mode = "calls";
+      promptPane.hidden = true;
+      callsPane.hidden = false;
+      mark();
+      loadCalls();
+    }
+
+    const callBtn = document.createElement("button");
+    callBtn.type = "button";
+    callBtn.dataset.name = "calls";
+    callBtn.innerHTML = "Last calls<small>Model replies and 429s</small>";
+    callBtn.onclick = showCalls;
+    nav.appendChild(callBtn);
+
     for (const name of names) {
       const btn = document.createElement("button");
       btn.type = "button";
@@ -118,6 +172,7 @@ function htmlPage(): string {
     fetch("/api/meta").then((r) => r.json()).then((m) => {
       document.getElementById("model").textContent = m.model || "";
     });
+    setInterval(() => { if (mode === "calls") loadCalls(); }, 3000);
     load(current);
   </script>
 </body>
@@ -145,6 +200,10 @@ export function startPromptDesk(): void {
         model: process.env.OPENROUTER_MODEL ?? "minimax/minimax-m3:free",
         prompts: listPromptNames(),
       });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/calls") {
+      send(200, { calls: listLlmCalls() });
       return;
     }
     const match = url.pathname.match(/^\/api\/prompts\/([a-z0-9][a-z0-9_-]{0,40})$/i);

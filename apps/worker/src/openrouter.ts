@@ -1,3 +1,5 @@
+import { recordLlmCall } from "./llm-trace.js";
+
 export const DEFAULT_OPENROUTER_MODEL = "minimax/minimax-m3:free";
 
 export class OpenRouterRateLimitError extends Error {
@@ -53,14 +55,17 @@ async function completeJsonInner(args: {
   model: string;
   system: string;
   user: string;
+  job?: string;
+  attempts?: number;
 }): Promise<string> {
   const key = (process.env.OPENROUTER_API_KEY ?? "").trim();
   if (!key) {
     throw new Error("OPENROUTER_API_KEY is not set");
   }
   const model = args.model.trim() || DEFAULT_OPENROUTER_MODEL;
+  const job = args.job || "llm";
   let lastError = "";
-  const attempts = 6;
+  const attempts = Math.max(1, args.attempts ?? 3);
   for (let attempt = 0; attempt < attempts; attempt++) {
     const cool = openRouterCooldownMs();
     if (cool > 0) {
@@ -91,6 +96,15 @@ async function completeJsonInner(args: {
       };
       const content = body.choices?.[0]?.message?.content?.trim() ?? "";
       if (!content) throw new Error("OpenRouter returned empty content");
+      recordLlmCall({
+        at: new Date().toISOString(),
+        job,
+        model,
+        ok: true,
+        status: res.status,
+        chars: content.length,
+        preview: content.slice(0, 4000),
+      });
       return content;
     }
     const text = await res.text();
@@ -98,10 +112,29 @@ async function completeJsonInner(args: {
     if (shouldRetryStatus(res.status) && attempt < attempts - 1) {
       const waitMs = retryAfterMs(res, text, attempt);
       noteOpenRouterCooldown(waitMs);
+      recordLlmCall({
+        at: new Date().toISOString(),
+        job,
+        model,
+        ok: false,
+        status: res.status,
+        waitSec: Math.round(waitMs / 1000),
+        preview: "",
+        error: lastError.slice(0, 500),
+      });
       console.warn(`${lastError} — waiting ${Math.round(waitMs / 1000)}s`);
       await new Promise((r) => setTimeout(r, waitMs));
       continue;
     }
+    recordLlmCall({
+      at: new Date().toISOString(),
+      job,
+      model,
+      ok: false,
+      status: res.status,
+      preview: "",
+      error: lastError.slice(0, 500),
+    });
     if (shouldRetryStatus(res.status)) {
       const waitMs = retryAfterMs(res, text, attempt);
       noteOpenRouterCooldown(waitMs);
@@ -109,6 +142,14 @@ async function completeJsonInner(args: {
     }
     throw new Error(lastError);
   }
+  recordLlmCall({
+    at: new Date().toISOString(),
+    job,
+    model,
+    ok: false,
+    preview: "",
+    error: lastError.slice(0, 500),
+  });
   throw new Error(lastError);
 }
 
@@ -116,6 +157,8 @@ export async function completeJson(args: {
   model: string;
   system: string;
   user: string;
+  job?: string;
+  attempts?: number;
 }): Promise<string> {
   return serialize(() => completeJsonInner(args));
 }

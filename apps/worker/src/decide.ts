@@ -35,8 +35,10 @@ function firstGap(
   sources: Source[],
   plan: SearchPlan | null,
   allowLocal: boolean,
+  attemptedGaps?: Set<string>,
 ): EngineDecision["gap"] | undefined {
   if (!plan) {
+    if (attemptedGaps?.has("national:quality_mark")) return undefined;
     return { layer: "national", category: "quality_mark" };
   }
   const rows = resolveSourceGaps(
@@ -47,6 +49,8 @@ function firstGap(
   );
   const gap = rows.find((r) => {
     if (r.status !== "gap") return false;
+    if (r.category === "registry") return false;
+    if (attemptedGaps?.has(`${r.layer}:${r.category}`)) return false;
     if (!allowLocal && (r.layer === "local" || r.layer === "regional")) {
       if (isCommunityCategory(r.category)) return false;
       if (r.layer === "local") return false;
@@ -65,6 +69,7 @@ function firstGap(
 function firstUnprobed(sources: Source[]): Source | undefined {
   return sources.find(
     (s) =>
+      !isRegistryOrSearchWall(s) &&
       s.probeStatus !== "probed" &&
       (s.status === "candidate" ||
         s.status === "draft" ||
@@ -95,14 +100,25 @@ export function heuristicDecision(args: {
   companies: Company[];
   plan: SearchPlan | null;
   allowLocalCommunity?: boolean;
+  attemptedGaps?: Set<string>;
 }): EngineDecision {
   const { command, targetId, mission, sources, companies, plan } = args;
-  const gap = firstGap(mission, sources, plan, args.allowLocalCommunity === true);
+  const gap = firstGap(
+    mission,
+    sources,
+    plan,
+    args.allowLocalCommunity === true,
+    args.attemptedGaps,
+  );
   const unprobed = firstUnprobed(sources);
   const extractable = firstExtractable(sources, companies);
   const thin = companies.find(needsProfile);
   const blocked = sources.find(
-    (s) => s.accessBarrier && isBlockingBarrier(s.accessBarrier),
+    (s) =>
+      s.accessBarrier &&
+      isBlockingBarrier(s.accessBarrier) &&
+      s.accessBarrier.kind !== "manual-lookup" &&
+      !isRegistryOrSearchWall(s),
   );
   const alignQueue = sources.filter(
     (s) =>
@@ -174,7 +190,7 @@ export function heuristicDecision(args: {
   if (thin) {
     return { action: "harvest", companyId: thin.id, reason: "Thin company profile" };
   }
-  if (alignQueue.length > 0) {
+  if (alignQueue.length > 0 && args.allowLocalCommunity === true) {
     return {
       action: "align",
       sourceId: alignQueue[0]?.id,
@@ -221,6 +237,7 @@ export async function decideNextStep(args: {
   reviews: Review[];
   lessons: Array<{ event_type: string; message: string; data: Record<string, unknown> }>;
   allowLocalCommunity?: boolean;
+  attemptedGaps?: Set<string>;
 }): Promise<{ decision: EngineDecision; via: "openrouter" | "heuristic" }> {
   const fallback = heuristicDecision(args);
   const key = (process.env.OPENROUTER_API_KEY ?? "").trim();

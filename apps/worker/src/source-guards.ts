@@ -4,6 +4,7 @@ export { isJunkCompanyName, isRegistryListUrl };
 
 export function isRegistryOrSearchWall(source: Source, url = ""): boolean {
   const href = (url || source.listUrl || source.url || "").toLowerCase();
+  if (/echteinstallateur|platformplaagdierbeheersing/i.test(href)) return false;
   if (source.category === "registry") return true;
   if (source.extractionGuide?.listPattern === "search-form") return true;
   return isRegistryListUrl(href);

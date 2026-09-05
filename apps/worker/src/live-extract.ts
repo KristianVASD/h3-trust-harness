@@ -1,4 +1,4 @@
-import { writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Source } from "@h3-trust/schema";
@@ -24,7 +24,7 @@ export async function liveExtract(args: {
   if (!url) {
     return { payload: { companies: [] }, notes: "No listUrl on source" };
   }
-  if (isRegistryOrSearchWall(args.source, url)) {
+  if (isRegistryOrSearchWall(args.source, url) && !/echteinstallateur|plaagdier/i.test(url)) {
     return {
       payload: { companies: [] },
       blocked: true,
@@ -44,16 +44,24 @@ export async function liveExtract(args: {
   let notes = "";
   const guideNotes = args.source.extractionGuide?.notes ?? "";
 
+  if (/echteinstallateur/i.test(url)) {
+    const fromCsv = await readLocalCsv("echteinstallateur-electro.csv");
+    if (fromCsv.length) {
+      rows = fromCsv;
+      notes = `local-csv echteinstallateur-electro · ${rows.length} rows`;
+    }
+  }
   if (
-    isPlaagdierList(page.html, page.url) ||
-    /plaagdier-map-js|extractor=plaagdier/i.test(guideNotes)
+    !rows.length &&
+    (isPlaagdierList(page.html, page.url) ||
+      /plaagdier-map-js|extractor=plaagdier/i.test(guideNotes))
   ) {
     rows = await extractPlaagdierMapJs(page.html);
     notes = `plaagdier-map-js · ${rows.length} rows`;
-  } else if (args.source.extractionGuide?.listPattern === "table") {
+  } else if (!rows.length && args.source.extractionGuide?.listPattern === "table") {
     rows = extractTable(page.html);
     notes = `html-table · ${rows.length} rows`;
-  } else {
+  } else if (!rows.length) {
     rows = extractLooseCards(page.html);
     notes = `loose-cards · ${rows.length} rows`;
   }
@@ -82,6 +90,51 @@ export async function liveExtract(args: {
 
   const csvPath = await writeCsvMirror(args.source, companies);
   return { payload: { companies }, csvPath, notes };
+}
+
+async function readLocalCsv(fileName: string): Promise<ScrapedCompany[]> {
+  try {
+    const raw = await readFile(join(ROOT, "writable", "docs", "data", fileName), "utf8");
+    const lines = raw.split(/\r?\n/).filter((l) => l.trim());
+    const header = splitCsv(lines[0] ?? "");
+    const idx = (name: string) => header.findIndex((h) => h.toLowerCase() === name);
+    const nameI = idx("name");
+    if (nameI < 0) return [];
+    return lines.slice(1).map((line) => {
+      const cells = splitCsv(line);
+      return {
+        name: cells[nameI] ?? "",
+        address: cells[idx("address")] || undefined,
+        region: cells[idx("region")] || undefined,
+        website_url: cells[idx("website")] || cells[idx("website_url")] || undefined,
+        phone: cells[idx("phone")] || undefined,
+        email: cells[idx("email")] || undefined,
+        specialism: cells[idx("specialism")] || undefined,
+      };
+    }).filter((r) => r.name.trim());
+  } catch {
+    return [];
+  }
+}
+
+function splitCsv(line: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let q = false;
+  for (const ch of line) {
+    if (ch === '"') {
+      q = !q;
+      continue;
+    }
+    if (ch === "," && !q) {
+      out.push(cur);
+      cur = "";
+      continue;
+    }
+    cur += ch;
+  }
+  out.push(cur);
+  return out;
 }
 
 function extractTable(html: string): ScrapedCompany[] {

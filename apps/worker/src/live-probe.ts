@@ -31,6 +31,8 @@ export async function liveProbe(args: {
       const raw = await completeJson({
         model: args.model || process.env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL,
         system: loadPrompt("probe"),
+        job: "probe",
+        attempts: 2,
         user: JSON.stringify(
           {
             source: {

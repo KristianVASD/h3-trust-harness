@@ -72,6 +72,7 @@ export async function processRun(run: WorkerRun): Promise<void> {
 
   let stepIndex = run.step_index || 0;
   const summaries: Array<Record<string, unknown>> = [];
+  const attemptedGaps = new Set<string>();
 
   while (stepIndex < maxSteps) {
     const live = await getRun(run.id);
@@ -102,6 +103,7 @@ export async function processRun(run: WorkerRun): Promise<void> {
       reviews,
       lessons,
       allowLocalCommunity: run.input.allowLocalCommunity === true,
+      attemptedGaps,
     });
 
     await writeEvent(run, {
@@ -122,6 +124,9 @@ export async function processRun(run: WorkerRun): Promise<void> {
     const result = await executeDecision(run, missionId, decision);
     summaries.push(result.summary);
     stepIndex += 1;
+    if (decision.action === "discover" && decision.gap) {
+      attemptedGaps.add(`${decision.gap.layer}:${decision.gap.category}`);
+    }
 
     if (result.waitingHuman) {
       await markStatus(run.id, "waiting_human", {

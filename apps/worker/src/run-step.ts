@@ -64,6 +64,9 @@ export async function executeDecision(
       });
       await logJobOutput({ runId: run.id, step: "discover", payload: live.payload });
       result = await h3.importOmega(missionId, "discover", live.payload);
+      console.log(
+        `Discover ${decision.gap.category}: verified ${live.verified} → import ${summarizeImport(result)}`,
+      );
     } else if (step === "probe") {
       if (!decision.sourceId) throw new Error("probe needs sourceId");
       const [mission, sources] = await Promise.all([
@@ -150,4 +153,13 @@ export async function executeDecision(
     });
     throw err;
   }
+}
+
+function summarizeImport(result: unknown): string {
+  if (!result || typeof result !== "object") return "ok";
+  const row = result as { imported?: number; companies?: unknown[]; sources?: unknown[] };
+  if (typeof row.imported === "number") return `${row.imported} rows`;
+  if (Array.isArray(row.sources)) return `${row.sources.length} sources`;
+  if (Array.isArray(row.companies)) return `${row.companies.length} companies`;
+  return "ok";
 }

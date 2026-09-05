@@ -1,7 +1,15 @@
 import type { Mission, Source } from "@h3-trust/schema";
 import { fetchPage } from "./fetch-page.js";
+import { discoverPayloadFromKnown, knownListsFor } from "./known-lists.js";
+import { recordLlmCall } from "./llm-trace.js";
 import { loadPrompt } from "./load-prompt.js";
-import { completeJson, DEFAULT_OPENROUTER_MODEL, parseJsonObject } from "./openrouter.js";
+import {
+  completeJson,
+  DEFAULT_OPENROUTER_MODEL,
+  isRateLimitError,
+  openRouterCooldownMs,
+  parseJsonObject,
+} from "./openrouter.js";
 import { isCommunityCategory } from "./scope.js";
 
 export async function liveDiscover(args: {
@@ -29,7 +37,23 @@ export async function liveDiscover(args: {
     };
   }
 
-  if (!(process.env.OPENROUTER_API_KEY ?? "").trim()) {
+  const known = knownListsFor(args.mission, args.gap);
+  if (known.length) {
+    const payload = discoverPayloadFromKnown(args.gap, known);
+    const verified = await verifyListUrls(payload);
+    const preview = JSON.stringify(verified, null, 2);
+    recordLlmCall({
+      at: new Date().toISOString(),
+      job: "discover",
+      model: "catalog (no LLM)",
+      ok: true,
+      chars: preview.length,
+      preview: preview.slice(0, 4000),
+    });
+    return { payload: verified, verified: countFound(verified) };
+  }
+
+  if (!(process.env.OPENROUTER_API_KEY ?? "").trim() || openRouterCooldownMs() > 0) {
     return {
       payload: {
         gaps: [
@@ -39,7 +63,9 @@ export async function liveDiscover(args: {
             found: false,
             sources: [],
             motivation_not_found:
-              "OPENROUTER_API_KEY unset — cannot discover live sources.",
+              openRouterCooldownMs() > 0
+                ? "No catalog URL for this gap; model is on cool-down so discover skipped."
+                : "OPENROUTER_API_KEY unset — cannot discover live sources.",
           },
         ],
       },
@@ -71,14 +97,37 @@ export async function liveDiscover(args: {
     2,
   );
 
-  const raw = await completeJson({
-    model: args.model || process.env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL,
-    system,
-    user,
-  });
-  const parsed = sanitizeDiscoverEnums(parseJsonObject(raw));
-  const verified = await verifyListUrls(parsed);
-  return { payload: verified, verified: countFound(verified) };
+  try {
+    const raw = await completeJson({
+      model: args.model || process.env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL,
+      system,
+      user,
+      job: "discover",
+      attempts: 2,
+    });
+    const parsed = sanitizeDiscoverEnums(parseJsonObject(raw));
+    const verified = await verifyListUrls(parsed);
+    return { payload: verified, verified: countFound(verified) };
+  } catch (err) {
+    if (isRateLimitError(err)) {
+      return {
+        payload: {
+          gaps: [
+            {
+              layer: args.gap.layer,
+              category: args.gap.category,
+              found: false,
+              sources: [],
+              motivation_not_found:
+                "OpenRouter rate-limited — skipped this gap instead of failing the run.",
+            },
+          ],
+        },
+        verified: 0,
+      };
+    }
+    throw err;
+  }
 }
 
 const RENDER_TYPES = new Set(["text", "images", "js-app", "pdf"]);
