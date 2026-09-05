@@ -1,7 +1,7 @@
 import type { Mission, Source } from "@h3-trust/schema";
 import { fetchPage } from "./fetch-page.js";
 import { loadPrompt } from "./load-prompt.js";
-import { completeJson, parseJsonObject } from "./openrouter.js";
+import { completeJson, DEFAULT_OPENROUTER_MODEL, parseJsonObject } from "./openrouter.js";
 import { isCommunityCategory } from "./scope.js";
 
 export async function liveDiscover(args: {
@@ -72,7 +72,7 @@ export async function liveDiscover(args: {
   );
 
   const raw = await completeJson({
-    model: args.model || process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini",
+    model: args.model || process.env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL,
     system,
     user,
   });

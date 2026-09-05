@@ -2,7 +2,7 @@ import type { Mission, Source, SourceFieldKey } from "@h3-trust/schema";
 import { fetchPage } from "./fetch-page.js";
 import { isPlaagdierList } from "./extractors/plaagdier.js";
 import { loadPrompt } from "./load-prompt.js";
-import { completeJson, parseJsonObject } from "./openrouter.js";
+import { completeJson, DEFAULT_OPENROUTER_MODEL, parseJsonObject } from "./openrouter.js";
 
 const FIELD_KEYS: SourceFieldKey[] = [
   "name",
@@ -28,7 +28,7 @@ export async function liveProbe(args: {
   if ((process.env.OPENROUTER_API_KEY ?? "").trim() && page?.ok) {
     try {
       const raw = await completeJson({
-        model: args.model || process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini",
+        model: args.model || process.env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL,
         system: loadPrompt("probe"),
         user: JSON.stringify(
           {

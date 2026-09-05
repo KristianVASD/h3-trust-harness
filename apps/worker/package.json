@@ -10,10 +10,12 @@
   },
   "dependencies": {
     "@h3-trust/schema": "workspace:*",
-    "@supabase/supabase-js": "^2.49.1"
+    "@supabase/supabase-js": "^2.49.1",
+    "ws": "^8.18.3"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "@types/ws": "^8.18.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }

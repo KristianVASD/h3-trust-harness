@@ -116,6 +116,7 @@ export function ControlCountryPage() {
       const { run } = await api.enqueueWorkerRun({
         command: "nation_harvest",
         country: data.country,
+        model: "minimax/minimax-m3:free",
       });
       navigate(`/admin/engine/${run.id}`);
     } catch (err) {
@@ -135,6 +136,7 @@ export function ControlCountryPage() {
         country: data.country,
         location: "Alkmaar",
         tradeId: "paint",
+        model: "minimax/minimax-m3:free",
       });
       navigate(`/admin/engine/${run.id}`);
     } catch (err) {

@@ -46,22 +46,30 @@ export async function enqueueNationHarvest(args: {
     childIds.push(run.id);
   }
 
-  const parent = await insertRun(args.admin, {
-    missionId: null,
-    command: "nation_harvest",
-    targetType: "country",
-    targetId: country,
-    currentAction: `Fan-out ${TRADE_IDS.length} doors · ${country}`,
-    stepTotal: TRADE_IDS.length,
-    status: "succeeded",
-    progressPct: 100,
-    input: {
-      model: args.model,
-      country,
-      childRunIds: childIds,
-      scope: "national_sector",
-    },
-  });
+  let parent: WorkerRun;
+  try {
+    parent = await insertRun(args.admin, {
+      missionId: null,
+      command: "nation_harvest",
+      targetType: "country",
+      targetId: country,
+      currentAction: `Fan-out ${TRADE_IDS.length} doors · ${country}`,
+      stepTotal: TRADE_IDS.length,
+      status: "succeeded",
+      progressPct: 100,
+      input: {
+        model: args.model,
+        country,
+        childRunIds: childIds,
+        scope: "national_sector",
+      },
+    });
+  } catch {
+    // Older DBs reject nation_harvest until the constraint migration runs.
+    const fallback = children[0];
+    if (!fallback) throw new Error("Nation harvest queued no child runs");
+    parent = fallback;
+  }
 
   return { parent, children };
 }

@@ -9,7 +9,7 @@ import {
   type NationLandscape,
 } from "@h3-trust/schema";
 import { h3 } from "./h3-api.js";
-import { completeJson, parseJsonObject } from "./openrouter.js";
+import { completeJson, DEFAULT_OPENROUTER_MODEL, parseJsonObject } from "./openrouter.js";
 import { heartbeat, markStatus, writeEvent } from "./progress.js";
 import type { WorkerRun } from "./types.js";
 
@@ -143,7 +143,7 @@ export async function processNationMap(run: WorkerRun): Promise<void> {
   });
 
   const model =
-    typeof run.input.model === "string" ? run.input.model : "openai/gpt-4o-mini";
+    typeof run.input.model === "string" ? run.input.model : DEFAULT_OPENROUTER_MODEL;
   let landscape = heuristicLandscape(country, existing);
   let via: "openrouter" | "heuristic" = "heuristic";
 

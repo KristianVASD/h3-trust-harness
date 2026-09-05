@@ -8,7 +8,7 @@ import {
   type SearchPlan,
   type Source,
 } from "@h3-trust/schema";
-import { completeJson, parseJsonObject } from "./openrouter.js";
+import { completeJson, DEFAULT_OPENROUTER_MODEL, parseJsonObject } from "./openrouter.js";
 import { loadPrompt } from "./load-prompt.js";
 import { isCommunityCategory } from "./scope.js";
 import type { EngineAction, EngineDecision, WorkerCommand } from "./types.js";
@@ -276,7 +276,7 @@ export async function decideNextStep(args: {
       model:
         args.model ||
         process.env.OPENROUTER_MODEL ||
-        "openai/gpt-4o-mini",
+        DEFAULT_OPENROUTER_MODEL,
       system: loadPrompt("decide"),
       user,
     });

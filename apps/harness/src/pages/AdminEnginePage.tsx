@@ -183,7 +183,7 @@ export function AdminEnginePage() {
           <input
             value={form.model}
             onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
-            placeholder="openai/gpt-4o-mini"
+            placeholder="minimax/minimax-m3:free"
           />
         </label>
         <button className="btn" type="submit" disabled={busy || engineAvailable === false}>

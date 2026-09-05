@@ -6,7 +6,7 @@ import type { WorkerRun } from "./types.js";
 loadRootEnv();
 
 const POLL_MS = Number(process.env.WORKER_POLL_MS ?? 5000) || 5000;
-const CONCURRENCY = Math.max(1, Number(process.env.WORKER_CONCURRENCY ?? 6) || 6);
+const CONCURRENCY = Math.max(1, Number(process.env.WORKER_CONCURRENCY ?? 2) || 2);
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

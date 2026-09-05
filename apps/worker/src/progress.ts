@@ -1,5 +1,11 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { WebSocket } from "ws";
 import type { WorkerEventLevel, WorkerRun, WorkerStatus } from "./types.js";
+
+if (typeof globalThis.WebSocket === "undefined") {
+  (globalThis as unknown as { WebSocket: typeof WebSocket }).WebSocket =
+    WebSocket;
+}
 
 let db: SupabaseClient | null = null;
 
