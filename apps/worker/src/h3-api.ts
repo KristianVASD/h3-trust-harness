@@ -66,6 +66,15 @@ export const h3 = {
       `/api/missions/${missionId}/companies/${companyId}/harvest`,
       { method: "POST", body: "{}" },
     ),
+  importOmega: (
+    missionId: string,
+    job: "discover" | "probe" | "extract" | "harvest" | "classify",
+    payload: unknown,
+  ) =>
+    request<unknown>(`/api/missions/${missionId}/omega/import`, {
+      method: "POST",
+      body: JSON.stringify({ job, payload }),
+    }),
   getLandscape: (country: string) =>
     request<{ landscape: NationLandscape }>(
       `/api/control/countries/${encodeURIComponent(country)}/landscape`,

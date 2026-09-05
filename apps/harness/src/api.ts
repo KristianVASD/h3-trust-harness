@@ -121,7 +121,9 @@ export type WorkerCommand =
   | "coverage"
   | "search"
   | "full_mission"
-  | "nation_map";
+  | "nation_map"
+  | "nation_harvest"
+  | "place_test";
 
 export type WorkerTargetType =
   | "mission"
@@ -316,6 +318,8 @@ export const api = {
     targetType?: WorkerTargetType;
     targetId?: string;
     country?: string;
+    location?: string;
+    tradeId?: string;
     model?: string;
   }) =>
     request<{ run: WorkerRun }>("/admin/worker/runs", {

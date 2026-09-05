@@ -6,7 +6,7 @@ import { processNationMap } from "./run-nation-map.js";
 import { executeDecision } from "./run-step.js";
 import type { WorkerRun } from "./types.js";
 
-const DEFAULT_MAX_STEPS = 8;
+const DEFAULT_MAX_STEPS = 24;
 
 async function loadPlan(version: string | undefined): Promise<SearchPlan | null> {
   if (!version) return null;
@@ -18,6 +18,14 @@ async function loadPlan(version: string | undefined): Promise<SearchPlan | null>
 }
 
 export async function processRun(run: WorkerRun): Promise<void> {
+  if (run.command === "nation_harvest") {
+    await markStatus(run.id, "succeeded", {
+      currentAction: "Fan-out already queued",
+      progressPct: 100,
+      outputSummary: { childRunIds: run.input.childRunIds ?? [] },
+    });
+    return;
+  }
   if (run.command === "nation_map") {
     await processNationMap(run);
     return;
@@ -93,6 +101,7 @@ export async function processRun(run: WorkerRun): Promise<void> {
       plan,
       reviews,
       lessons,
+      allowLocalCommunity: run.input.allowLocalCommunity === true,
     });
 
     await writeEvent(run, {

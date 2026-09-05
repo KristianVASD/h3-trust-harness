@@ -1,5 +1,10 @@
 import { h3 } from "./h3-api.js";
+import { logJobOutput, previewForEvent } from "./job-log.js";
+import { liveDiscover } from "./live-discover.js";
+import { liveExtract } from "./live-extract.js";
+import { liveProbe } from "./live-probe.js";
 import { heartbeat, writeEvent } from "./progress.js";
+import { allowLocalCommunity } from "./scope.js";
 import type { EngineDecision, WorkerRun } from "./types.js";
 
 export async function executeDecision(
@@ -43,16 +48,42 @@ export async function executeDecision(
   });
 
   try {
+    const model = typeof run.input.model === "string" ? run.input.model : undefined;
     let result: unknown;
     if (step === "discover") {
       if (!decision.gap) throw new Error("discover needs a gap");
-      result = await h3.discover(missionId, decision.gap);
+      const [mission, sources] = await Promise.all([
+        h3.getMission(missionId),
+        h3.getSources(missionId),
+      ]);
+      const live = await liveDiscover({
+        mission,
+        gap: decision.gap,
+        sources,
+        model,
+        allowLocalCommunity: allowLocalCommunity(run.input),
+      });
+      await logJobOutput({ runId: run.id, step: "discover", payload: live.payload });
+      result = await h3.importOmega(missionId, "discover", live.payload);
     } else if (step === "probe") {
       if (!decision.sourceId) throw new Error("probe needs sourceId");
-      result = await h3.probe(missionId, decision.sourceId);
+      const [mission, sources] = await Promise.all([
+        h3.getMission(missionId),
+        h3.getSources(missionId),
+      ]);
+      const source = sources.find((s) => s.id === decision.sourceId);
+      if (!source) throw new Error("source not found");
+      const payload = await liveProbe({ mission, source, model });
+      await logJobOutput({ runId: run.id, step: "probe", payload });
+      result = await h3.importOmega(missionId, "probe", payload);
     } else if (step === "extract") {
       if (!decision.sourceId) throw new Error("extract needs sourceId");
-      result = await h3.extract(missionId, decision.sourceId);
+      const sources = await h3.getSources(missionId);
+      const source = sources.find((s) => s.id === decision.sourceId);
+      if (!source) throw new Error("source not found");
+      const live = await liveExtract({ source });
+      await logJobOutput({ runId: run.id, step: "extract", payload: live });
+      result = await h3.importOmega(missionId, "extract", live.payload);
     } else if (step === "harvest") {
       if (!decision.companyId) throw new Error("harvest needs companyId");
       result = await h3.harvest(missionId, decision.companyId);
@@ -67,7 +98,7 @@ export async function executeDecision(
       step_name: step,
       level: "success",
       message: `${step} completed`,
-      data: { action: step, resultPreview: summarize(result) },
+      data: { action: step, resultPreview: previewForEvent(result) },
     });
     if (decision.lesson) {
       await writeEvent(run, {
@@ -95,20 +126,4 @@ export async function executeDecision(
     });
     throw err;
   }
-}
-
-function summarize(value: unknown): unknown {
-  if (value && typeof value === "object") {
-    const rec = value as Record<string, unknown>;
-    const keys = Object.keys(rec).slice(0, 8);
-    const out: Record<string, unknown> = {};
-    for (const k of keys) {
-      const v = rec[k];
-      if (Array.isArray(v)) out[k] = { length: v.length };
-      else if (v && typeof v === "object") out[k] = "{…}";
-      else out[k] = v;
-    }
-    return out;
-  }
-  return value;
 }

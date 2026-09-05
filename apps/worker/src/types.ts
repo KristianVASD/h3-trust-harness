@@ -6,7 +6,9 @@ export type WorkerCommand =
   | "coverage"
   | "search"
   | "full_mission"
-  | "nation_map";
+  | "nation_map"
+  | "nation_harvest"
+  | "place_test";
 
 export type WorkerStatus =
   | "queued"

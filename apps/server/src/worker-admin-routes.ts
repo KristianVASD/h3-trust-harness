@@ -1,7 +1,9 @@
 import type { Hono } from "hono";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { TradeId } from "@h3-trust/schema";
 import type { Store } from "@h3-trust/store";
 import { isAdmin, type AppVariables } from "./auth.js";
+import { enqueueNationHarvest, enqueuePlaceTest } from "./nation-harvest.js";
 import {
   isWorkerCommand,
   isWorkerStatus,
@@ -164,6 +166,61 @@ export function registerWorkerAdminRoutes(
     }
 
     const isNationMap = command === "nation_map";
+    const isNationHarvest = command === "nation_harvest";
+    const isPlaceTest = command === "place_test";
+    if (isNationHarvest || isPlaceTest) {
+      const country =
+        typeof rec.country === "string" ? rec.country.trim() : "Netherlands";
+      const model =
+        typeof rec.model === "string" ? rec.model.trim() || undefined : undefined;
+      try {
+        if (isNationHarvest) {
+          const { parent, children } = await enqueueNationHarvest({
+            admin,
+            store,
+            country,
+            model,
+          });
+          await insertEvent(admin, {
+            run_id: parent.id,
+            mission_id: null,
+            event_type: "queued",
+            message: `Queued ${children.length} sector doors for ${country}`,
+            data: {
+              childRunIds: children.map((r) => r.id),
+              model: model ?? null,
+              country,
+            },
+          });
+          return c.json({ run: parent, children }, 201);
+        }
+        const location =
+          typeof rec.location === "string" ? rec.location.trim() : "Alkmaar";
+        const tradeRaw =
+          typeof rec.tradeId === "string" ? rec.tradeId.trim() : "paint";
+        const { run, missionId: placeMissionId, created } = await enqueuePlaceTest({
+          admin,
+          store,
+          country,
+          location,
+          tradeId: tradeRaw as TradeId,
+          model,
+        });
+        await insertEvent(admin, {
+          run_id: run.id,
+          mission_id: placeMissionId,
+          event_type: "queued",
+          message: `Queued place test ${location} · ${tradeRaw}${created ? " (new mission)" : ""}`,
+          data: { location, tradeId: tradeRaw, model: model ?? null, country },
+        });
+        return c.json({ run }, 201);
+      } catch (err) {
+        return c.json(
+          { error: err instanceof Error ? err.message : "Failed to enqueue" },
+          400,
+        );
+      }
+    }
     if (!isNationMap && !UUID_RE.test(missionId)) {
       return c.json({ error: "missionId (uuid) required" }, 400);
     }

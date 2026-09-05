@@ -108,6 +108,42 @@ export function ControlCountryPage() {
     }
   }
 
+  async function onNationHarvest() {
+    if (!data) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { run } = await api.enqueueWorkerRun({
+        command: "nation_harvest",
+        country: data.country,
+      });
+      navigate(`/admin/engine/${run.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Harvest failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onAlkmaarTest() {
+    if (!data) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { run } = await api.enqueueWorkerRun({
+        command: "place_test",
+        country: data.country,
+        location: "Alkmaar",
+        tradeId: "paint",
+      });
+      navigate(`/admin/engine/${run.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Place test failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function importLandscape(text: string) {
     if (!data || !text.trim()) return;
     setBusy(true);
@@ -182,14 +218,32 @@ export function ControlCountryPage() {
             <EngineRunChip run={data.latestRun} events={data.events} />
             <div className="row" style={{ marginBottom: "0.75rem", gap: "0.5rem" }}>
               {isAdmin ? (
-                <button
-                  type="button"
-                  className="btn small"
-                  disabled={busy}
-                  onClick={() => void onMap()}
-                >
-                  {busy ? "Queuing…" : "Map trust landscape"}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="btn small"
+                    disabled={busy}
+                    onClick={() => void onMap()}
+                  >
+                    {busy ? "Queuing…" : "Map trust landscape"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn small"
+                    disabled={busy}
+                    onClick={() => void onNationHarvest()}
+                  >
+                    {busy ? "Queuing…" : "Netherlands · 12 doors"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn small secondary"
+                    disabled={busy}
+                    onClick={() => void onAlkmaarTest()}
+                  >
+                    {busy ? "Queuing…" : "Alkmaar place test"}
+                  </button>
+                </>
               ) : null}
               <StatusChip
                 label={`landscape ${data.landscape.status}`}

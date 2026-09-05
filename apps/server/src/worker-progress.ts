@@ -7,6 +7,8 @@ export const WORKER_COMMANDS = [
   "search",
   "full_mission",
   "nation_map",
+  "nation_harvest",
+  "place_test",
 ] as const;
 export type WorkerCommand = (typeof WORKER_COMMANDS)[number];
 

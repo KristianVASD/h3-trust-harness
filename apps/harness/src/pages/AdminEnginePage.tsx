@@ -10,6 +10,8 @@ import {
 
 const COMMANDS: WorkerCommand[] = [
   "full_mission",
+  "nation_harvest",
+  "place_test",
   "nation_map",
   "discover",
   "probe",
@@ -91,7 +93,11 @@ export function AdminEnginePage() {
 
   async function onStart(e: FormEvent) {
     e.preventDefault();
-    if (!form.missionId) {
+    const fanOut =
+      form.command === "nation_harvest" ||
+      form.command === "place_test" ||
+      form.command === "nation_map";
+    if (!fanOut && !form.missionId) {
       setError("Pick a mission.");
       return;
     }
@@ -99,10 +105,13 @@ export function AdminEnginePage() {
     setError(null);
     try {
       const { run } = await api.enqueueWorkerRun({
-        missionId: form.missionId,
+        missionId: fanOut ? undefined : form.missionId,
         command: form.command,
         targetId: form.targetId.trim() || undefined,
         model: form.model.trim() || undefined,
+        country: "Netherlands",
+        location: form.command === "place_test" ? "Alkmaar" : undefined,
+        tradeId: form.command === "place_test" ? "paint" : undefined,
       });
       navigate(`/admin/engine/${run.id}`);
     } catch (err) {
@@ -117,7 +126,9 @@ export function AdminEnginePage() {
       <h1>Engine</h1>
       <p className="hint">
         Steer OpenRouter through H3. The Vercel app queues a run; a local worker
-        claims it, decides one step, and writes progress here.
+        claims it, discovers/probes/scrapes locally, and writes progress here.
+        <code>nation_harvest</code> fans out 12 sector doors (no local community).
+        <code>place_test</code> queues Alkmaar + surroundings.
       </p>
 
       {engineAvailable === false ? (

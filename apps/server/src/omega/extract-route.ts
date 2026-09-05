@@ -35,8 +35,8 @@ export async function runExtractForSource(
     throw new ExtractRouteError("Source not found on this mission", 404);
   }
 
-  if (source.status !== "accepted" && source.status !== "adjusted") {
-    throw new ExtractRouteError("source not accepted", 400);
+  if (source.status === "rejected") {
+    throw new ExtractRouteError("source is rejected", 400);
   }
   if (!source.extractionGuide) {
     throw new ExtractRouteError("source not probed (no extraction guide)", 400);

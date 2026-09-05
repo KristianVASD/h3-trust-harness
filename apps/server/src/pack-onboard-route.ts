@@ -104,6 +104,65 @@ export async function ensureNationalPack(
   return { mission, created: true };
 }
 
+/** Town / cluster mission for place tests (not a national pack). */
+export async function ensurePlaceMission(
+  store: Store,
+  input: {
+    country: string;
+    location: string;
+    sector: string;
+    subsector: string;
+    goal?: string;
+  },
+): Promise<{ mission: Mission; created: boolean }> {
+  const country = input.country.trim();
+  const location = input.location.trim();
+  const sector = input.sector.trim();
+  const subsector = primaryTradeId(input.subsector) ?? input.subsector.trim();
+  if (!country || !location || !sector || !subsector) {
+    throw new PackOnboardError(
+      "country, location, sector, and subsector are required",
+      400,
+    );
+  }
+  const missions = await store.listMissions();
+  const existing = missions.find(
+    (m) =>
+      m.country.trim().toLowerCase() === country.toLowerCase() &&
+      m.location.trim().toLowerCase() === location.toLowerCase() &&
+      (primaryTradeId(m.subsector) ?? m.subsector) === subsector,
+  );
+  if (existing) return { mission: existing, created: false };
+
+  const now = new Date().toISOString();
+  const mission = await store.upsertMission({
+    id: randomUUID(),
+    location,
+    country,
+    sector,
+    subsector,
+    goal:
+      input.goal?.trim() ||
+      `Place test · ${location} · ${subsector}. Regional/local channels allowed.`,
+    notes: "Place test mission — regional and local community channels are in scope.",
+    search_plan_version: DEFAULT_SEARCH_PLAN_VERSION,
+    discoveryBrief: {
+      approach: "Test regional/local overlay around a town cluster.",
+      candidateListTypes: [],
+      successCriteria: "Local lists found, probed, and extractable or barred.",
+      producer: "Human",
+      updatedAt: now,
+    },
+    phases: defaultPhases,
+    producer: "Human",
+    origin: "human",
+    createdAt: now,
+    updatedAt: now,
+    v: 1,
+  });
+  return { mission, created: true };
+}
+
 function categoryToType(category: SourceCategory): SourceType {
   if (category === "registry") return "registry";
   if (

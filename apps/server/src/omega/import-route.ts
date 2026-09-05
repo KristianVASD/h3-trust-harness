@@ -836,12 +836,10 @@ async function importExtract(
   payload: unknown,
 ): Promise<ImportRouteResult> {
   const missionSources = await store.listByMission("sources", missionId);
-  const accepted = missionSources.filter(
-    (s) => s.status === "accepted" || s.status === "adjusted",
-  );
+  const accepted = missionSources.filter((s) => s.status !== "rejected");
   if (!accepted.length) {
     throw new ImportRouteError(
-      "Extract import requires ≥1 CURAD-accepted/adjusted source on this mission",
+      "Extract import requires ≥1 source on this mission (rejected sources do not count). CARA still locks ranking weight.",
     );
   }
 

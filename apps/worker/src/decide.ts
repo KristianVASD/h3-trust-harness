@@ -9,7 +9,8 @@ import {
   type Source,
 } from "@h3-trust/schema";
 import { completeJson, parseJsonObject } from "./openrouter.js";
-import { WORKER_SYSTEM_PROMPT } from "./prompt.js";
+import { loadPrompt } from "./load-prompt.js";
+import { isCommunityCategory } from "./scope.js";
 import type { EngineAction, EngineDecision, WorkerCommand } from "./types.js";
 
 const ACTIONS = new Set<EngineAction>([
@@ -23,10 +24,6 @@ const ACTIONS = new Set<EngineAction>([
   "done",
 ]);
 
-function isTrusted(source: Source): boolean {
-  return source.status === "accepted" || source.status === "adjusted";
-}
-
 function needsProfile(company: Company): boolean {
   return company.capabilities.length === 0 && !(company.profileSnippet ?? "").trim();
 }
@@ -35,6 +32,7 @@ function firstGap(
   mission: Mission,
   sources: Source[],
   plan: SearchPlan | null,
+  allowLocal: boolean,
 ): EngineDecision["gap"] | undefined {
   if (!plan) {
     return { layer: "national", category: "quality_mark" };
@@ -45,7 +43,15 @@ function firstGap(
     mission.sector,
     plan.entries,
   );
-  const gap = rows.find((r) => r.status === "gap");
+  const gap = rows.find((r) => {
+    if (r.status !== "gap") return false;
+    if (!allowLocal && (r.layer === "local" || r.layer === "regional")) {
+      if (isCommunityCategory(r.category)) return false;
+      if (r.layer === "local") return false;
+    }
+    if (!allowLocal && isCommunityCategory(r.category)) return false;
+    return true;
+  });
   if (!gap) return undefined;
   return {
     layer: gap.layer,
@@ -68,10 +74,13 @@ function firstUnprobed(sources: Source[]): Source | undefined {
 
 function firstExtractable(sources: Source[], companies: Company[]): Source | undefined {
   const used = new Set(companies.flatMap((c) => c.source_ids));
+  const eligible = (s: Source) =>
+    s.status !== "rejected" &&
+    Boolean(s.extractionGuide) &&
+    !(s.accessBarrier && isBlockingBarrier(s.accessBarrier));
   return (
-    sources.find((s) => isTrusted(s) && s.extractionGuide && !used.has(s.id)) ??
-    sources.find((s) => isTrusted(s) && s.extractionGuide) ??
-    sources.find((s) => s.extractionGuide)
+    sources.find((s) => eligible(s) && !used.has(s.id)) ??
+    sources.find((s) => eligible(s))
   );
 }
 
@@ -82,9 +91,10 @@ export function heuristicDecision(args: {
   sources: Source[];
   companies: Company[];
   plan: SearchPlan | null;
+  allowLocalCommunity?: boolean;
 }): EngineDecision {
   const { command, targetId, mission, sources, companies, plan } = args;
-  const gap = firstGap(mission, sources, plan);
+  const gap = firstGap(mission, sources, plan, args.allowLocalCommunity === true);
   const unprobed = firstUnprobed(sources);
   const extractable = firstExtractable(sources, companies);
   const thin = companies.find(needsProfile);
@@ -155,7 +165,7 @@ export function heuristicDecision(args: {
     return {
       action: "extract",
       sourceId: extractable.id,
-      reason: "Trusted source ready to extract",
+      reason: "Probed source ready to extract",
     };
   }
   if (thin) {
@@ -207,6 +217,7 @@ export async function decideNextStep(args: {
   plan: SearchPlan | null;
   reviews: Review[];
   lessons: Array<{ event_type: string; message: string; data: Record<string, unknown> }>;
+  allowLocalCommunity?: boolean;
 }): Promise<{ decision: EngineDecision; via: "openrouter" | "heuristic" }> {
   const fallback = heuristicDecision(args);
   const key = (process.env.OPENROUTER_API_KEY ?? "").trim();
@@ -253,6 +264,8 @@ export async function decideNextStep(args: {
       })),
       recentLessons: args.lessons.slice(0, 12),
       heuristicHint: fallback,
+      allowLocalCommunity: args.allowLocalCommunity === true,
+      scope: args.allowLocalCommunity ? "place_test" : "national_sector",
     },
     null,
     2,
@@ -264,7 +277,7 @@ export async function decideNextStep(args: {
         args.model ||
         process.env.OPENROUTER_MODEL ||
         "openai/gpt-4o-mini",
-      system: WORKER_SYSTEM_PROMPT,
+      system: loadPrompt("decide"),
       user,
     });
     const parsed = fromModel(parseJsonObject(raw));
