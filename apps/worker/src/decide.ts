@@ -11,6 +11,7 @@ import {
 import { completeJson, DEFAULT_OPENROUTER_MODEL, parseJsonObject } from "./openrouter.js";
 import { loadPrompt } from "./load-prompt.js";
 import { isCommunityCategory } from "./scope.js";
+import { isJunkCompanyName, isRegistryOrSearchWall } from "./source-guards.js";
 import type { EngineAction, EngineDecision, WorkerCommand } from "./types.js";
 
 const ACTIONS = new Set<EngineAction>([
@@ -25,6 +26,7 @@ const ACTIONS = new Set<EngineAction>([
 ]);
 
 function needsProfile(company: Company): boolean {
+  if (isJunkCompanyName(company.name)) return false;
   return company.capabilities.length === 0 && !(company.profileSnippet ?? "").trim();
 }
 
@@ -77,6 +79,7 @@ function firstExtractable(sources: Source[], companies: Company[]): Source | und
   const eligible = (s: Source) =>
     s.status !== "rejected" &&
     Boolean(s.extractionGuide) &&
+    !isRegistryOrSearchWall(s) &&
     !(s.accessBarrier && isBlockingBarrier(s.accessBarrier));
   return (
     sources.find((s) => eligible(s) && !used.has(s.id)) ??

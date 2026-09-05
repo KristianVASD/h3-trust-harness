@@ -1,4 +1,5 @@
 import { loadRootEnv } from "./load-env.js";
+import { startPromptDesk } from "./prompt-desk.js";
 import { claimNextQueuedRun, markStatus, writeEvent } from "./progress.js";
 import { processRun } from "./run-full-mission.js";
 import type { WorkerRun } from "./types.js";
@@ -45,6 +46,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  startPromptDesk();
   console.log("H3 worker listening for queued runs");
   console.log(`H3_API_BASE=${process.env.H3_API_BASE ?? "http://localhost:8787"}`);
   console.log(`WORKER_CONCURRENCY=${CONCURRENCY}`);

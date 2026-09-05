@@ -26,6 +26,8 @@ Rules:
 - On national_sector runs: skip local/regional community categories (OV, sport, BNI, gemeente, jaarmarkt). Do include traineeship / SBB / keurmerk / branche.
 - Mixed lists stay mixed — never force a label onto one door.
 - Prefer filling open gaps, then unprobed sources, then extract on guided lists, then harvest thin companies.
+- Never extract KvK / handelsregister / search-form sources. Those are align (human CSV) or skip.
+- Never harvest page-chrome names (Over KVK, Blijf op de hoogte, Kamer van Koophandel).
 - Use action "align" only for blocking barriers that a human must unlock.
 - Use action "done" when no useful automated step remains.
 - Never invent source or company ids that are not in the context.

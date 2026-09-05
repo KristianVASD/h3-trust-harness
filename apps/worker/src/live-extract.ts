@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Source } from "@h3-trust/schema";
 import { fetchPage, stripTags } from "./fetch-page.js";
+import { isJunkCompanyName, isRegistryOrSearchWall } from "./source-guards.js";
 import {
   extractPlaagdierMapJs,
   isPlaagdierList,
@@ -17,10 +18,19 @@ export async function liveExtract(args: {
   payload: { companies: Array<Record<string, unknown>> };
   csvPath?: string;
   notes: string;
+  blocked?: boolean;
 }> {
   const url = args.source.listUrl || args.source.url || "";
   if (!url) {
     return { payload: { companies: [] }, notes: "No listUrl on source" };
+  }
+  if (isRegistryOrSearchWall(args.source, url)) {
+    return {
+      payload: { companies: [] },
+      blocked: true,
+      notes:
+        "Registry / search-form (e.g. KvK) is not a member list. Do not scrape page chrome as companies. Human CSV or single lookup only.",
+    };
   }
   const page = await fetchPage(url);
   if (!page.ok) {
@@ -49,7 +59,7 @@ export async function liveExtract(args: {
   }
 
   const companies = rows
-    .filter((r) => r.name.trim())
+    .filter((r) => r.name.trim() && !isJunkCompanyName(r.name))
     .map((r) => ({
       name: r.name.trim(),
       address: r.address,
@@ -99,7 +109,7 @@ function extractLooseCards(html: string): ScrapedCompany[] {
     ...html.matchAll(/<(?:h2|h3|strong)[^>]*>([^<]{3,80})<\/(?:h2|h3|strong)>/gi),
   ]
     .map((m) => stripTags(m[1] ?? "").trim())
-    .filter((n) => n && !/leden|contact|zoek|specialisatie|login/i.test(n));
+    .filter((n) => n && !isJunkCompanyName(n) && !/leden|contact|zoek|specialisatie|login/i.test(n));
   return [...new Set(names)].slice(0, 200).map((name) => ({ name }));
 }
 

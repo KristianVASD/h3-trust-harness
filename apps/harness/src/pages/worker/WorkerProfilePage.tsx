@@ -84,6 +84,52 @@ export function WorkerProfilePage() {
     }
   }
 
+  async function dropCompany(companyId: string): Promise<void> {
+    await api.deleteEntity("companies", companyId);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.delete(companyId);
+      return next;
+    });
+  }
+
+  async function onDrop(companyId: string) {
+    setBusyId(companyId);
+    setError(null);
+    setDoneMsg(null);
+    try {
+      await dropCompany(companyId);
+      await reload();
+      setDoneMsg("Dropped — not a company.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Drop failed");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function onDropSelected() {
+    const ids = [...selected];
+    if (!ids.length) return;
+    setBatchBusy(true);
+    setError(null);
+    setDoneMsg(null);
+    try {
+      for (const id of ids) {
+        setBusyId(id);
+        await dropCompany(id);
+      }
+      await reload();
+      setDoneMsg(`Dropped ${ids.length} row${ids.length === 1 ? "" : "s"}.`);
+      setSelected(new Set());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Drop failed");
+    } finally {
+      setBusyId(null);
+      setBatchBusy(false);
+    }
+  }
+
   async function onHarvestSelected() {
     const ids = [...selected];
     if (!ids.length) return;
@@ -116,8 +162,9 @@ export function WorkerProfilePage() {
         <p className="hint">
           Can chips come from the source list (<code>services</code>). Website
           harvest is a <strong>STUB</strong> until live OmegaClaw — it does not
-          invent HOA, consumer, or colour advice. Optional depth at referral
-          time.
+          invent HOA, consumer, or colour advice. KvK search chrome (Over KVK,
+          Blijf op de hoogte) is not a company — drop it. Optional depth at
+          referral time.
         </p>
         <p className="muted">
           {companies.length} companies · {thin} still thin
@@ -158,6 +205,14 @@ export function WorkerProfilePage() {
               {batchBusy
                 ? "Harvesting…"
                 : `Stub-harvest selected (${selected.size})`}
+            </button>
+            <button
+              type="button"
+              className="btn secondary small"
+              onClick={() => void onDropSelected()}
+              disabled={selected.size === 0 || batchBusy}
+            >
+              Drop selected (not a company)
             </button>
           </div>
 
@@ -266,7 +321,7 @@ export function WorkerProfilePage() {
                   {note ? (
                     <p className="worker-harvest-note muted">{note}</p>
                   ) : null}
-                  <div style={{ marginTop: "0.75rem" }}>
+                  <div style={{ marginTop: "0.75rem", display: "flex", gap: "0.5rem" }}>
                     <button
                       type="button"
                       className="btn secondary small"
@@ -276,6 +331,14 @@ export function WorkerProfilePage() {
                       {busyId === c.id
                         ? "Stub harvest…"
                         : "Stub harvest (no site read)"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn secondary small"
+                      disabled={busy}
+                      onClick={() => void onDrop(c.id)}
+                    >
+                      Not a company
                     </button>
                   </div>
                 </article>

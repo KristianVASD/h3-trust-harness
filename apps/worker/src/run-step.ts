@@ -83,6 +83,31 @@ export async function executeDecision(
       if (!source) throw new Error("source not found");
       const live = await liveExtract({ source });
       await logJobOutput({ runId: run.id, step: "extract", payload: live });
+      if (live.blocked) {
+        await writeEvent(run, {
+          event_type: "waiting_human",
+          step_name: "extract",
+          level: "warn",
+          message: live.notes,
+          data: { sourceId: source.id, blocked: true },
+        });
+        return {
+          summary: { action: "extract", blocked: true, notes: live.notes },
+          waitingHuman: true,
+        };
+      }
+      if (!live.payload.companies.length) {
+        await writeEvent(run, {
+          event_type: "step_succeeded",
+          step_name: "extract",
+          level: "warn",
+          message: `Extract produced no companies — ${live.notes}`,
+          data: { sourceId: source.id, notes: live.notes },
+        });
+        return {
+          summary: { action: "extract", imported: 0, notes: live.notes },
+        };
+      }
       result = await h3.importOmega(missionId, "extract", live.payload);
     } else if (step === "harvest") {
       if (!decision.companyId) throw new Error("harvest needs companyId");

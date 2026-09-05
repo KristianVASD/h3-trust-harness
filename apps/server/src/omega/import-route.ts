@@ -6,6 +6,8 @@ import { v4 as uuid } from "uuid";
 import {
   computeRichness,
   isBlockingBarrier,
+  isJunkCompanyName,
+  isRegistryListUrl,
   type AccessBarrier,
   type BarrierKind,
   type Company,
@@ -364,13 +366,18 @@ function pushDiscoverItem(
 
   // Prefer list/search surface as primary url; keep brand homepage in extras.
   const primaryUrl = listUrl || orgUrl;
+  const registry = isRegistryListUrl(primaryUrl ?? "") || category === "registry";
   const inferredDepth =
-    explicitDepth ??
-    (listUrl || filterHints
-      ? "list_ready"
-      : primaryUrl
-        ? "shallow"
-        : undefined);
+    explicitDepth === "list_ready" && registry
+      ? "shallow"
+      : (explicitDepth ??
+        (registry
+          ? "shallow"
+          : listUrl || filterHints
+            ? "list_ready"
+            : primaryUrl
+              ? "shallow"
+              : undefined));
 
   candidates.push({
     found: true,
@@ -412,7 +419,16 @@ function pushDiscoverItem(
   if (orgUrl && listUrl && orgUrl !== listUrl) extras.orgUrl = orgUrl;
   if (filterHints) extras.filterHints = filterHints;
   if (inferredDepth) extras.depth = inferredDepth;
-  const barrier = coerceAccessBarrier(s.accessBarrier);
+  const barrier =
+    coerceAccessBarrier(s.accessBarrier) ??
+    (registry
+      ? coerceAccessBarrier({
+          kind: "manual-lookup",
+          severity: "blocks-extract",
+          what_omega_needs: "A public member / keurmerk / SBB list for this trade, not a KvK search page.",
+          what_human_does: "Paste a CSV export or point Omega at a real ledenlijst. Do not scrape KvK chrome.",
+        })
+      : undefined);
   if (barrier) extras.accessBarrier = barrier;
 
   extrasByName.set(name.trim().toLowerCase(), extras);
@@ -928,6 +944,10 @@ function normalizeExtractPayload(
     const name = str(c.name);
     if (!name) {
       warnings.push("Skipped company with no name");
+      continue;
+    }
+    if (isJunkCompanyName(name)) {
+      warnings.push(`Skipped page chrome, not a company: ${name}`);
       continue;
     }
 

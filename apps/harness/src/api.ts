@@ -759,6 +759,10 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(entity),
     }),
+  deleteEntity: (
+    collection: Exclude<CollectionName, "missions" | "patterns">,
+    id: string,
+  ) => request<{ ok: boolean }>(`/${collection}/${id}`, { method: "DELETE" }),
   exportMission: (missionId: string) =>
     request<ExportBundle>(`/missions/${missionId}/export`),
   listSearchPlans: () =>

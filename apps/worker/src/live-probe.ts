@@ -3,6 +3,7 @@ import { fetchPage } from "./fetch-page.js";
 import { isPlaagdierList } from "./extractors/plaagdier.js";
 import { loadPrompt } from "./load-prompt.js";
 import { completeJson, DEFAULT_OPENROUTER_MODEL, parseJsonObject } from "./openrouter.js";
+import { isJunkCompanyName } from "./source-guards.js";
 
 const FIELD_KEYS: SourceFieldKey[] = [
   "name",
@@ -174,7 +175,12 @@ function analyzeStructure(html: string, url: string, source: Source): Structure 
 function guessSampleNames(html: string): string[] {
   const bold = [...html.matchAll(/<(?:h[1-3]|strong|b)[^>]*>([^<]{3,80})<\/(?:h[1-3]|strong|b)>/gi)]
     .map((m) => (m[1] ?? "").replace(/\s+/g, " ").trim())
-    .filter((n) => /[A-Za-z]/.test(n) && !/leden|contact|zoek|specialisatie/i.test(n));
+    .filter(
+      (n) =>
+        /[A-Za-z]/.test(n) &&
+        !isJunkCompanyName(n) &&
+        !/leden|contact|zoek|specialisatie/i.test(n),
+    );
   return [...new Set(bold)].slice(0, 3);
 }
 
@@ -236,6 +242,7 @@ function mergeProbe(
     ...first,
     sourceId: source.id,
     name: source.name,
+    accessBarrier: h.barrier ?? first.accessBarrier ?? null,
   };
   if (h.extractor && merged.extractionGuide && typeof merged.extractionGuide === "object") {
     const guide = merged.extractionGuide as Record<string, unknown>;
