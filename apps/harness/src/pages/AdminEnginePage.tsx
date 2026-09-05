@@ -82,7 +82,7 @@ export function AdminEnginePage() {
 
   useEffect(() => {
     void load();
-    const t = window.setInterval(() => void load(), 3000);
+    const t = window.setInterval(() => void load(), 8000);
     return () => window.clearInterval(t);
   }, [load]);
 
@@ -223,7 +223,10 @@ export function AdminEnginePage() {
                     {run.current_action ? ` · ${run.current_action}` : ""}
                   </div>
                   <div className="muted">
-                    heartbeat {formatWhen(run.heartbeat_at)} · created{" "}
+                    {run.status === "queued" && !run.heartbeat_at
+                      ? "waiting for local worker"
+                      : `last beat ${formatWhen(run.heartbeat_at)}`}
+                    {" · created "}
                     {formatWhen(run.created_at)}
                   </div>
                 </div>

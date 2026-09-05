@@ -38,7 +38,7 @@ export function AdminEngineRunPage() {
 
   useEffect(() => {
     void load();
-    const t = window.setInterval(() => void load(), 3000);
+    const t = window.setInterval(() => void load(), 8000);
     return () => window.clearInterval(t);
   }, [load]);
 

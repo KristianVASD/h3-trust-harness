@@ -62,6 +62,8 @@ export async function getRun(id: string): Promise<WorkerRun | null> {
   return (data as WorkerRun | null) ?? null;
 }
 
+const lastBeat = new Map<string, { at: number; action: string }>();
+
 export async function heartbeat(
   runId: string,
   currentAction: string,
@@ -72,6 +74,12 @@ export async function heartbeat(
     cursor: Record<string, unknown>;
   }> = {},
 ): Promise<void> {
+  const prev = lastBeat.get(runId);
+  const nowMs = Date.now();
+  if (prev && prev.action === currentAction && nowMs - prev.at < 15_000) {
+    return;
+  }
+  lastBeat.set(runId, { at: nowMs, action: currentAction });
   const now = new Date().toISOString();
   const patch: Record<string, unknown> = {
     heartbeat_at: now,
@@ -86,7 +94,23 @@ export async function heartbeat(
     .from("worker_runs")
     .update(patch)
     .eq("id", runId);
-  if (error) throw new Error(`heartbeat: ${error.message}`);
+  if (error) console.warn(`heartbeat: ${error.message}`);
+}
+
+export async function requeueRun(runId: string, reason: string): Promise<void> {
+  lastBeat.delete(runId);
+  const now = new Date().toISOString();
+  const { error } = await getDb()
+    .from("worker_runs")
+    .update({
+      status: "queued",
+      current_action: "Waiting for model quota",
+      error: reason.slice(0, 500),
+      finished_at: null,
+      updated_at: now,
+    })
+    .eq("id", runId);
+  if (error) throw new Error(`requeue: ${error.message}`);
 }
 
 export async function markStatus(
@@ -140,7 +164,7 @@ export async function writeEvent(
     message: args.message,
     data: args.data ?? {},
   });
-  if (error) throw new Error(`event: ${error.message}`);
+  if (error) console.warn(`event: ${error.message}`);
 }
 
 export async function loadRecentLessons(

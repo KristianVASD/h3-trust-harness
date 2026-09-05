@@ -224,7 +224,8 @@ export async function decideNextStep(args: {
 }): Promise<{ decision: EngineDecision; via: "openrouter" | "heuristic" }> {
   const fallback = heuristicDecision(args);
   const key = (process.env.OPENROUTER_API_KEY ?? "").trim();
-  if (!key) {
+  const spendDecide = (process.env.OPENROUTER_DECIDE ?? "").trim() === "1";
+  if (!key || !spendDecide) {
     return { decision: fallback, via: "heuristic" };
   }
 

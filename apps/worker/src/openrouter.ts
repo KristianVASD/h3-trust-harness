@@ -1,6 +1,55 @@
 export const DEFAULT_OPENROUTER_MODEL = "minimax/minimax-m3:free";
 
-export async function completeJson(args: {
+export class OpenRouterRateLimitError extends Error {
+  readonly retryAfterMs: number;
+  constructor(message: string, retryAfterMs: number) {
+    super(message);
+    this.name = "OpenRouterRateLimitError";
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
+export function isRateLimitError(err: unknown): boolean {
+  if (err instanceof OpenRouterRateLimitError) return true;
+  const message = err instanceof Error ? err.message : String(err);
+  return /OpenRouter (402|429)|rate.?limit|in_flight_budget|temporarily rate-limited/i.test(
+    message,
+  );
+}
+
+let cooldownUntil = 0;
+let chain: Promise<unknown> = Promise.resolve();
+
+export function openRouterCooldownMs(): number {
+  return Math.max(0, cooldownUntil - Date.now());
+}
+
+export function noteOpenRouterCooldown(waitMs: number): void {
+  cooldownUntil = Math.max(cooldownUntil, Date.now() + waitMs);
+}
+
+function serialize<T>(fn: () => Promise<T>): Promise<T> {
+  const next = chain.then(fn, fn);
+  chain = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next;
+}
+
+function retryAfterMs(res: Response, body: string, attempt: number): number {
+  const header = Number(res.headers.get("retry-after") ?? 0);
+  const fromJson = body.match(/"Retry-After"\s*:\s*"?(\d+)/i);
+  const hinted = header || Number(fromJson?.[1] ?? 0);
+  const backoff = Math.min(180_000, 20_000 * 2 ** attempt);
+  return Math.max((hinted || 0) * 1000, backoff);
+}
+
+function shouldRetryStatus(status: number): boolean {
+  return status === 402 || status === 429 || status === 502 || status === 503;
+}
+
+async function completeJsonInner(args: {
   model: string;
   system: string;
   user: string;
@@ -11,7 +60,13 @@ export async function completeJson(args: {
   }
   const model = args.model.trim() || DEFAULT_OPENROUTER_MODEL;
   let lastError = "";
-  for (let attempt = 0; attempt < 4; attempt++) {
+  const attempts = 6;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const cool = openRouterCooldownMs();
+    if (cool > 0) {
+      console.warn(`OpenRouter cool-down ${Math.round(cool / 1000)}s`);
+      await new Promise((r) => setTimeout(r, cool));
+    }
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -40,16 +95,29 @@ export async function completeJson(args: {
     }
     const text = await res.text();
     lastError = `OpenRouter ${res.status}: ${text.slice(0, 500)}`;
-    const retryAfter = Number(res.headers.get("retry-after") ?? 0);
-    if (res.status === 402 && attempt < 3) {
-      const waitMs = Math.max((retryAfter || 120) * 1000, 15_000);
+    if (shouldRetryStatus(res.status) && attempt < attempts - 1) {
+      const waitMs = retryAfterMs(res, text, attempt);
+      noteOpenRouterCooldown(waitMs);
       console.warn(`${lastError} — waiting ${Math.round(waitMs / 1000)}s`);
       await new Promise((r) => setTimeout(r, waitMs));
       continue;
     }
+    if (shouldRetryStatus(res.status)) {
+      const waitMs = retryAfterMs(res, text, attempt);
+      noteOpenRouterCooldown(waitMs);
+      throw new OpenRouterRateLimitError(lastError, waitMs);
+    }
     throw new Error(lastError);
   }
   throw new Error(lastError);
+}
+
+export async function completeJson(args: {
+  model: string;
+  system: string;
+  user: string;
+}): Promise<string> {
+  return serialize(() => completeJsonInner(args));
 }
 
 export function parseJsonObject(raw: string): Record<string, unknown> {

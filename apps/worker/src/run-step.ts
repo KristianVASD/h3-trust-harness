@@ -3,7 +3,7 @@ import { logJobOutput, previewForEvent } from "./job-log.js";
 import { liveDiscover } from "./live-discover.js";
 import { liveExtract } from "./live-extract.js";
 import { liveProbe } from "./live-probe.js";
-import { heartbeat, writeEvent } from "./progress.js";
+import { writeEvent } from "./progress.js";
 import { allowLocalCommunity } from "./scope.js";
 import type { EngineDecision, WorkerRun } from "./types.js";
 
@@ -39,7 +39,6 @@ export async function executeDecision(
     return { summary: { action: step }, waitingHuman: true };
   }
 
-  await heartbeat(run.id, `Starting ${step}`);
   await writeEvent(run, {
     event_type: "step_started",
     step_name: step,
