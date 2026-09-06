@@ -151,6 +151,8 @@ export type ControlDoorRow = {
   directory?: boolean;
   listNames: string[];
   sourceCount: number;
+  trustListCount?: number;
+  identityToolCount?: number;
 };
 
 export type ControlJobRow = {
@@ -162,6 +164,8 @@ export type ControlJobRow = {
   goal: string;
   companyCount: number;
   trustedCount: number;
+  trustListCount?: number;
+  identityToolCount?: number;
   listNames: string[];
   nationalPack: boolean;
   directory: boolean;
@@ -194,6 +198,8 @@ export type ListStyleSource = {
   suggestedWeight?: number;
   url?: string;
   listUrl?: string;
+  listPattern?: string;
+  identityTool?: boolean;
 };
 
 export type ListStyleGroup = {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Link, useOutletContext, useParams } from "react-router-dom";
+import { Link, useOutletContext, useParams, useSearchParams } from "react-router-dom";
 import { isBlockingBarrier, isMixedSourceCategory } from "@h3-trust/schema";
 import { api } from "../../api";
 import { ProducerBadge } from "../../components/Badges";
@@ -22,7 +22,10 @@ import {
 
 export function WorkerImportPage() {
   const { missionId = "" } = useParams();
+  const [searchParams] = useSearchParams();
   const { mission, sources, companies, reload } = useOutletContext<MissionData>();
+  const querySourceId = searchParams.get("sourceId") ?? "";
+  const intentCsv = searchParams.get("intent") === "csv";
   const { isAdmin, openMode } = useAuth();
   /** Pre-Ω manual pack — admin on deployed auth; always in local open mode. */
   const showTrustedPack = isAdmin || openMode;
@@ -51,7 +54,7 @@ export function WorkerImportPage() {
 
   const [raw, setRaw] = useState("");
   const [listLabel, setListLabel] = useState("Member list");
-  const [sourceId, setSourceId] = useState("");
+  const [sourceId, setSourceId] = useState(querySourceId);
   const [previewCount, setPreviewCount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [importProgress, setImportProgress] = useState<{
@@ -63,13 +66,22 @@ export function WorkerImportPage() {
   const [doneMsg, setDoneMsg] = useState<string | null>(null);
 
   useEffect(() => {
+    if (querySourceId && sources.some((s) => s.id === querySourceId)) {
+      setSourceId(querySourceId);
+      return;
+    }
     if (
       importSources.length &&
       !importSources.some((s) => s.id === sourceId)
     ) {
       setSourceId(importSources[0]!.id);
     }
-  }, [importSources, sourceId]);
+  }, [importSources, sourceId, querySourceId, sources]);
+
+  useEffect(() => {
+    if (!intentCsv) return;
+    document.getElementById("csv")?.scrollIntoView({ behavior: "smooth" });
+  }, [intentCsv, sourceId]);
 
   function onPasteChange(value: string) {
     setRaw(value);
@@ -315,8 +327,35 @@ export function WorkerImportPage() {
           </div>
         </div>
       ) : (
-        <section className="panel worker-import-panel">
-          <h3 style={{ marginTop: 0 }}>Import CSV</h3>
+        <section className="panel worker-import-panel" id="csv">
+          <h3 style={{ marginTop: 0 }}>
+            {intentCsv ? "Paste CSV" : "Import CSV"}
+          </h3>
+          {querySourceId && sources.find((s) => s.id === querySourceId) ? (
+            <p className="hint">
+              Next step for{" "}
+              <strong>
+                {sources.find((s) => s.id === querySourceId)?.name}
+              </strong>
+              {intentCsv
+                ? " — paste the headless dump / CSV export for this list."
+                : " — extract from the list surface, or paste a CSV."}
+            </p>
+          ) : null}
+          {querySourceId && !intentCsv ? (
+            <div className="row" style={{ marginBottom: "0.75rem" }}>
+              <button
+                type="button"
+                className="btn"
+                disabled={extractBusyId != null}
+                onClick={() => void askOmegaExtract(querySourceId)}
+              >
+                {extractBusyId === querySourceId
+                  ? "Extracting…"
+                  : "Extract now"}
+              </button>
+            </div>
+          ) : null}
           {trustedCount === 0 ? (
             <p className="muted" style={{ marginTop: 0 }}>
               This list is not CURAD-accepted yet. Import will mark it as an

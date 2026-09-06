@@ -26,6 +26,11 @@ import {
   type Producer,
   type Source,
 } from "@h3-trust/schema";
+import {
+  emptySourceSummary,
+  summarizeSourceLiteRows,
+  type SourceMissionSummary,
+} from "./source-summary.js";
 import type { EntityMap, MissionScopedCollection, Store } from "./types.js";
 
 const schemas = {
@@ -140,6 +145,28 @@ export class FileStore implements Store {
     }
     const all = await this.readAll(collection);
     return all.filter((item) => missionKey(item) === missionId).length;
+  }
+
+  async summarizeSourcesForMission(
+    missionId: string,
+  ): Promise<SourceMissionSummary> {
+    const links = (await this.readAll("missionSources")).filter(
+      (l) => l.mission_id === missionId,
+    );
+    if (!links.length) return emptySourceSummary();
+    const rows = [];
+    for (const link of links) {
+      const source = await this.get("sources", link.source_id);
+      if (!source) continue;
+      rows.push({
+        name: source.name,
+        category: source.category,
+        scope: source.scope,
+        status: source.status,
+        listPattern: source.extractionGuide?.listPattern,
+      });
+    }
+    return summarizeSourceLiteRows(rows);
   }
 
   private async listSourcesForMission(missionId: string): Promise<Source[]> {

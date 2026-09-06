@@ -1,4 +1,5 @@
 import { useMemo, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { v4 as uuid } from "uuid";
 import {
   resolveSourceGaps,
@@ -12,6 +13,11 @@ import {
   type SourceScope,
 } from "@h3-trust/schema";
 import { api } from "../../api";
+import {
+  inboxSortSources,
+  sourceInboxAction,
+  sourceIsIdentityTool,
+} from "../../lib/sourceInbox";
 import { ProducerBadge, StatusChip } from "../Badges";
 
 type EvidenceDraft = {
@@ -79,6 +85,21 @@ function evidenceTeaser(ev?: SourceEvidence): string | null {
     ev.summary_reasons?.[0],
   ].filter(Boolean);
   return parts.length ? parts.join(" · ") : null;
+}
+
+function InboxNextAction({
+  source,
+  missionId,
+}: {
+  source: Source;
+  missionId: string;
+}) {
+  const action = sourceInboxAction(source, missionId);
+  return (
+    <Link className="btn small" to={action.href}>
+      {action.label}
+    </Link>
+  );
 }
 
 function SourceProposalDetails({ source }: { source: Source }) {
@@ -183,14 +204,25 @@ export function GapFillBoard({
   const [inspectOpenId, setInspectOpenId] = useState<string | null>(null);
   const [omegaBusyCat, setOmegaBusyCat] = useState<string | null>(null);
 
-  const missionSourcesByCat = useMemo(() => {
+  const { missionSourcesByCat, identitySources } = useMemo(() => {
     const map = new Map<string, Source[]>();
+    const identity: Source[] = [];
     for (const s of sources) {
+      if (sourceIsIdentityTool(s)) {
+        identity.push(s);
+        continue;
+      }
       const list = map.get(s.category) ?? [];
       list.push(s);
       map.set(s.category, list);
     }
-    return map;
+    for (const [key, list] of map) {
+      map.set(key, inboxSortSources(list));
+    }
+    return {
+      missionSourcesByCat: map,
+      identitySources: inboxSortSources(identity),
+    };
   }, [sources]);
 
   const draftCount = useMemo(
@@ -461,7 +493,16 @@ export function GapFillBoard({
                             {s.suggestedConfidence ?? s.suggestedWeight ?? "—"}
                           </span>
                         </div>
-                        <StatusChip label={s.status} tone="done" />
+                        <div
+                          className="row"
+                          style={{ gap: "0.35rem", flexWrap: "wrap" }}
+                        >
+                          <InboxNextAction
+                            source={s}
+                            missionId={missionId}
+                          />
+                          <StatusChip label={s.status} tone="done" />
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -624,6 +665,10 @@ export function GapFillBoard({
                           className="row"
                           style={{ gap: "0.35rem", flexWrap: "wrap" }}
                         >
+                          <InboxNextAction
+                            source={s}
+                            missionId={missionId}
+                          />
                           {s.status === "draft" ? (
                             <>
                               <button
@@ -728,6 +773,10 @@ export function GapFillBoard({
                             className="row"
                             style={{ gap: "0.35rem", flexWrap: "wrap" }}
                           >
+                            <InboxNextAction
+                              source={s}
+                              missionId={missionId}
+                            />
                             {!open ? (
                               <button
                                 type="button"
@@ -845,6 +894,32 @@ export function GapFillBoard({
           })}
         </div>
       )}
+      <details className="worker-advanced" style={{ marginTop: "1rem" }}>
+        <summary>
+          Identity layer (verify-only) · {identitySources.length} tools
+        </summary>
+        {identitySources.length === 0 ? (
+          <p className="empty">No registry / search-form tools on this job.</p>
+        ) : (
+          <div className="worker-source-stack">
+            {identitySources.map((s) => (
+              <div key={s.id} className="worker-source-row">
+                <div>
+                  <strong>{s.name}</strong>
+                  <span className="muted">
+                    {" "}
+                    · {s.category}
+                    {s.extractionGuide?.listPattern
+                      ? ` · ${s.extractionGuide.listPattern}`
+                      : ""}
+                  </span>
+                </div>
+                <StatusChip label="verify-only" tone="waiting" />
+              </div>
+            ))}
+          </div>
+        )}
+      </details>
     </div>
   );
 }

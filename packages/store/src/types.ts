@@ -17,6 +17,7 @@ import type {
   Signal,
   Source,
 } from "@h3-trust/schema";
+import type { SourceMissionSummary } from "./source-summary.js";
 
 export type EntityMap = {
   missions: Mission;
@@ -55,6 +56,12 @@ export interface Store {
     collection: MissionScopedCollection,
     missionId: string,
   ): Promise<number>;
+
+  /**
+   * Lightweight source counts for country/sector desks.
+   * Must not load full source payloads or run catalogue-wide migrate.
+   */
+  summarizeSourcesForMission(missionId: string): Promise<SourceMissionSummary>;
 
   get<K extends CollectionName>(
     collection: K,

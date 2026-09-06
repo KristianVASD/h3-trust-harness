@@ -40,7 +40,9 @@ function JobRow({ job }: { job: ControlJobRow }) {
           label={`${job.companyCount} companies`}
           tone={job.companyCount > 0 ? "done" : "waiting"}
         />
-        <StatusChip label={`${job.trustedCount} lists`} />
+        <StatusChip
+          label={`${job.trustListCount ?? job.trustedCount} trust lists · ${job.identityToolCount ?? 0} identity tools`}
+        />
         {job.directory ? (
           <StatusChip label="local directory" tone="active" />
         ) : (
@@ -323,7 +325,8 @@ export function ControlCountryPage() {
               <h3>{door.tradeLabel ?? door.subsector}</h3>
               <p className="muted">
                 {door.tradeId} · {door.companyCount} companies ·{" "}
-                {door.sourceCount ?? door.nationalSourceCount} lists
+                {door.trustListCount ?? 0} trust lists ·{" "}
+                {door.identityToolCount ?? 0} identity tools
                 {" · "}
                 {door.nationalSourceCount} national / {door.localSourceCount} local
               </p>

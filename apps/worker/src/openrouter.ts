@@ -1,4 +1,5 @@
 import { recordLlmCall } from "./llm-trace.js";
+import { loadSoul } from "./load-prompt.js";
 
 export const DEFAULT_OPENROUTER_MODEL = "minimax/minimax-m3:free";
 
@@ -83,6 +84,9 @@ async function completeJsonInner(args: {
       body: JSON.stringify({
         model,
         messages: [
+          ...(loadSoul().text
+            ? [{ role: "system" as const, content: loadSoul().text }]
+            : []),
           { role: "system", content: args.system },
           { role: "user", content: args.user },
         ],

@@ -35,11 +35,20 @@ export function defaultAudienceForCategory(
   return undefined;
 }
 
+/** Identity layer: legal registry or search-form chrome — verify only, not a trust list. */
+export function isIdentityTool(args: {
+  category?: string | null;
+  listPattern?: string | null;
+}): boolean {
+  return args.category === "registry" || args.listPattern === "search-form";
+}
+
 export function defaultWeightForList(
   category: string,
   layer: "national" | "regional" | "local",
+  listPattern?: string | null,
 ): number {
-  if (category === "registry") return 90;
+  if (isIdentityTool({ category, listPattern })) return 30;
   if (category === "quality_mark" || category === "sector_qualification") return 75;
   if (category === "local_business_association") return 65;
   if (category === "sponsorship") return 40;

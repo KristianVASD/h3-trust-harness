@@ -18,6 +18,13 @@ import {
   nowIso,
   sortByUpdatedDesc,
 } from "./schemas.js";
+import {
+  emptySourceSummary,
+  liteRowFromUnknown,
+  summarizeSourceLiteRows,
+  type SourceLiteRow,
+  type SourceMissionSummary,
+} from "./source-summary.js";
 import type { EntityMap, MissionScopedCollection, Store } from "./types.js";
 
 type EntityRow = {
@@ -159,6 +166,80 @@ export class PostgresStore implements Store {
     if (!error && typeof count === "number") return count;
     const all = await this.readAll(collection);
     return all.filter((item) => missionKey(item) === missionId).length;
+  }
+
+  async summarizeSourcesForMission(
+    missionId: string,
+  ): Promise<SourceMissionSummary> {
+    const sourceIds = await this.listLinkedSourceIds(missionId);
+    if (!sourceIds.length) return emptySourceSummary();
+
+    const rows: SourceLiteRow[] = [];
+    for (let i = 0; i < sourceIds.length; i += 80) {
+      const chunk = sourceIds.slice(i, i + 80);
+      const { data, error } = await this.db
+        .from("entities")
+        .select(
+          "name:payload->>name, category:payload->>category, scope:payload->>scope, status:payload->>status, list_pattern:payload->extractionGuide->>listPattern",
+        )
+        .eq("collection", "sources")
+        .in("id", chunk);
+      if (error) {
+        const fallback = await this.db
+          .from("entities")
+          .select("payload")
+          .eq("collection", "sources")
+          .in("id", chunk);
+        if (fallback.error) {
+          throw new Error(
+            `entities summarize sources: ${error.message}; fallback ${fallback.error.message}`,
+          );
+        }
+        for (const row of fallback.data ?? []) {
+          const lite = liteRowFromUnknown(row.payload);
+          if (lite) rows.push(lite);
+        }
+        continue;
+      }
+      for (const row of data ?? []) {
+        const lite = liteRowFromUnknown(row);
+        if (lite) rows.push(lite);
+      }
+    }
+    return summarizeSourceLiteRows(rows);
+  }
+
+  private async listLinkedSourceIds(missionId: string): Promise<string[]> {
+    const { data, error } = await this.db
+      .from("entities")
+      .select("source_id:payload->>source_id")
+      .eq("collection", "missionSources")
+      .eq("mission_id", missionId);
+    if (error) {
+      const { data: raw, error: rawErr } = await this.db
+        .from("entities")
+        .select("payload")
+        .eq("collection", "missionSources")
+        .eq("mission_id", missionId);
+      if (rawErr) {
+        throw new Error(`entities missionSources: ${error.message}`);
+      }
+      const ids: string[] = [];
+      for (const row of raw ?? []) {
+        const rec = row.payload as { source_id?: string } | null;
+        const id = rec?.source_id?.trim();
+        if (id) ids.push(id);
+      }
+      return ids;
+    }
+    const ids: string[] = [];
+    for (const row of data ?? []) {
+      const id = String(
+        (row as { source_id?: string }).source_id ?? "",
+      ).trim();
+      if (id) ids.push(id);
+    }
+    return ids;
   }
 
   private async listSourcesForMission(missionId: string): Promise<Source[]> {

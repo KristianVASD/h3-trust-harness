@@ -5,6 +5,7 @@ import {
   countriesEquivalent,
   countrySlug,
   displayCountry,
+  isIdentityTool,
   isLocalDirectoryMission,
   packMatchesTrade,
   tradeLabel,
@@ -35,6 +36,8 @@ export type ControlDoorRow = {
   searchable: boolean;
   status: "searchable" | "needs_overlay" | "lists_found" | "empty";
   sourceCount: number;
+  trustListCount: number;
+  identityToolCount: number;
   nationalPackId?: string;
   directory?: boolean;
   listNames: string[];
@@ -49,6 +52,8 @@ export type ControlJobRow = {
   goal: string;
   companyCount: number;
   trustedCount: number;
+  trustListCount: number;
+  identityToolCount: number;
   listNames: string[];
   nationalPack: boolean;
   directory: boolean;
@@ -78,6 +83,8 @@ export type ListStyleSource = {
   suggestedWeight?: number;
   url?: string;
   listUrl?: string;
+  listPattern?: string;
+  identityTool?: boolean;
 };
 
 export type ListStyleGroup = {
@@ -86,14 +93,6 @@ export type ListStyleGroup = {
   title: string;
   sources: ListStyleSource[];
 };
-
-function isTrusted(source: Source): boolean {
-  return source.status === "accepted" || source.status === "adjusted";
-}
-
-function isListed(source: Source): boolean {
-  return source.status !== "rejected";
-}
 
 function isDeskMission(mission: Mission): boolean {
   return isNationalPack(mission) || isLocalDirectoryMission(mission);
@@ -105,13 +104,13 @@ function missionsForCountry(missions: Mission[], country: string): Mission[] {
 
 function packStatus(args: {
   companyCount: number;
-  sourceCount: number;
+  trustListCount: number;
   localSourceCount: number;
   directory: boolean;
   hasNationalCompanies: boolean;
 }): ControlDoorRow["status"] {
   if (args.companyCount === 0) {
-    return args.sourceCount > 0 ? "lists_found" : "empty";
+    return args.trustListCount > 0 ? "lists_found" : "empty";
   }
   if (args.directory) return "searchable";
   if (args.hasNationalCompanies && args.localSourceCount === 0) {
@@ -126,28 +125,26 @@ async function missionStats(
 ): Promise<{
   companyCount: number;
   sourceCount: number;
-  sources: Source[];
-  trusted: Source[];
+  trustedCount: number;
+  trustListCount: number;
+  identityToolCount: number;
   nationalSourceCount: number;
   localSourceCount: number;
   listNames: string[];
 }> {
   const [companyCount, sources] = await Promise.all([
     store.countByMission("companies", mission.id),
-    store.listByMission("sources", mission.id),
+    store.summarizeSourcesForMission(mission.id),
   ]);
-  const listed = sources.filter(isListed);
-  const trusted = listed.filter(isTrusted);
   return {
     companyCount,
-    sources,
-    trusted,
-    sourceCount: listed.length,
-    nationalSourceCount: listed.filter((s) => s.scope === "national").length,
-    localSourceCount: listed.filter(
-      (s) => s.scope === "local" || s.scope === "regional",
-    ).length,
-    listNames: listed.map((s) => s.name),
+    sourceCount: sources.sourceCount,
+    trustedCount: sources.trustedCount,
+    trustListCount: sources.trustListCount,
+    identityToolCount: sources.identityToolCount,
+    nationalSourceCount: sources.nationalSourceCount,
+    localSourceCount: sources.localSourceCount,
+    listNames: sources.trustListNames,
   };
 }
 
@@ -161,7 +158,9 @@ async function toJobRow(store: Store, mission: Mission): Promise<ControlJobRow> 
     subsector: mission.subsector,
     goal: mission.goal,
     companyCount: stats.companyCount,
-    trustedCount: stats.trusted.length,
+    trustedCount: stats.trustedCount,
+    trustListCount: stats.trustListCount,
+    identityToolCount: stats.identityToolCount,
     listNames: stats.listNames,
     nationalPack: isNationalPack(mission),
     directory: isLocalDirectoryMission(mission),
@@ -207,7 +206,7 @@ export async function buildCountryIndex(
     for (const mission of desk) {
       const stats = await missionStats(store, mission);
       companyCount += stats.companyCount;
-      listCount += stats.trusted.length;
+      listCount += stats.trustedCount;
       if (isLocalDirectoryMission(mission)) continue;
       for (const tradeId of TRADE_IDS) {
         if (
@@ -269,6 +268,8 @@ export async function buildCountryDoors(
         sourceCount: 0,
         missionCount: 0,
         trustedCount: 0,
+        trustListCount: 0,
+        identityToolCount: 0,
         nationalSourceCount: 0,
         localSourceCount: 0,
         searchable: false,
@@ -280,6 +281,8 @@ export async function buildCountryDoors(
     let companyCount = 0;
     let sourceCount = 0;
     let trustedCount = 0;
+    let trustListCount = 0;
+    let identityToolCount = 0;
     let nationalSourceCount = 0;
     let localSourceCount = 0;
     const listNames: string[] = [];
@@ -289,7 +292,9 @@ export async function buildCountryDoors(
       const stats = await missionStats(store, mission);
       companyCount += stats.companyCount;
       sourceCount += stats.sourceCount;
-      trustedCount += stats.trusted.length;
+      trustedCount += stats.trustedCount;
+      trustListCount += stats.trustListCount;
+      identityToolCount += stats.identityToolCount;
       nationalSourceCount += stats.nationalSourceCount;
       localSourceCount += stats.localSourceCount;
       listNames.push(...stats.listNames);
@@ -300,7 +305,7 @@ export async function buildCountryDoors(
     }
     const status = packStatus({
       companyCount,
-      sourceCount,
+      trustListCount,
       localSourceCount,
       directory: false,
       hasNationalCompanies,
@@ -316,6 +321,8 @@ export async function buildCountryDoors(
       sourceCount,
       missionCount: matching.length,
       trustedCount,
+      trustListCount,
+      identityToolCount,
       nationalSourceCount,
       localSourceCount,
       searchable: companyCount > 0,
@@ -337,7 +344,9 @@ export async function buildCountryDoors(
       companyCount: stats.companyCount,
       sourceCount: stats.sourceCount,
       missionCount: 1,
-      trustedCount: stats.trusted.length,
+      trustedCount: stats.trustedCount,
+      trustListCount: stats.trustListCount,
+      identityToolCount: stats.identityToolCount,
       nationalSourceCount: stats.nationalSourceCount,
       localSourceCount: stats.localSourceCount,
       searchable: stats.companyCount > 0,
@@ -460,6 +469,7 @@ export async function buildDoorListStyles(
 }
 
 function toStyleSource(source: Source): ListStyleSource {
+  const listPattern = source.extractionGuide?.listPattern;
   return {
     id: source.id,
     name: source.name,
@@ -469,6 +479,11 @@ function toStyleSource(source: Source): ListStyleSource {
     suggestedWeight: source.suggestedWeight,
     url: source.url,
     listUrl: source.listUrl,
+    listPattern,
+    identityTool: isIdentityTool({
+      category: source.category,
+      listPattern,
+    }),
   };
 }
 

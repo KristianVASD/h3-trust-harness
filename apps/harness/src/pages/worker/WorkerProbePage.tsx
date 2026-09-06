@@ -1,5 +1,5 @@
-import { Fragment, useState } from "react";
-import { Link, useOutletContext, useParams } from "react-router-dom";
+import { Fragment, useEffect, useState } from "react";
+import { Link, useOutletContext, useParams, useSearchParams } from "react-router-dom";
 import { isBlockingBarrier } from "@h3-trust/schema";
 import { ProducerBadge, StatusChip } from "../../components/Badges";
 import { BarrierStatusChip } from "../../components/worker/BarrierCard";
@@ -16,11 +16,19 @@ import { api } from "../../api";
  */
 export function WorkerProbePage() {
   const { missionId = "" } = useParams();
+  const [searchParams] = useSearchParams();
   const { mission, sources, reload } = useOutletContext<MissionData>();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [batchBusy, setBatchBusy] = useState(false);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(
+    searchParams.get("sourceId"),
+  );
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const focusId = searchParams.get("sourceId");
+    if (focusId) setExpandedId(focusId);
+  }, [searchParams]);
 
   const unprobed = sources.filter((s) => s.probeStatus !== "probed");
   const probed = sources.filter((s) => s.probeStatus === "probed");
@@ -92,6 +100,11 @@ export function WorkerProbePage() {
           >
             {batchBusy ? "Probing…" : `Probe all unprobed (${unprobed.length})`}
           </button>
+        ) : null}
+        {searchParams.get("sourceId") ? (
+          <p className="hint">
+            Focused list is expanded below — Probe is the next action.
+          </p>
         ) : null}
         {error ? (
           <div className="error" style={{ marginTop: "0.75rem" }}>

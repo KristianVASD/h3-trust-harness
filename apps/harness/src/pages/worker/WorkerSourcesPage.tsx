@@ -30,7 +30,7 @@ export function WorkerSourcesPage() {
       const res = await api.warmStartSources(missionId);
       setWarmMsg(
         res.linked
-          ? `Linked ${res.linked} reusable list(s) from the catalogue (KvK, local associations, …).`
+          ? `Linked ${res.linked} reusable trust list(s) from the catalogue.`
           : "No reusable CARA-confirmed lists found to link yet.",
       );
       await reload();
@@ -58,8 +58,9 @@ export function WorkerSourcesPage() {
         {sources.length === 0 ? (
           <div className="worker-warm-start">
             <p className="muted" style={{ marginBottom: "0.5rem" }}>
-              No sources linked yet. Pull reusable seed lists (national registry
-              + confirmed lists for this location) so the board is not empty.
+              No sources linked yet. Pull reusable curated lists for this
+              location so the board is not empty. Registry rows stay in the
+              Identity layer.
             </p>
             <button
               type="button"

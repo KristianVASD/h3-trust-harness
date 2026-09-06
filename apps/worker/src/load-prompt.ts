@@ -29,3 +29,28 @@ export function savePrompt(name: string, body: string): void {
   writeFileSync(join(PROMPT_DIR, `${name}.md`), body.replace(/\r\n/g, "\n"), "utf8");
   cache.delete(name);
 }
+
+const SOUL_PATHS = [
+  join(PROMPT_DIR, "soul.md"),
+  join(dirname(fileURLToPath(import.meta.url)), "../../../fixtures/samples/H3TrustSoul.md"),
+];
+
+let soulCache: { version: string; text: string } | null = null;
+
+export function loadSoul(): { version: string; text: string } {
+  if (soulCache) return soulCache;
+  for (const path of SOUL_PATHS) {
+    try {
+      const text = readFileSync(path, "utf8").replace(/\r\n/g, "\n").trim();
+      if (!text) continue;
+      const version =
+        text.match(/\*\*Version:\*\*\s*([0-9.]+)/i)?.[1] ?? "1.0";
+      soulCache = { version, text };
+      return soulCache;
+    } catch {
+      continue;
+    }
+  }
+  soulCache = { version: "1.0", text: "" };
+  return soulCache;
+}

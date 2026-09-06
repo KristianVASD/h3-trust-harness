@@ -1,4 +1,11 @@
 import type { Mission, SearchPlanEntry, Source } from "@h3-trust/schema";
+import soulManifest from "../../../../fixtures/samples/H3TrustSoul.md?raw";
+
+function withSoul(task: string): string {
+  const soul = String(soulManifest ?? "").trim();
+  if (!soul) return task;
+  return `${soul}\n\n---\n\n${task}`;
+}
 
 /** Clipboard text for offline Job 1 (Qwen / manual Ω) — gaps envelope preferred. */
 export function buildDiscoverJobPrompt(args: {
@@ -25,7 +32,7 @@ export function buildDiscoverJobPrompt(args: {
       nuance_rule: e.nuance_rule,
     }));
 
-  return `You are OmegaClaw discovering trust lists for H3 Trust Harness.
+  return withSoul(`You are OmegaClaw discovering trust lists for H3 Trust Harness.
 
 Fill ONLY the open_gaps (each is layer × category + nuance_rule).
 Return real, currently active sources with public (or clearly listable) company members.
@@ -33,7 +40,7 @@ Do not invent URLs or names. If none exists for a gap, return found=false for th
 Do not duplicate existing_sources.
 scope must equal the gap layer. regional/local → region = mission location; national → region = "".
 status will be set to candidate by the harness. Do not claim acceptance.
-suggestedWeight is a proposal (soft sources ≤ 90; hard identity registry ≤ 95).
+suggestedWeight is a proposal (soft sources ≤ 90; identity registry / search-form cap 30).
 
 DEFINITION OF DONE — LIST SURFACE REQUIRED:
 found=true only when you can name a concrete listUrl (member list, searchable register,
@@ -130,7 +137,7 @@ OUTPUT: strict JSON only. Prefer the Qwen-compatible envelope:
   ]
 }
 
-No markdown.`;
+No markdown.`);
 }
 
 export function buildProbeJobPrompt(args: {
@@ -153,7 +160,7 @@ export function buildProbeJobPrompt(args: {
       discoveredVia: s.discoveredVia,
     }));
 
-  return `You are OmegaClaw probing trust sources for H3 Trust Harness (Job 2).
+  return withSoul(`You are OmegaClaw probing trust sources for H3 Trust Harness (Job 2).
 
 For EACH source below, determine: live URL? public member list? membership barrier
 (high|medium|low|unknown)? list render type (text|images|js-app|pdf)?
@@ -268,7 +275,7 @@ OUTPUT: strict JSON only, exactly this envelope (one object per source):
       }
     }
   ]
-}`;
+}`);
 }
 
 /** Slim working-source row for Job 3 offline packs (manual / Kimi / Qwen). */
@@ -376,7 +383,7 @@ export function buildExtractJobPrompt(args: {
   sources: Source[];
 }): string {
   const pack = buildExtractWorkingPack(args);
-  return `You are OmegaClaw extracting companies from working trust lists (Job 3).
+  return withSoul(`You are OmegaClaw extracting companies from working trust lists (Job 3).
 
 Extract ONLY from the sources listed. Do not invent companies.
 Record list_membership (source names) for every company.
@@ -407,7 +414,7 @@ OUTPUT: strict JSON only. No markdown.
       "specialism": "optional"
     }
   ]
-}`;
+}`);
 }
 
 export function buildClassifyJobPrompt(args: {
@@ -421,7 +428,7 @@ export function buildClassifyJobPrompt(args: {
   }>;
 }): string {
   const slice = args.companies.slice(0, 80);
-  return `You are OmegaClaw classifying mixed-list bijvangst for H3 Trust Harness.
+  return withSoul(`You are OmegaClaw classifying mixed-list bijvangst for H3 Trust Harness.
 
 These companies came from an ondernemersvereniging, sportclub, or similar mixed list.
 They are NOT a trade until classified. Bakers stay unknown.
@@ -452,5 +459,5 @@ OUTPUT: strict JSON only.
   ]
 }
 
-A human CARA step must agree before anyone is promoted onto a sector pack.`;
+A human CARA step must agree before anyone is promoted onto a sector pack.`);
 }

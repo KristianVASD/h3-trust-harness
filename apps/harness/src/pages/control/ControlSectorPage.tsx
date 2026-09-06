@@ -23,6 +23,22 @@ import { DoorPlaybookForm } from "../../components/control/DoorPlaybookForm";
 import { EngineRunChip } from "../../components/control/EngineRunChip";
 import { useAuth } from "../../auth/AuthContext";
 import { useCanInteract } from "../../hooks/useCanInteract";
+import { sourceIsIdentityTool } from "../../lib/sourceInbox";
+
+const CSV_BRIDGE_HINTS: Record<string, string> = {
+  paint: "OnderhoudNL zoek-een-bedrijf · Vakwerk+ /bedrijven/",
+  roof: "Vebidak /onze-leden · Dakmerk Overzicht dakaannemers · Hét Dakproef",
+  bath: "Techniek Nederland badkamer/sanitair · VLOK",
+  solar: "Techniek Nederland zonne-energie · InstallQ finder",
+  electro: "Echte Installateur finder · TN elektro",
+  hvac: "",
+  security: "NLsecurity vind een bedrijf · NVD erkende bedrijven",
+  drain: "Echte Installateur Riool · rioolbeheersing branche",
+  pest: "Platform Plaagdierbeheersing · KAD/SPA-bv (human paste)",
+  glazing: "OnderhoudNL · VMR",
+  handyman: "VLOK vind-een-klusservice",
+  garden: "Stagemarkt leerbedrijven (one headless run of the wizard)",
+};
 
 function packStatusLabel(status: ControlDoorRow["status"]): string {
   if (status === "searchable") return "searchable";
@@ -192,6 +208,39 @@ export function ControlSectorPage() {
       ? "Unclassified"
       : data?.door.tradeLabel ?? tradeLabel(resolvedTrade);
 
+  const trustGroups = useMemo(() => {
+    return (data?.groups ?? []).map((group) => ({
+      ...group,
+      sources: group.sources.filter((s) => !sourceIsIdentityTool(s)),
+    }));
+  }, [data?.groups]);
+
+  const identitySources = useMemo(() => {
+    const fromGroups = (data?.groups ?? []).flatMap((g) =>
+      g.sources.filter((s) => sourceIsIdentityTool(s)),
+    );
+    const fromDir = (data?.directorySources ?? []).filter((s) =>
+      sourceIsIdentityTool(s),
+    );
+    const seen = new Set<string>();
+    return [...fromGroups, ...fromDir].filter((s) => {
+      if (seen.has(s.id)) return false;
+      seen.add(s.id);
+      return true;
+    });
+  }, [data?.groups, data?.directorySources]);
+
+  const directoryTrust = useMemo(
+    () =>
+      (data?.directorySources ?? []).filter((s) => !sourceIsIdentityTool(s)),
+    [data?.directorySources],
+  );
+
+  const csvHint =
+    resolvedTrade !== "unclassified"
+      ? CSV_BRIDGE_HINTS[resolvedTrade]
+      : undefined;
+
   return (
     <div>
       <p className="control-crumb">
@@ -208,7 +257,7 @@ export function ControlSectorPage() {
         </h1>
         <p className="muted">
           {data
-            ? `${data.door.companyCount} companies · ${data.door.sourceCount ?? data.door.nationalSourceCount} lists (${data.door.nationalSourceCount} national / ${data.door.localSourceCount} local)`
+            ? `${data.door.companyCount} companies · ${data.door.trustListCount ?? 0} trust lists · ${data.door.identityToolCount ?? 0} identity tools (${data.door.nationalSourceCount} national / ${data.door.localSourceCount} local)`
             : "Loading…"}
         </p>
         {data ? (
@@ -239,11 +288,16 @@ export function ControlSectorPage() {
       <section className="panel">
         <h2>How lists look on this door</h2>
         <p className="hint">
-          Grouped by the 12 discovery channels. Mixed OV / sportclub rows stay
-          mixed; unknowns sit on Unclassified.
+          Trust lists only. KvK / search-form chrome sits in Identity layer
+          below. Mixed OV / sportclub rows stay mixed.
         </p>
+        {data && data.door.companyCount === 0 && csvHint ? (
+          <p className="hint">
+            0 companies — headless dump then Attach CSV: {csvHint}
+          </p>
+        ) : null}
         <EngineRunChip run={data?.latestRun ?? null} events={data?.events ?? []} />
-        {(data?.groups ?? []).map((group) => (
+        {trustGroups.map((group) => (
           <div key={`${group.layer}|${group.category}`} className="list-style-group">
             <h3>
               {group.title}
@@ -270,10 +324,10 @@ export function ControlSectorPage() {
             )}
           </div>
         ))}
-        {(data?.directorySources ?? []).length ? (
+        {directoryTrust.length ? (
           <div className="list-style-group">
             <h3>Local Directory leftovers</h3>
-            {data!.directorySources.map((s) => (
+            {directoryTrust.map((s) => (
               <div key={s.id} className="card-row">
                 <div>
                   <strong>{s.name}</strong>
@@ -284,6 +338,27 @@ export function ControlSectorPage() {
             ))}
           </div>
         ) : null}
+        <details className="worker-advanced" style={{ marginTop: "1rem" }}>
+          <summary>
+            Identity layer (verify-only) · {identitySources.length} tools
+          </summary>
+          {identitySources.length === 0 ? (
+            <p className="empty">No registry / search-form tools on this door.</p>
+          ) : (
+            identitySources.map((s) => (
+              <div key={s.id} className="card-row">
+                <div>
+                  <strong>{s.name}</strong>
+                  <div className="muted">
+                    {s.category}
+                    {s.listPattern ? ` · ${s.listPattern}` : ""}
+                  </div>
+                </div>
+                <StatusChip label={s.status} tone="waiting" />
+              </div>
+            ))
+          )}
+        </details>
         <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
           <button
             type="button"
@@ -327,7 +402,9 @@ export function ControlSectorPage() {
                   label={`${job.companyCount} companies`}
                   tone={job.companyCount > 0 ? "done" : "waiting"}
                 />
-                <StatusChip label={`${job.trustedCount} lists`} />
+                <StatusChip
+                  label={`${job.trustListCount ?? job.trustedCount} trust lists · ${job.identityToolCount ?? 0} identity tools`}
+                />
               </div>
               {job.listNames.length ? (
                 <p className="muted" style={{ fontSize: "0.85rem" }}>

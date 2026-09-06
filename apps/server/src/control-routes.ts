@@ -219,6 +219,8 @@ export function registerControlRoutes(
               sourceCount: 0,
               missionCount: 0,
               trustedCount: 0,
+              trustListCount: 0,
+              identityToolCount: 0,
               nationalSourceCount: 0,
               localSourceCount: 0,
               searchable: false,
