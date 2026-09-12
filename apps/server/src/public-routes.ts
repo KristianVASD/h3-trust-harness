@@ -3,10 +3,13 @@ import type { Hono } from "hono";
 import {
   packMatchesTrade,
   primaryTradeId,
+  TradeIdSchema,
+  TRADES,
   tradeLabel,
   type Company,
   type Mission,
   type Source,
+  type TradeId,
 } from "@h3-trust/schema";
 import type { Store } from "@h3-trust/store";
 import { isNationalPack } from "./pack-match.js";
@@ -71,20 +74,17 @@ type CandidateSubmission = {
 
 const candidateSubmissions: CandidateSubmission[] = [];
 
-const TRADE_FILTERS: { id: string; label: string }[] = [
-  { id: "paint", label: "Schilders" },
-  { id: "drain", label: "Loodgieters" },
-  { id: "handyman", label: "Timmerlieden / klus" },
-  { id: "roof", label: "Dakdekkers" },
-  { id: "electro", label: "Elektriciens" },
-  { id: "hvac", label: "CV / luchtbehandeling" },
-  { id: "bath", label: "Badkamer" },
-  { id: "solar", label: "Zonne-energie" },
-  { id: "security", label: "Beveiliging" },
-  { id: "glazing", label: "Glas / kozijnen" },
-  { id: "garden", label: "Tuin" },
-  { id: "pest", label: "Plaagdieren" },
-];
+const TRADE_FILTERS = TRADES.trades.map((trade) => ({
+  id: trade.id,
+  label: trade.label,
+  label_en: trade.label_en,
+}));
+
+function resolveTradeId(raw: string): TradeId | undefined {
+  const direct = TradeIdSchema.safeParse(raw.trim().toLowerCase());
+  if (direct.success) return direct.data;
+  return primaryTradeId(raw);
+}
 
 function mapSourceType(source: Source): PublicSourceRecord["type"] {
   const cat = `${source.category ?? ""} ${source.type ?? ""}`.toLowerCase();
@@ -280,6 +280,14 @@ export function registerPublicRoutes(
     }
   });
 
+  app.get("/api/public/trades", (c) => {
+    return c.json({
+      success: true,
+      count: TRADE_FILTERS.length,
+      trades: TRADE_FILTERS,
+    });
+  });
+
   app.get("/api/public/kvk-check/:kvk", (c) => {
     const clean = c.req.param("kvk").replace(/\D/g, "");
     if (clean.length !== 8) {
@@ -335,7 +343,9 @@ export function registerPublicRoutes(
     const name = String(body.name ?? "").trim();
     const email = String(body.email ?? "").trim().toLowerCase();
     const password = String(body.password ?? "");
-    const trade = String(body.trade ?? "").trim();
+    const tradeRaw = String(body.tradeId ?? body.trade ?? "").trim();
+    const tradeId = resolveTradeId(tradeRaw);
+    const trade = tradeId ? tradeLabel(tradeId) : tradeRaw;
     const city = String(body.city ?? body.place ?? "").trim();
     const street = String(body.street ?? "").trim();
     const houseNumber = String(body.houseNumber ?? "").trim();
@@ -355,6 +365,15 @@ export function registerPublicRoutes(
     if (!name || !email) {
       return c.json(
         { success: false, error: "Naam en e-mailadres zijn verplicht." },
+        400,
+      );
+    }
+    if (!tradeId) {
+      return c.json(
+        {
+          success: false,
+          error: "Kies een van de 12 sectoren (vakdeuren).",
+        },
         400,
       );
     }
@@ -427,7 +446,7 @@ export function registerPublicRoutes(
       });
 
       const missions = await store.listMissions();
-      const pack = findPackForTrade(missions, trade);
+      const pack = findPackForTrade(missions, tradeId);
       if (pack) {
         const now = new Date().toISOString();
         const company = await store.upsert("companies", {
@@ -441,7 +460,7 @@ export function registerPublicRoutes(
           address: addressLine || city,
           region: city,
           sector: pack.sector,
-          category: primaryTradeId(trade) ?? pack.subsector,
+          category: tradeId,
           kvk_number: cleanKvk || undefined,
           kvk_gate: kvk_gate === "pass" ? "pass" : "unchecked",
           source_ids: [],
@@ -464,7 +483,7 @@ export function registerPublicRoutes(
         user_id: userId,
         company_id: companyId,
         legal_name: name,
-        trade,
+        trade: tradeId,
         city,
         kvk_number: cleanKvk || null,
         kvk_gate,

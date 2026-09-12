@@ -3,22 +3,16 @@ import { Search, ArrowLeft } from "lucide-react";
 import { api } from "../../api";
 import { Company, Language } from "../types";
 import { mockCompanies } from "../data/mockDatabase";
+import { PUBLIC_TRADES } from "../data/trades";
 import { PublicCompanyCard } from "./PublicCompanyCard";
 
 const TRADE_OPTIONS = [
-  { value: "all", labelNl: "Alle Vakgebieden", labelEn: "All Trades" },
-  { value: "paint", labelNl: "Schilders", labelEn: "Painters" },
-  { value: "drain", labelNl: "Loodgieters", labelEn: "Plumbers" },
-  { value: "handyman", labelNl: "Timmerlieden / klus", labelEn: "Carpenters" },
-  { value: "roof", labelNl: "Dakdekkers", labelEn: "Roofers" },
-  { value: "electro", labelNl: "Elektriciens", labelEn: "Electricians" },
-  { value: "hvac", labelNl: "CV / luchtbehandeling", labelEn: "HVAC" },
-  { value: "bath", labelNl: "Badkamer", labelEn: "Bathrooms" },
-  { value: "solar", labelNl: "Zonne-energie", labelEn: "Solar" },
-  { value: "security", labelNl: "Beveiliging", labelEn: "Security" },
-  { value: "glazing", labelNl: "Glas / kozijnen", labelEn: "Glazing" },
-  { value: "garden", labelNl: "Tuin", labelEn: "Garden" },
-  { value: "pest", labelNl: "Plaagdieren", labelEn: "Pest" },
+  { value: "all", labelNl: "Alle sectoren", labelEn: "All sectors" },
+  ...PUBLIC_TRADES.map((trade) => ({
+    value: trade.id,
+    labelNl: trade.labelNl,
+    labelEn: trade.labelEn,
+  })),
 ] as const;
 
 const TRADE_ALIASES: Record<string, string[]> = {

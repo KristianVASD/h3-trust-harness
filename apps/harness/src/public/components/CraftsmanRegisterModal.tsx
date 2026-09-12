@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { X, CheckCircle2, User, Mail, Phone, MapPin } from "lucide-react";
+import { PUBLIC_TRADES } from "../data/trades";
 import { Language } from "../types";
 
 interface CraftsmanRegisterModalProps {
@@ -16,7 +17,7 @@ export const CraftsmanRegisterModal: React.FC<CraftsmanRegisterModalProps> = ({
   lang,
 }) => {
   const [name, setName] = useState("");
-  const [trade, setTrade] = useState("Schilder");
+  const [trade, setTrade] = useState("");
   const [street, setStreet] = useState("");
   const [houseNumber, setHouseNumber] = useState("");
   const [postcode, setPostcode] = useState("");
@@ -32,7 +33,7 @@ export const CraftsmanRegisterModal: React.FC<CraftsmanRegisterModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     setName("");
-    setTrade("Schilder");
+    setTrade("");
     setStreet("");
     setHouseNumber("");
     setPostcode("");
@@ -64,7 +65,7 @@ export const CraftsmanRegisterModal: React.FC<CraftsmanRegisterModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !email) return;
+    if (!name || !email || !trade) return;
     if (!isCommunityDrager && (!acceptFindable || !acceptAcquisition)) return;
 
     setSubmitting(true);
@@ -83,6 +84,7 @@ export const CraftsmanRegisterModal: React.FC<CraftsmanRegisterModalProps> = ({
         body: JSON.stringify({
           name,
           trade,
+          tradeId: trade,
           city,
           street,
           houseNumber,
@@ -124,8 +126,8 @@ export const CraftsmanRegisterModal: React.FC<CraftsmanRegisterModalProps> = ({
       : "Register your company with address, email and phone. Chamber of Commerce comes later at verification.";
 
   const canSubmit = isCommunityDrager
-    ? Boolean(name && email)
-    : Boolean(name && email && acceptFindable && acceptAcquisition);
+    ? Boolean(name && email && trade)
+    : Boolean(name && email && trade && acceptFindable && acceptAcquisition);
 
   return (
     <div
@@ -213,22 +215,25 @@ export const CraftsmanRegisterModal: React.FC<CraftsmanRegisterModalProps> = ({
               </div>
 
               <div>
-                  <label className="block text-xs font-mono font-medium text-zinc-700 mb-1">
-                    {lang === "nl" ? "Vakgebied" : "Trade"}
-                  </label>
-                  <select
-                    value={trade}
-                    onChange={(e) => setTrade(e.target.value)}
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-zinc-300 bg-white focus:outline-none focus:border-[#1E3A2F]"
-                  >
-                    <option value="Schilder">Schilder & Onderhoud</option>
-                    <option value="Loodgieter">Loodgieter & Installatie</option>
-                    <option value="Timmerman">Timmerman & Kozijnen</option>
-                    <option value="Dakdekker">Dakdekker & Zinkwerk</option>
-                    <option value="Elektricien">Elektricien</option>
-                    <option value="Allround">Allround Klusbedrijf</option>
-                  </select>
-                </div>
+                <label className="block text-xs font-mono font-medium text-zinc-700 mb-1">
+                  {lang === "nl" ? "Sector *" : "Sector *"}
+                </label>
+                <select
+                  required
+                  value={trade}
+                  onChange={(e) => setTrade(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-zinc-300 bg-white focus:outline-none focus:border-[#1E3A2F]"
+                >
+                  <option value="" disabled>
+                    {lang === "nl" ? "Kies een van de 12 sectoren" : "Choose one of the 12 sectors"}
+                  </option>
+                  {PUBLIC_TRADES.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {lang === "nl" ? option.labelNl : option.labelEn}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
               <div>
                 <label className="block text-xs font-mono font-medium text-zinc-700 mb-1">
