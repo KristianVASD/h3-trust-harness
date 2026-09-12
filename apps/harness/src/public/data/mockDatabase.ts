@@ -365,7 +365,7 @@ export const trustLadderLevels = [
     term: 'Geverifieerd Vertrouwensanker',
     internal: 'Target Verified (KvK-pass + ≥3 bronnen + CARA)',
     desc: 'Volledige verificatie: actieve KvK-gate, minstens 3 onafhankelijke bronnen en menselijk bezegeld. Zichtbaar voor huishoudens.',
-    badge: 'Volledig Geverifieerd',
+    badge: 'Geverifieerd',
     badgeColor: 'bg-[#1E3A2F] text-white border-[#1E3A2F]',
   },
 ];

@@ -63,17 +63,19 @@ export const TrustLadder: React.FC<TrustLadderProps> = ({ lang }) => {
             trustLadderLevels.find((l) => l.step === activeStep) ||
             trustLadderLevels[4];
           return (
-            <div className="p-6 sm:p-8 rounded-2xl bg-white border border-zinc-200 shadow-2xs grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_16rem] gap-6">
+            <div className="p-5 sm:p-8 rounded-2xl bg-white border border-zinc-200 shadow-2xs grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_16rem] gap-6 min-w-0">
               <div className="min-w-0 space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="w-7 h-7 rounded-full bg-[#1E3A2F] text-white text-xs font-mono font-semibold flex items-center justify-center shrink-0">
-                    {current.step}
-                  </span>
-                  <h3 className="font-serif text-xl sm:text-2xl text-zinc-900 font-semibold leading-snug">
-                    {current.term}
-                  </h3>
+                <div className="flex flex-col items-start gap-2 min-w-0">
+                  <div className="flex items-start gap-2 min-w-0 w-full">
+                    <span className="w-7 h-7 rounded-full bg-[#1E3A2F] text-white text-xs font-mono font-semibold flex items-center justify-center shrink-0">
+                      {current.step}
+                    </span>
+                    <h3 className="min-w-0 flex-1 font-serif text-xl sm:text-2xl text-zinc-900 font-semibold leading-snug">
+                      {current.term}
+                    </h3>
+                  </div>
                   <span
-                    className={`text-xs font-mono px-2.5 py-0.5 rounded-full border ${current.badgeColor}`}
+                    className={`max-w-full text-xs font-mono px-2.5 py-0.5 rounded-full border whitespace-normal ${current.badgeColor}`}
                   >
                     {current.badge}
                   </span>
