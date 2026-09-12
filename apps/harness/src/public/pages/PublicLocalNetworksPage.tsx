@@ -8,6 +8,7 @@ export function PublicLocalNetworksPage() {
       lang={lang}
       onBackToHome={() => navigateView("home")}
       onOpenCommunityModal={() => openRegister(true)}
+      onNavigate={navigateView}
     />
   );
 }

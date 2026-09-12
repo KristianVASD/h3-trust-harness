@@ -53,7 +53,7 @@ export const HowItWorks: React.FC<HowItWorksProps> = ({ lang }) => {
           <span className="text-xs font-mono uppercase tracking-widest text-[#406A56] font-semibold">
             {lang === 'nl' ? 'Het Proces' : 'The Process'}
           </span>
-          <h2 className="font-serif text-3xl sm:text-4xl text-zinc-900 font-normal tracking-tight mt-2">
+          <h2 className="font-serif text-3xl sm:text-4xl text-zinc-900 font-normal mt-2">
             {t.title}
           </h2>
           <p className="text-base text-zinc-600 mt-3 font-sans">
@@ -67,14 +67,14 @@ export const HowItWorks: React.FC<HowItWorksProps> = ({ lang }) => {
             return (
               <div
                 key={step.num}
-                className="p-6 sm:p-8 rounded-2xl bg-[#FBFBFA] border border-zinc-200 flex flex-col justify-between"
+                className="min-w-0 p-6 sm:p-8 rounded-2xl bg-[#FBFBFA] border border-zinc-200 flex flex-col justify-between"
               >
                 <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="w-8 h-8 rounded-lg bg-[#1E3A2F] text-white font-mono text-sm font-semibold flex items-center justify-center">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                    <span className="w-8 h-8 rounded-lg bg-[#1E3A2F] text-white font-mono text-sm font-semibold flex items-center justify-center shrink-0">
                       <Icon className="w-4 h-4" />
                     </span>
-                    <span className={`text-[11px] font-mono px-2.5 py-1 rounded-md border border-zinc-200 ${step.color}`}>
+                    <span className={`text-[11px] font-mono px-2.5 py-1 rounded-md border border-zinc-200 max-w-full ${step.color}`}>
                       {step.tag}
                     </span>
                   </div>

@@ -1,19 +1,25 @@
 import React from 'react';
 import { ArrowLeft, ArrowUpRight, CheckCircle2, Sparkles } from 'lucide-react';
-import { Language } from '../types';
+import { Language, PageView } from '../types';
 import { sectorComparisons } from '../data/mockDatabase';
+import { translations } from '../data/translations';
+import { LayerGuide } from './LayerGuide';
 
 interface SectorsPageProps {
   lang: Language;
   onBackToHome: () => void;
   onOpenPartnerModal: () => void;
+  onNavigate: (view: PageView) => void;
 }
 
 export const SectorsPage: React.FC<SectorsPageProps> = ({
   lang,
   onBackToHome,
   onOpenPartnerModal,
+  onNavigate,
 }) => {
+  const bridge = translations[lang].sectorsPage.bridge;
+
   return (
     <div className="public-section">
       <div className="public-page-card px-5 sm:px-8 lg:px-12 py-8 sm:py-12">
@@ -25,6 +31,8 @@ export const SectorsPage: React.FC<SectorsPageProps> = ({
           <ArrowLeft className="w-3.5 h-3.5" />
           <span>{lang === 'nl' ? 'Terug naar homepage' : 'Back to homepage'}</span>
         </button>
+
+        <LayerGuide lang={lang} current="sectoren" onNavigate={onNavigate} />
 
         <div className="mb-12 pb-6 border-b border-zinc-200">
           <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-[#C58B3A]/15 text-[#8D5B18] text-xs font-mono font-medium mb-3">
@@ -38,6 +46,9 @@ export const SectorsPage: React.FC<SectorsPageProps> = ({
             {lang === 'nl'
               ? 'Kwaliteit staat onder druk door onkundig handelen en fraudeurs. Elke sector werkt aan het borgen van kwaliteit, maar kleinere ondernemers worden vaak niet bereikt. Private huiseigenaren krijgen daardoor niet altijd de kwaliteit. H3 Trust ondersteunt brancheverenigingen en sectorkwaliteitsorganisaties met het uitbreiden van gekwalificeerd werken.'
               : 'Quality is under pressure from incompetent work and fraud. Every sector is working to safeguard quality, but smaller businesses are often not reached. Private homeowners therefore do not always get the quality they need. H3 Trust supports trade associations and sector quality organisations to expand qualified work.'}
+          </p>
+          <p className="text-sm sm:text-base text-zinc-600 font-sans mt-4 max-w-3xl leading-relaxed">
+            {bridge}
           </p>
         </div>
 

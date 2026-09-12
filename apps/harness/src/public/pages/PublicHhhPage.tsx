@@ -7,6 +7,8 @@ export function PublicHhhPage() {
     <HandyHouseHelpBridge
       lang={lang}
       onExploreMatching={() => navigateView("zoeken")}
+      showLayerGuide
+      onNavigate={navigateView}
     />
   );
 }

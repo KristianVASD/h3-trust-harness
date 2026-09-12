@@ -26,10 +26,10 @@
   background-color: var(--color-canvas);
   color: var(--color-ink-primary);
   min-height: 100%;
-  word-spacing: normal;
-  letter-spacing: normal;
+  word-spacing: 0.08em;
+  letter-spacing: 0.01em;
   word-break: normal;
-  overflow-wrap: normal;
+  overflow-wrap: break-word;
 }
 
 .public-shell h1,
@@ -42,9 +42,9 @@
 .public-shell a,
 .public-shell li,
 .public-shell label {
-  word-spacing: normal;
-  letter-spacing: inherit;
-  overflow-wrap: normal;
+  word-spacing: 0.08em;
+  letter-spacing: 0.01em;
+  overflow-wrap: break-word;
   word-break: normal;
   hyphens: none;
 }

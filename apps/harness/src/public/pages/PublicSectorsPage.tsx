@@ -8,6 +8,7 @@ export function PublicSectorsPage() {
       lang={lang}
       onBackToHome={() => navigateView("home")}
       onOpenPartnerModal={openPartner}
+      onNavigate={navigateView}
     />
   );
 }
