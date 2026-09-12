@@ -90,6 +90,7 @@ import {
   type SearchDemand,
 } from "./auth.js";
 import { registerWorkerAdminRoutes } from "./worker-admin-routes.js";
+import { registerPublicRoutes } from "./public-routes.js";
 
 function normPlace(value: string): string {
   return value
@@ -319,6 +320,8 @@ export function createApp(options: CreateAppOptions) {
     return c.json({ profile: data });
   });
 
+  registerPublicRoutes(app, store);
+
   app.get("/api/admin/volunteers", async (c) => {
     const auth = c.get("auth");
     if (!isAdmin(auth) || !admin) {
@@ -327,7 +330,13 @@ export function createApp(options: CreateAppOptions) {
     const { data, error } = await admin
       .from("profiles")
       .select("*")
-      .eq("role", "curad_volunteer")
+      .in("role", [
+        "curad_volunteer",
+        "curad_member",
+        "sector_user",
+        "sector_expert",
+        "helper",
+      ])
       .order("created_at", { ascending: false });
     if (error) return c.json({ error: error.message }, 400);
     return c.json({ volunteers: data ?? [] });

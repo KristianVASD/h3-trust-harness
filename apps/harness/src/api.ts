@@ -304,6 +304,34 @@ export const api = {
       method: "POST",
       body: "{}",
     }),
+  listCompanyAccounts: () =>
+    request<{
+      accounts: Array<{
+        id: string;
+        user_id: string;
+        company_id: string | null;
+        legal_name: string;
+        trade: string | null;
+        city: string | null;
+        kvk_number: string | null;
+        kvk_gate: string;
+        status: string;
+        accept_free_local_connect: boolean;
+        accept_local_connection_improve: boolean;
+        opt_in_active_work: boolean;
+        created_at: string;
+      }>;
+    }>("/admin/company-accounts"),
+  approveCompanyAccount: (id: string) =>
+    request<{ account: unknown }>(`/admin/company-accounts/${id}/approve`, {
+      method: "POST",
+      body: "{}",
+    }),
+  rejectCompanyAccount: (id: string) =>
+    request<{ account: unknown }>(`/admin/company-accounts/${id}/reject`, {
+      method: "POST",
+      body: "{}",
+    }),
   listWorkerRuns: (opts?: { missionId?: string; status?: string }) => {
     const params = new URLSearchParams();
     if (opts?.missionId) params.set("missionId", opts.missionId);

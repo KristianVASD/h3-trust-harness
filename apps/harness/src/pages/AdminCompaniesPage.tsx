@@ -3,26 +3,32 @@ import { Link, Navigate } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../auth/AuthContext";
 
-type Volunteer = {
+type CompanyAccount = {
   id: string;
-  email: string;
-  role: string;
+  user_id: string;
+  company_id: string | null;
+  legal_name: string;
+  trade: string | null;
+  city: string | null;
+  kvk_number: string | null;
+  kvk_gate: string;
   status: string;
-  display_name: string | null;
-  preferred_location: string | null;
+  accept_free_local_connect: boolean;
+  accept_local_connection_improve: boolean;
+  opt_in_active_work: boolean;
   created_at: string;
 };
 
-export function AdminVolunteersPage() {
+export function AdminCompaniesPage() {
   const { isAdmin, loading, session, openMode } = useAuth();
-  const [volunteers, setVolunteers] = useState<Volunteer[]>([]);
+  const [accounts, setAccounts] = useState<CompanyAccount[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const res = await api.listVolunteers();
-      setVolunteers(res.volunteers as Volunteer[]);
+      const res = await api.listCompanyAccounts();
+      setAccounts(res.accounts);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
@@ -48,8 +54,8 @@ export function AdminVolunteersPage() {
   async function decide(id: string, action: "approve" | "reject") {
     setBusyId(id);
     try {
-      if (action === "approve") await api.approveVolunteer(id);
-      else await api.rejectVolunteer(id);
+      if (action === "approve") await api.approveCompanyAccount(id);
+      else await api.rejectCompanyAccount(id);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Action failed");
@@ -60,40 +66,44 @@ export function AdminVolunteersPage() {
 
   return (
     <main className="page">
-      <h1>People applications</h1>
+      <h1>Company applications</h1>
       <p>
-        Sector users, CURAD members, sector experts and helpers. Approve
-        curators and experts before they can write.
+        Direct-signup companies. Work-send opt-in is required and shown here.
       </p>
       {error && <p className="error">{error}</p>}
       <div className="stack">
-        {volunteers.length === 0 && <p className="empty">No volunteers yet.</p>}
-        {volunteers.map((v) => (
-          <div key={v.id} className="card-row">
+        {accounts.length === 0 && <p className="empty">No company applications yet.</p>}
+        {accounts.map((row) => (
+          <div key={row.id} className="card-row">
             <div>
-              <strong>{v.display_name || v.email}</strong>
+              <strong>{row.legal_name}</strong>
               <div className="muted">
-                {v.email} · {v.role} · {v.status}
-                {v.preferred_location ? ` · ${v.preferred_location}` : ""}
+                {row.trade || "—"} · {row.city || "—"} · {row.status}
+                {row.kvk_number ? ` · KvK ${row.kvk_number}` : ""}
+              </div>
+              <div className="muted">
+                free connect: {row.accept_free_local_connect ? "yes" : "no"} ·
+                improve: {row.accept_local_connection_improve ? "yes" : "no"} ·
+                send work: {row.opt_in_active_work ? "yes" : "no"}
               </div>
             </div>
             <div className="row">
-              {v.status !== "approved" && (
+              {row.status !== "approved" && (
                 <button
                   className="btn small"
                   type="button"
-                  disabled={busyId === v.id}
-                  onClick={() => void decide(v.id, "approve")}
+                  disabled={busyId === row.id}
+                  onClick={() => void decide(row.id, "approve")}
                 >
                   Approve
                 </button>
               )}
-              {v.status !== "rejected" && (
+              {row.status !== "rejected" && (
                 <button
                   className="btn secondary small"
                   type="button"
-                  disabled={busyId === v.id}
-                  onClick={() => void decide(v.id, "reject")}
+                  disabled={busyId === row.id}
+                  onClick={() => void decide(row.id, "reject")}
                 >
                   Reject
                 </button>

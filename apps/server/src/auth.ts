@@ -2,7 +2,14 @@ import { createClient, type SupabaseClient, type User } from "@supabase/supabase
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { Context, MiddlewareHandler, Next } from "hono";
 
-export type ProfileRole = "admin" | "curad_volunteer";
+export type ProfileRole =
+  | "admin"
+  | "curad_volunteer"
+  | "curad_member"
+  | "sector_user"
+  | "sector_expert"
+  | "helper"
+  | "company";
 export type ProfileStatus = "pending" | "approved" | "rejected";
 
 export type Profile = {
@@ -97,11 +104,26 @@ export async function resolveAuthFromRequest(
   let profile = await loadProfile(admin, data.user.id);
   if (!profile && data.user.email) {
     // Race: trigger may not have fired yet
+    const metaRole = String(
+      (data.user.user_metadata as { role?: string } | undefined)?.role ?? "",
+    );
+    const allowed: ProfileRole[] = [
+      "admin",
+      "curad_volunteer",
+      "curad_member",
+      "sector_user",
+      "sector_expert",
+      "helper",
+      "company",
+    ];
+    const role: ProfileRole = allowed.includes(metaRole as ProfileRole)
+      ? (metaRole as ProfileRole)
+      : "sector_user";
     const { error: upsertErr } = await admin.from("profiles").upsert({
       id: data.user.id,
       email: data.user.email,
-      role: "curad_volunteer",
-      status: "pending",
+      role,
+      status: role === "admin" ? "approved" : "pending",
     });
     if (!upsertErr) {
       profile = await loadProfile(admin, data.user.id);
@@ -138,10 +160,12 @@ export function canWrite(auth: AuthUser | null, authRequired: boolean): boolean 
   if (auth.profile.role === "admin" && auth.profile.status === "approved") {
     return true;
   }
-  return (
-    auth.profile.role === "curad_volunteer" &&
-    auth.profile.status === "approved"
-  );
+  const role = auth.profile.role;
+  const curator =
+    role === "curad_volunteer" ||
+    role === "curad_member" ||
+    role === "sector_expert";
+  return curator && auth.profile.status === "approved";
 }
 
 export function canReadMission(
@@ -197,7 +221,8 @@ export function requireWrite(): MiddlewareHandler<{ Variables: AppVariables }> {
       path === "/api/search/session" ||
       path === "/api/search/consume" ||
       path === "/api/search/demand" ||
-      path.startsWith("/api/admin/")
+      path.startsWith("/api/admin/") ||
+      path.startsWith("/api/public/")
     ) {
       return next();
     }

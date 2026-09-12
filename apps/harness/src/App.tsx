@@ -1,9 +1,16 @@
-import { NavLink, Navigate, Route, Routes } from "react-router-dom";
-import { useAuth } from "./auth/AuthContext";
-import { PendingBanner } from "./components/PendingBanner";
+import { Navigate, Route, Routes } from "react-router-dom";
+import { HarnessLayout } from "./layouts/HarnessLayout";
 import { MissionLayout } from "./layouts/MissionLayout";
 import { WorkerLayout } from "./layouts/WorkerLayout";
-import { HomePage } from "./pages/HomePage";
+import { AdminLayout } from "./layouts/AdminLayout";
+import { PublicLayout } from "./public/PublicLayout";
+import { PublicHomePage } from "./public/pages/PublicHomePage";
+import { PublicHowItWorksPage } from "./public/pages/PublicHowItWorksPage";
+import { PublicSectorsPage } from "./public/pages/PublicSectorsPage";
+import { PublicLocalNetworksPage } from "./public/pages/PublicLocalNetworksPage";
+import { PublicHhhPage } from "./public/pages/PublicHhhPage";
+import { PublicAboutPage } from "./public/pages/PublicAboutPage";
+import { PublicSearchPage } from "./public/pages/PublicSearchPage";
 import { ControlLayout } from "./pages/control/ControlLayout";
 import { ControlCountriesPage } from "./pages/control/ControlCountriesPage";
 import { ControlCountryPage } from "./pages/control/ControlCountryPage";
@@ -26,81 +33,29 @@ import { WorkerCoveragePage } from "./pages/worker/WorkerCoveragePage";
 import { WorkerSearchStepPage } from "./pages/worker/WorkerSearchStepPage";
 import { WorkerResultsPage } from "./pages/worker/WorkerResultsPage";
 import { LoginPage } from "./pages/LoginPage";
-import { SignupPage } from "./pages/SignupPage";
+import { PublicJoinPage } from "./public/pages/PublicJoinPage";
+import { AdminCompaniesPage } from "./pages/AdminCompaniesPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { AdminVolunteersPage } from "./pages/AdminVolunteersPage";
-import { AdminLayout } from "./layouts/AdminLayout";
 import { AdminEnginePage } from "./pages/AdminEnginePage";
 import { AdminEngineRunPage } from "./pages/AdminEngineRunPage";
 
-function AccountNav() {
-  const { session, profile, isAdmin, loading, signOut } = useAuth();
-  if (loading) return null;
-  if (!session) {
-    return (
-      <>
-        <NavLink className="topnav-link" to="/login">
-          Sign in
-        </NavLink>
-        <NavLink className="topnav-link topnav-link--cta" to="/signup">
-          Join CURAD
-        </NavLink>
-      </>
-    );
-  }
-  return (
-    <>
-      {isAdmin && (
-        <NavLink className="topnav-link" to="/admin">
-          Admin
-        </NavLink>
-      )}
-      <NavLink className="topnav-link topnav-link--account" to="/settings">
-        {profile?.display_name || profile?.email || "Account"}
-      </NavLink>
-      <button
-        type="button"
-        className="topnav-link topnav-link--quiet"
-        onClick={() => void signOut()}
-      >
-        Sign out
-      </button>
-    </>
-  );
-}
-
 export function App() {
-  const { isPending, openMode, canWrite } = useAuth();
-
   return (
-    <div className="app-shell">
-      <header className="topbar">
-        <div>
-          <NavLink to="/" className="brand">
-            H3 Trust <span>Harness</span>
-          </NavLink>
-          <p className="tagline">
-            Local trust — humans investigate today, OmegaClaw tomorrow.
-          </p>
-        </div>
-        <nav className="topnav" aria-label="Primary">
-          <NavLink className="topnav-link" to="/" end>
-            Home
-          </NavLink>
-          <NavLink className="topnav-link" to="/control">
-            Mission Control
-          </NavLink>
-          <NavLink className="topnav-link" to="/search">
-            Search
-          </NavLink>
-          <AccountNav />
-        </nav>
-      </header>
+    <Routes>
+      <Route element={<PublicLayout />}>
+        <Route path="/" element={<PublicHomePage />} />
+        <Route path="/hoe-het-werkt" element={<PublicHowItWorksPage />} />
+        <Route path="/sectoren" element={<PublicSectorsPage />} />
+        <Route path="/lokale-netwerken" element={<PublicLocalNetworksPage />} />
+        <Route path="/handyhousehelp" element={<PublicHhhPage />} />
+        <Route path="/over-h3" element={<PublicAboutPage />} />
+        <Route path="/zoeken" element={<PublicSearchPage />} />
+        <Route path="/join" element={<PublicJoinPage />} />
+        <Route path="/signup" element={<Navigate to="/join" replace />} />
+      </Route>
 
-      <PendingBanner show={isPending && !canWrite && !openMode} />
-
-      <Routes>
-        <Route path="/" element={<HomePage />} />
+      <Route element={<HarnessLayout />}>
         <Route path="/control" element={<ControlLayout />}>
           <Route index element={<ControlCountriesPage />} />
           <Route path=":country" element={<ControlCountryPage />} />
@@ -108,13 +63,13 @@ export function App() {
         </Route>
         <Route path="/search" element={<SingleSearchPage />} />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/signup" element={<SignupPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/admin" element={<AdminLayout />}>
           <Route index element={<Navigate to="engine" replace />} />
           <Route path="engine" element={<AdminEnginePage />} />
           <Route path="engine/:runId" element={<AdminEngineRunPage />} />
           <Route path="volunteers" element={<AdminVolunteersPage />} />
+          <Route path="companies" element={<AdminCompaniesPage />} />
         </Route>
 
         <Route path="/work/:missionId" element={<WorkerLayout />}>
@@ -143,7 +98,7 @@ export function App() {
           <Route path="situation" element={<SituationRoomPage />} />
           <Route path="graph" element={<KnowledgeGraphPage />} />
         </Route>
-      </Routes>
-    </div>
+      </Route>
+    </Routes>
   );
 }

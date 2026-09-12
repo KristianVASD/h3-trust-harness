@@ -28,6 +28,9 @@ export function AdminLayout() {
         <NavLink className="topnav-link" to="/admin/volunteers">
           Volunteers
         </NavLink>
+        <NavLink className="topnav-link" to="/admin/companies">
+          Companies
+        </NavLink>
       </nav>
       <Outlet />
     </div>

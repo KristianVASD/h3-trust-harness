@@ -11,7 +11,14 @@ import type { Session } from "@supabase/supabase-js";
 import { supabase, supabaseConfigured } from "../lib/supabase";
 import { setAccessTokenGetter } from "../lib/api-auth";
 
-export type ProfileRole = "admin" | "curad_volunteer";
+export type ProfileRole =
+  | "admin"
+  | "curad_volunteer"
+  | "curad_member"
+  | "sector_user"
+  | "sector_expert"
+  | "helper"
+  | "company";
 export type ProfileStatus = "pending" | "approved" | "rejected";
 
 export type Profile = {
@@ -45,7 +52,11 @@ type AuthState = {
   isPending: boolean;
   refreshMe: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string) => Promise<void>;
+  signUp: (
+    email: string,
+    password: string,
+    options?: { role?: ProfileRole; displayName?: string },
+  ) => Promise<void>;
   signOut: () => Promise<void>;
   updatePassword: (password: string) => Promise<void>;
   updateProfile: (patch: {
@@ -96,7 +107,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         (!me.authRequired ||
           (me.profile?.status === "approved" &&
             (me.profile.role === "admin" ||
-              me.profile.role === "curad_volunteer"))),
+              me.profile.role === "curad_volunteer" ||
+              me.profile.role === "curad_member" ||
+              me.profile.role === "sector_expert"))),
     );
     setIsAdmin(
       me.isAdmin ??
@@ -185,11 +198,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   }, []);
 
-  const signUp = useCallback(async (email: string, password: string) => {
-    if (!supabase) throw new Error("Supabase is not configured");
-    const { error } = await supabase.auth.signUp({ email, password });
-    if (error) throw error;
-  }, []);
+  const signUp = useCallback(
+    async (
+      email: string,
+      password: string,
+      options?: { role?: ProfileRole; displayName?: string },
+    ) => {
+      if (!supabase) throw new Error("Supabase is not configured");
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            role: options?.role ?? "sector_user",
+            display_name: options?.displayName ?? "",
+          },
+        },
+      });
+      if (error) throw error;
+    },
+    [],
+  );
 
   const signOut = useCallback(async () => {
     if (!supabase) {
