@@ -133,8 +133,8 @@ export const SearchPreviewPage: React.FC<SearchPreviewPageProps> = ({
           ) : null}
         </div>
 
-        <div className="p-4 rounded-2xl bg-[#1E3A2F]/[0.06] border-2 border-[#1E3A2F]/25 mb-8 space-y-3 sm:space-y-0 sm:flex sm:items-center sm:gap-3">
-          <div className="relative flex-1">
+        <div className="p-3 sm:p-4 rounded-2xl bg-[#1E3A2F]/[0.06] border-2 border-[#1E3A2F]/25 mb-8 space-y-3 min-w-0">
+          <div className="relative min-w-0">
             <Search className="w-4 h-4 text-[#1E3A2F] absolute left-3 top-3.5" />
             <input
               type="text"
@@ -142,18 +142,18 @@ export const SearchPreviewPage: React.FC<SearchPreviewPageProps> = ({
               onChange={(e) => setQuery(e.target.value)}
               placeholder={
                 lang === "nl"
-                  ? "Zoek op naam, vak of wijk (bv. De Pijp)..."
+                  ? "Zoek op naam, vak of wijk..."
                   : "Search name, trade or area..."
               }
-              className="w-full pl-9 pr-3 py-3 text-sm rounded-xl border-2 border-[#1E3A2F]/30 bg-white text-zinc-900 placeholder:text-zinc-500 focus:outline-none focus:border-[#1E3A2F] focus:ring-2 focus:ring-[#406A56]/25"
+              className="w-full min-w-0 pl-9 pr-3 py-3 text-sm rounded-xl border-2 border-[#1E3A2F]/30 bg-white text-zinc-900 placeholder:text-zinc-500 focus:outline-none focus:border-[#1E3A2F] focus:ring-2 focus:ring-[#406A56]/25"
             />
           </div>
 
-          <div className="flex gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 min-w-0">
             <select
               value={selectedTrade}
               onChange={(e) => setSelectedTrade(e.target.value)}
-              className="px-3 py-3 text-xs font-sans rounded-xl border-2 border-[#1E3A2F]/30 bg-white focus:outline-none focus:border-[#1E3A2F]"
+              className="w-full min-w-0 px-3 py-3 text-xs font-sans rounded-xl border-2 border-[#1E3A2F]/30 bg-white focus:outline-none focus:border-[#1E3A2F]"
             >
               {TRADE_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -165,7 +165,7 @@ export const SearchPreviewPage: React.FC<SearchPreviewPageProps> = ({
             <select
               value={selectedCity}
               onChange={(e) => setSelectedCity(e.target.value)}
-              className="px-3 py-3 text-xs font-sans rounded-xl border-2 border-[#1E3A2F]/30 bg-white focus:outline-none focus:border-[#1E3A2F]"
+              className="w-full min-w-0 px-3 py-3 text-xs font-sans rounded-xl border-2 border-[#1E3A2F]/30 bg-white focus:outline-none focus:border-[#1E3A2F]"
             >
               <option value="all">
                 {lang === "nl" ? "Alle Steden" : "All Cities"}

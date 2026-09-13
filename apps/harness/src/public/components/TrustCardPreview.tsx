@@ -72,21 +72,21 @@ export const TrustCardPreview: React.FC<TrustCardPreviewProps> = ({ lang }) => {
           </button>
         </div>
 
-        <div className="rounded-2xl border border-zinc-200 bg-[#FBFBFA] p-5 sm:p-8">
+        <div className="min-w-0 rounded-2xl border border-zinc-200 bg-[#FBFBFA] p-4 sm:p-8">
           
           {/* Card Top: Name, Trade, City, Badges */}
-          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 pb-6 border-b border-zinc-200/80">
-            <div>
+          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 pb-6 border-b border-zinc-200/80 min-w-0">
+            <div className="min-w-0">
               <div className="flex flex-col items-start gap-2 mb-2">
                 <h3 className="font-serif text-2xl sm:text-3xl text-zinc-900 font-semibold">
                   {currentCompany.name}
                 </h3>
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#1E3A2F] text-white">
-                  <ShieldCheck className="w-3.5 h-3.5" />
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#1E3A2F] text-white max-w-full">
+                  <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
                   <span>
-                    {lang === 'nl' 
-                      ? `Geverifieerd via ${currentCompany.sourceCount} onafhankelijke bronnen`
-                      : `Verified via ${currentCompany.sourceCount} independent sources`}
+                    {lang === 'nl'
+                      ? `${currentCompany.sourceCount} bronnen`
+                      : `${currentCompany.sourceCount} sources`}
                   </span>
                 </span>
               </div>
@@ -185,10 +185,10 @@ export const TrustCardPreview: React.FC<TrustCardPreviewProps> = ({ lang }) => {
           </div>
 
           {/* Card Footer with Inspect Action Button */}
-          <div className="pt-4 border-t border-zinc-200 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="flex items-center space-x-2 text-xs text-zinc-500 font-mono">
-              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
-              <span>CARA-toetsing: {currentCompany.caraReviewedBy}</span>
+          <div className="pt-4 border-t border-zinc-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 min-w-0">
+            <div className="flex items-start gap-2 text-xs text-zinc-500 font-mono min-w-0">
+              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 shrink-0 mt-1" />
+              <span className="min-w-0">CARA: {currentCompany.caraReviewedBy}</span>
             </div>
 
             <button
@@ -206,61 +206,62 @@ export const TrustCardPreview: React.FC<TrustCardPreviewProps> = ({ lang }) => {
 
           {/* Micro-interaction: The Calm Inspection Drawer (No Black Box) */}
           {inspectOpen && (
-            <div className="mt-6 pt-6 border-t border-zinc-200 bg-white p-5 sm:p-6 rounded-xl border border-zinc-200">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center space-x-2">
-                  <FileText className="w-4 h-4 text-[#1E3A2F]" />
-                  <h5 className="font-serif font-semibold text-base text-zinc-900">
+            <div className="mt-6 pt-6 border-t border-zinc-200 bg-white p-4 sm:p-6 rounded-xl min-w-0">
+              <div className="flex flex-col items-start gap-2 mb-4 min-w-0">
+                <div className="flex items-start gap-2 min-w-0 w-full">
+                  <FileText className="w-4 h-4 text-[#1E3A2F] shrink-0 mt-0.5" />
+                  <h5 className="min-w-0 flex-1 font-serif font-semibold text-base text-zinc-900 leading-snug">
                     {t.inspectHeading}
                   </h5>
                 </div>
-                <span className="text-xs font-mono text-zinc-400">
+                <span className="text-xs font-mono text-zinc-400 break-all max-w-full">
                   ID: {currentCompany.id}
                 </span>
               </div>
 
-              <p className="text-xs text-zinc-500 font-sans mb-4">
+              <p className="text-xs text-zinc-500 font-sans mb-4 leading-relaxed">
                 {t.noBlackBox}
               </p>
 
-              {/* Source Records List */}
               <div className="space-y-3 mb-5">
                 {currentCompany.sources.map((src) => (
                   <div
                     key={src.id}
-                    className="p-3 rounded-lg border border-zinc-200 bg-[#FBFBFA] flex flex-col sm:flex-row sm:items-start justify-between gap-2"
+                    className="min-w-0 p-3 rounded-lg border border-zinc-200 bg-[#FBFBFA] space-y-2"
                   >
-                    <div className="space-y-1">
-                      <div className="flex items-center space-x-2">
-                        <span className="text-xs font-semibold text-zinc-900">{src.name}</span>
+                    <div className="min-w-0 space-y-1.5">
+                      <span className="block text-xs font-semibold text-zinc-900">
+                        {src.name}
+                      </span>
+                      <div className="flex flex-wrap gap-1">
                         <span className="px-1.5 py-0.5 rounded text-[10px] font-mono uppercase bg-zinc-200 text-zinc-700">
                           {src.type}
                         </span>
                         <span className="text-[10px] font-mono text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                          Status: {src.status}
+                          {src.status}
                         </span>
                       </div>
-                      <p className="text-xs text-zinc-600 font-sans">
+                      <p className="text-xs text-zinc-600 font-sans leading-relaxed">
                         {src.description}
                       </p>
                     </div>
 
-                    <div className="text-right shrink-0">
-                      <div className="text-[11px] font-mono text-zinc-400">
-                        Hash: <span className="text-zinc-600">{src.hash}</span>
-                      </div>
-                      <div className="text-[11px] font-mono text-zinc-400">
-                        Geverifieerd: {src.verifiedAt}
-                      </div>
+                    <div className="min-w-0 text-[11px] font-mono text-zinc-400 space-y-0.5">
+                      {src.hash ? (
+                        <div className="break-all">
+                          Hash: <span className="text-zinc-600">{src.hash}</span>
+                        </div>
+                      ) : null}
+                      <div>Geverifieerd: {src.verifiedAt}</div>
                     </div>
                   </div>
                 ))}
               </div>
 
               {/* Human Sovereignty Seal info */}
-              <div className="p-3 rounded-lg bg-[#1E3A2F]/5 border border-[#1E3A2F]/15 flex items-start space-x-3">
+              <div className="p-3 rounded-lg bg-[#1E3A2F]/5 border border-[#1E3A2F]/15 flex items-start gap-3 min-w-0">
                 <UserCheck className="w-5 h-5 text-[#1E3A2F] shrink-0 mt-0.5" />
-                <div className="text-xs">
+                <div className="text-xs min-w-0">
                   <p className="font-semibold text-[#1E3A2F]">
                     {lang === 'nl' 
                       ? 'Menselijke CARA-curatie bezegeld door onafhankelijke CURAD'
