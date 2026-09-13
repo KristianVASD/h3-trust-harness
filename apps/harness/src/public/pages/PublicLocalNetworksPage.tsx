@@ -7,7 +7,7 @@ export function PublicLocalNetworksPage() {
     <LocalNetworksPage
       lang={lang}
       onBackToHome={() => navigateView("home")}
-      onOpenCommunityModal={() => openRegister(true)}
+      onOpenCommunityModal={() => openRegister()}
       onNavigate={navigateView}
     />
   );

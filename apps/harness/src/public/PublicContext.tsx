@@ -4,7 +4,7 @@ import type { Language, PageView } from "./types";
 export type PublicContextValue = {
   lang: Language;
   setLang: (lang: Language) => void;
-  openRegister: (asCommunityDrager?: boolean) => void;
+  openRegister: () => void;
   openPartner: () => void;
   openHarness: () => void;
   navigateView: (view: PageView) => void;

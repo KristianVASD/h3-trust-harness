@@ -1,23 +1,21 @@
 import { randomUUID } from "node:crypto";
 import type { Hono } from "hono";
 import {
-  packMatchesTrade,
   primaryTradeId,
   TradeIdSchema,
   TRADES,
   tradeLabel,
   type Company,
-  type Mission,
   type Source,
   type TradeId,
 } from "@h3-trust/schema";
 import type { Store } from "@h3-trust/store";
-import { isNationalPack } from "./pack-match.js";
 import {
   createSupabaseAdmin,
   isAdmin,
   type AppVariables,
 } from "./auth.js";
+import { createInterestStore } from "./interest-store.js";
 
 export type PublicSourceRecord = {
   id: string;
@@ -54,25 +52,6 @@ export type PublicCompanyCard = {
   sources: PublicSourceRecord[];
   whyReliable: { kvk: string; branche: string; localAnchor: string };
 };
-
-type CandidateSubmission = {
-  id: string;
-  type: "craftsman" | "community_anchor" | "sector_partner";
-  name: string;
-  trade?: string;
-  city?: string;
-  kvkNumber?: string;
-  email: string;
-  phone?: string;
-  notes?: string;
-  kvk_gate: "pass" | "review";
-  accept_free_local_connect?: boolean;
-  accept_local_connection_improve?: boolean;
-  opt_in_active_work?: boolean;
-  submittedAt: string;
-};
-
-const candidateSubmissions: CandidateSubmission[] = [];
 
 const TRADE_FILTERS = TRADES.trades.map((trade) => ({
   id: trade.id,
@@ -225,22 +204,16 @@ function matchesQuery(card: PublicCompanyCard, query: string): boolean {
   return hay.includes(query.trim().toLowerCase());
 }
 
-function findPackForTrade(missions: Mission[], trade: string): Mission | null {
-  const tradeId = primaryTradeId(trade) ?? trade;
-  return (
-    missions.find(
-      (m) =>
-        isNationalPack(m) &&
-        (packMatchesTrade(m.subsector, String(tradeId)) ||
-          primaryTradeId(m.subsector) === tradeId),
-    ) ?? null
-  );
+function looksLikeEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
 export function registerPublicRoutes(
   app: Hono<{ Variables: AppVariables }>,
   store: Store,
+  writableRoot?: string,
 ): void {
+  const interest = createInterestStore(writableRoot);
   app.get("/api/public/featured-companies", async (c) => {
     try {
       const all = await collectPublicCompanies(store);
@@ -340,207 +313,108 @@ export function registerPublicRoutes(
 
   app.post("/api/public/apply-craftsman", async (c) => {
     const body = await c.req.json().catch(() => ({}));
-    const name = String(body.name ?? "").trim();
+    const companyName = String(body.name ?? body.companyName ?? "").trim();
+    const contactName = String(body.contactName ?? "").trim();
     const email = String(body.email ?? "").trim().toLowerCase();
-    const password = String(body.password ?? "");
     const tradeRaw = String(body.tradeId ?? body.trade ?? "").trim();
     const tradeId = resolveTradeId(tradeRaw);
     const trade = tradeId ? tradeLabel(tradeId) : tradeRaw;
-    const city = String(body.city ?? body.place ?? "").trim();
     const street = String(body.street ?? "").trim();
     const houseNumber = String(body.houseNumber ?? "").trim();
     const postcode = String(body.postcode ?? "").trim();
-    const composedAddress = String(body.address ?? "").trim();
-    const phone = String(body.phone ?? "").trim();
-    const notes = String(body.notes ?? "").trim();
-    const isCommunityDrager = Boolean(body.isCommunityDrager);
-    const cleanKvk = String(body.kvkNumber ?? "").replace(/\D/g, "");
-    const acceptFindable = Boolean(
-      body.accept_findable ?? body.accept_free_local_connect,
-    );
-    const acceptFree = acceptFindable;
-    const acceptImprove = acceptFindable;
-    const optInWork = Boolean(body.opt_in_active_work);
+    const city = String(body.city ?? body.place ?? "").trim();
+    const address =
+      [street, houseNumber].filter(Boolean).join(" ") +
+      ([postcode, city].filter(Boolean).length
+        ? `, ${[postcode, city].filter(Boolean).join(" ")}`
+        : "");
 
-    if (!name || !email) {
+    if (!companyName || !contactName || !email) {
       return c.json(
-        { success: false, error: "Naam en e-mailadres zijn verplicht." },
+        { success: false, error: "Bedrijfsnaam, jouw naam en e-mail zijn verplicht." },
         400,
       );
+    }
+    if (!looksLikeEmail(email)) {
+      return c.json({ success: false, error: "Vul een geldig e-mailadres in." }, 400);
     }
     if (!tradeId) {
       return c.json(
-        {
-          success: false,
-          error: "Kies een van de 12 sectoren (vakdeuren).",
-        },
+        { success: false, error: "Kies een van de 12 sectoren." },
         400,
       );
     }
-    if (!isCommunityDrager && (!acceptFindable || !optInWork)) {
+    if (!street || !houseNumber || !postcode || !city) {
+      return c.json(
+        { success: false, error: "Vul een volledig adres in (straat, nummer, postcode, plaats)." },
+        400,
+      );
+    }
+
+    try {
+      const saved = await interest.save({
+        id: randomUUID(),
+        type: "company",
+        companyName,
+        contactName,
+        email,
+        trade: trade || undefined,
+        street,
+        houseNumber,
+        postcode,
+        city,
+        address,
+        submittedAt: new Date().toISOString(),
+      });
+      return c.json({ success: true, submissionId: saved.id });
+    } catch (err) {
+      console.error("[public] interest save", err);
       return c.json(
         {
           success: false,
-          error:
-            "Kies voor vindbaar zijn én acquisitie (actief werk sturen).",
+          error: err instanceof Error ? err.message : "Aanmelding kon niet worden bewaard.",
         },
-        400,
+        500,
       );
     }
-
-    const kvk_gate: "pass" | "review" = "review";
-    const addressLine =
-      composedAddress ||
-      [street, houseNumber].filter(Boolean).join(" ") +
-        ([postcode, city].filter(Boolean).length
-          ? `, ${[postcode, city].filter(Boolean).join(" ")}`
-          : "");
-    const submission: CandidateSubmission = {
-      id: `app-${Date.now()}`,
-      type: isCommunityDrager ? "community_anchor" : "craftsman",
-      name,
-      trade,
-      city: city || addressLine,
-      kvkNumber: cleanKvk,
-      email,
-      phone,
-      notes: [notes, addressLine].filter(Boolean).join(" · "),
-      kvk_gate,
-      accept_free_local_connect: acceptFree,
-      accept_local_connection_improve: acceptImprove,
-      opt_in_active_work: optInWork,
-      submittedAt: new Date().toISOString(),
-    };
-    candidateSubmissions.push(submission);
-
-    const admin = createSupabaseAdmin();
-    let userId: string | null = null;
-    let companyId: string | null = null;
-
-    if (admin && password.length >= 8) {
-      const { data: created, error: createErr } =
-        await admin.auth.admin.createUser({
-          email,
-          password,
-          email_confirm: true,
-          user_metadata: { role: "company", display_name: name },
-        });
-      if (createErr || !created.user) {
-        return c.json(
-          {
-            success: false,
-            error: createErr?.message ?? "Kon account niet aanmaken.",
-          },
-          400,
-        );
-      }
-      userId = created.user.id;
-      await admin.from("profiles").upsert({
-        id: userId,
-        email,
-        role: "company",
-        status: "pending",
-        display_name: name,
-        preferred_location: city || null,
-        updated_at: new Date().toISOString(),
-      });
-
-      const missions = await store.listMissions();
-      const pack = findPackForTrade(missions, tradeId);
-      if (pack) {
-        const now = new Date().toISOString();
-        const company = await store.upsert("companies", {
-          id: randomUUID(),
-          missionId: pack.id,
-          producer: "Human",
-          createdAt: now,
-          updatedAt: now,
-          v: 1,
-          name,
-          address: addressLine || city,
-          region: city,
-          sector: pack.sector,
-          category: tradeId,
-          kvk_number: cleanKvk || undefined,
-          kvk_gate: kvk_gate === "pass" ? "pass" : "unchecked",
-          source_ids: [],
-          list_membership: [],
-          blacklist_flags: [],
-          status: "candidate",
-          capabilities: [],
-          serviceContexts: ["private"],
-          differentiators: [],
-          servicedElementCodes: [],
-          email,
-          phone: phone || undefined,
-          profileSnippet: notes || undefined,
-        });
-        companyId = company.id;
-      }
-
-      const consentedAt = new Date().toISOString();
-      const { error: accountErr } = await admin.from("company_accounts").insert({
-        user_id: userId,
-        company_id: companyId,
-        legal_name: name,
-        trade: tradeId,
-        city,
-        kvk_number: cleanKvk || null,
-        kvk_gate,
-        status: kvk_gate === "pass" ? "kvk_passed" : "pending",
-        accept_free_local_connect: true,
-        accept_local_connection_improve: true,
-        opt_in_active_work: true,
-        consented_at: consentedAt,
-        phone: phone || null,
-        notes: notes || null,
-        is_community_drager: isCommunityDrager,
-      });
-      if (accountErr) {
-        console.error("[public] company_accounts insert", accountErr);
-      }
-    }
-
-    return c.json({
-      success: true,
-      message: isCommunityDrager
-        ? "Dank voor de nominatie. H3 neemt contact op met dit bedrijf als regionaal vertrouwensanker."
-        : "Aanmelding ontvangen. HandyHouseHelp mag je lokaal verbinden; we nemen de vraag tot het sturen van werk mee.",
-      submissionId: submission.id,
-      kvkGateStatus: kvk_gate,
-      userId,
-      companyId,
-    });
   });
 
   app.post("/api/public/apply-partner", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     const organizationName = String(body.organizationName ?? "").trim();
-    const email = String(body.email ?? "").trim();
-    const sector = String(body.sector ?? "").trim();
+    const email = String(body.email ?? "").trim().toLowerCase();
     const contactName = String(body.contactName ?? "").trim();
     const message = String(body.message ?? "").trim();
-    if (!organizationName || !email) {
+    if (!organizationName || !contactName || !email) {
       return c.json(
-        { success: false, error: "Organisatienaam en e-mail zijn verplicht." },
+        { success: false, error: "Naam, organisatie en e-mail zijn verplicht." },
         400,
       );
     }
-    candidateSubmissions.push({
-      id: `sector-${Date.now()}`,
-      type: "sector_partner",
-      name: organizationName,
-      trade: sector,
-      email,
-      notes: `Contact: ${contactName}. Bericht: ${message}`,
-      kvk_gate: "pass",
-      submittedAt: new Date().toISOString(),
-    });
-    return c.json({
-      success: true,
-      message:
-        "Dank voor de interesse. Ons team voor sectorverbinding neemt binnen 2 werkdagen contact op.",
-    });
+    if (!looksLikeEmail(email)) {
+      return c.json({ success: false, error: "Vul een geldig e-mailadres in." }, 400);
+    }
+    try {
+      const saved = await interest.save({
+        id: randomUUID(),
+        type: "sector",
+        organization: organizationName,
+        contactName,
+        email,
+        notes: message || undefined,
+        submittedAt: new Date().toISOString(),
+      });
+      return c.json({ success: true, submissionId: saved.id });
+    } catch (err) {
+      console.error("[public] interest save", err);
+      return c.json(
+        {
+          success: false,
+          error: err instanceof Error ? err.message : "Aanmelding kon niet worden bewaard.",
+        },
+        500,
+      );
+    }
   });
 
   app.get("/api/admin/company-accounts", async (c) => {

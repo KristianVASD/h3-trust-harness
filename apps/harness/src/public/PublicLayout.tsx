@@ -26,7 +26,6 @@ export function PublicLayout() {
   const location = useLocation();
   const [lang, setLangState] = useState<Language>(readLang);
   const [registerOpen, setRegisterOpen] = useState(false);
-  const [communityDrager, setCommunityDrager] = useState(false);
   const [partnerOpen, setPartnerOpen] = useState(false);
   const [harnessOpen, setHarnessOpen] = useState(false);
 
@@ -49,8 +48,7 @@ export function PublicLayout() {
     [navigate],
   );
 
-  const openRegister = useCallback((asCommunityDrager = false) => {
-    setCommunityDrager(asCommunityDrager);
+  const openRegister = useCallback(() => {
     setRegisterOpen(true);
   }, []);
 
@@ -86,13 +84,12 @@ export function PublicLayout() {
         <Footer
           lang={lang}
           onNavigate={navigateView}
-          onOpenRegisterModal={() => openRegister(false)}
+          onOpenRegisterModal={openRegister}
           onOpenHarnessModal={openHarness}
         />
         <CraftsmanRegisterModal
           isOpen={registerOpen}
           onClose={() => setRegisterOpen(false)}
-          isCommunityDrager={communityDrager}
           lang={lang}
         />
         <PartnerModal

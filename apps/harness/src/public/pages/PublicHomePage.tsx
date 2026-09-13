@@ -30,11 +30,7 @@ export function PublicHomePage() {
       <HowItWorks lang={lang} />
       <TrustLadder lang={lang} />
       <LocalTrustSection lang={lang} />
-      <TwoPathsSection
-        lang={lang}
-        onOpenCommunityModal={() => openRegister(true)}
-        onOpenRegisterModal={() => openRegister(false)}
-      />
+      <TwoPathsSection lang={lang} onOpenRegisterModal={openRegister} />
       <LiftSectorsSection lang={lang} onOpenPartnerModal={openPartner} />
       <HandyHouseHelpBridge
         lang={lang}

@@ -320,7 +320,7 @@ export function createApp(options: CreateAppOptions) {
     return c.json({ profile: data });
   });
 
-  registerPublicRoutes(app, store);
+  registerPublicRoutes(app, store, writableRoot);
 
   app.get("/api/admin/volunteers", async (c) => {
     const auth = c.get("auth");
