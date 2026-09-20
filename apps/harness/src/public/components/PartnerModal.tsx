@@ -23,7 +23,6 @@ export const PartnerModal: React.FC<PartnerModalProps> = ({
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [sourceHolderKind, setSourceHolderKind] = useState(initialKind);
-  const [shareFull, setShareFull] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +34,6 @@ export const PartnerModal: React.FC<PartnerModalProps> = ({
     setEmail("");
     setMessage("");
     setSourceHolderKind(initialKind);
-    setShareFull(false);
     setSubmitting(false);
     setSubmitted(false);
     setError(null);
@@ -75,7 +73,7 @@ export const PartnerModal: React.FC<PartnerModalProps> = ({
           email: email.trim(),
           message: message.trim(),
           sourceHolderKind,
-          shareManagedCompanyData: shareFull,
+          shareManagedCompanyData: false,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -139,21 +137,13 @@ export const PartnerModal: React.FC<PartnerModalProps> = ({
               <p className="text-sm text-zinc-700 font-sans mb-6 leading-relaxed">
                 {t.thanksShare}
               </p>
-              <div className="flex flex-col gap-2">
-                <a
-                  href="/leden-uitnodiging"
-                  className="px-6 py-2.5 rounded-xl border border-[#1E3A2F] text-[#1E3A2F] text-sm font-semibold hover:bg-[#F4F4F2]"
-                >
-                  {t.thanksInviteCta}
-                </a>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="px-6 py-2.5 rounded-xl bg-[#1E3A2F] text-white text-sm font-semibold hover:bg-[#162B23]"
-                >
-                  {t.close}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-6 py-2.5 rounded-xl bg-[#1E3A2F] text-white text-sm font-semibold hover:bg-[#162B23]"
+              >
+                {t.close}
+              </button>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-3.5">
@@ -237,16 +227,6 @@ export const PartnerModal: React.FC<PartnerModalProps> = ({
                   className="w-full px-3 py-2 text-sm rounded-lg border border-zinc-300 bg-[#FBFBFA] focus:outline-none focus:border-[#1E3A2F] focus:bg-white"
                 />
               </div>
-
-              <label className="flex items-start gap-2 text-xs text-zinc-700 leading-relaxed">
-                <input
-                  type="checkbox"
-                  className="mt-0.5"
-                  checked={shareFull}
-                  onChange={(e) => setShareFull(e.target.checked)}
-                />
-                <span>{t.shareFullLabel}</span>
-              </label>
 
               {error ? (
                 <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">

@@ -289,7 +289,7 @@ export const CraftsmanRegisterModal: React.FC<CraftsmanRegisterModalProps> = ({
               ) : null}
 
               <p className="text-[11px] text-zinc-500 leading-relaxed">
-                {t.privacyNotice}{" "}
+                {t.registerPrivacyNotice}{" "}
                 <a href="/privacy" className="underline text-[#1E3A2F]">
                   {translations[lang].legal.privacy}
                 </a>

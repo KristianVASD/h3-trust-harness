@@ -1,25 +1,27 @@
 import React from "react";
-import { ArrowLeft, ArrowUpRight, CheckCircle2, Sparkles } from "lucide-react";
-import { Language, PageView } from "../types";
-import { sectorComparisons } from "../data/mockDatabase";
+import { ArrowLeft, ArrowRight, ArrowUpRight, BadgeCheck, MapPin, Shield } from "lucide-react";
+import { Language } from "../types";
 import { translations } from "../data/translations";
-import { LayerGuide } from "./LayerGuide";
 
 interface SectorsPageProps {
   lang: Language;
   onBackToHome: () => void;
   onOpenPartnerModal: () => void;
-  onNavigate: (view: PageView) => void;
+  onJoin: () => void;
 }
 
 export const SectorsPage: React.FC<SectorsPageProps> = ({
   lang,
   onBackToHome,
   onOpenPartnerModal,
-  onNavigate,
+  onJoin,
 }) => {
   const t = translations[lang].sectorsPage;
-  const lift = translations[lang].liftSectors;
+  const cards = [
+    { icon: BadgeCheck, title: t.card1Title, body: t.card1Desc },
+    { icon: MapPin, title: t.card2Title, body: t.card2Desc },
+    { icon: Shield, title: t.card3Title, body: t.card3Desc },
+  ] as const;
 
   return (
     <div className="public-section">
@@ -33,12 +35,9 @@ export const SectorsPage: React.FC<SectorsPageProps> = ({
           <span>{lang === "nl" ? "Terug naar homepage" : "Back to homepage"}</span>
         </button>
 
-        <LayerGuide lang={lang} current="sectoren" onNavigate={onNavigate} />
-
-        <div className="mb-12 pb-6 border-b border-zinc-200">
-          <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-[#C58B3A]/15 text-[#8D5B18] text-xs font-mono font-medium mb-3">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>{t.badge}</span>
+        <div className="mb-10 pb-6 border-b border-zinc-200">
+          <div className="inline-flex items-center px-3 py-1 rounded-full bg-[#C58B3A]/15 text-[#8D5B18] text-xs font-mono font-medium mb-3">
+            {t.badge}
           </div>
           <h1 className="font-serif text-3xl sm:text-5xl text-zinc-900 font-normal leading-tight">
             {t.title}
@@ -47,83 +46,33 @@ export const SectorsPage: React.FC<SectorsPageProps> = ({
             {t.intro}
           </p>
           <p className="text-sm sm:text-base text-zinc-600 font-sans mt-4 max-w-3xl leading-relaxed">
-            {t.bridge}
+            {t.money}
           </p>
         </div>
 
-        <div className="p-8 rounded-2xl bg-white border border-zinc-200 shadow-xs mb-12 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+          {cards.map((card) => (
+            <div
+              key={card.title}
+              className="p-6 rounded-2xl bg-white border border-zinc-200 shadow-2xs"
+            >
+              <card.icon className="w-8 h-8 text-[#1E3A2F] mb-3" />
+              <h3 className="font-serif text-lg font-semibold text-zinc-900 mb-2">
+                {card.title}
+              </h3>
+              <p className="text-sm text-zinc-600 font-sans leading-relaxed">
+                {card.body}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <div className="p-8 rounded-2xl bg-white border border-zinc-200 shadow-xs mb-12">
           <h2 className="font-serif text-2xl text-zinc-900 font-medium">
-            {t.qualityTitle}
+            {t.questionTitle}
           </h2>
-          <p className="text-sm sm:text-base text-zinc-600 font-sans leading-relaxed">
-            {t.qualityP1}
-          </p>
-          <p className="text-sm sm:text-base text-zinc-600 font-sans leading-relaxed">
-            {t.qualityP2}
-          </p>
-        </div>
-
-        <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white mb-12 shadow-xs">
-          <div className="grid grid-cols-1 md:grid-cols-3 bg-zinc-50 border-b border-zinc-200 text-xs font-mono font-semibold text-zinc-600 p-4">
-            <div>{lift.colLarge}</div>
-            <div>{lift.colSmall}</div>
-            <div className="text-[#1E3A2F]">{lift.colH3}</div>
-          </div>
-
-          <div className="divide-y divide-zinc-200 text-sm">
-            {sectorComparisons.map((item, idx) => (
-              <div
-                key={idx}
-                className="grid grid-cols-1 md:grid-cols-3 p-5 gap-4 hover:bg-[#FBFBFA] transition-colors"
-              >
-                <div className="text-zinc-500 text-xs sm:text-sm">{item.largeCorp}</div>
-                <div className="text-zinc-900 font-medium text-xs sm:text-sm">
-                  {item.smallCraftsman}
-                </div>
-                <div className="text-[#1E3A2F] bg-[#406A56]/5 p-3 rounded-lg border border-[#406A56]/15 text-xs">
-                  {item.h3Translation}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
-          <div className="p-6 rounded-2xl bg-white border border-zinc-200">
-            <h3 className="font-serif text-lg font-semibold text-zinc-900 mb-3">
-              {t.inTitle}
-            </h3>
-            <ul className="space-y-2 text-xs sm:text-sm text-zinc-600 font-sans">
-              {[t.in1, t.in2, t.in3].map((line) => (
-                <li key={line} className="flex items-start space-x-2">
-                  <CheckCircle2 className="w-4 h-4 text-[#406A56] shrink-0 mt-0.5" />
-                  <span>{line}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="p-6 rounded-2xl bg-white border border-zinc-200">
-            <h3 className="font-serif text-lg font-semibold text-zinc-900 mb-3">
-              {t.outTitle}
-            </h3>
-            <ul className="space-y-2 text-xs sm:text-sm text-zinc-600 font-sans">
-              {[t.out1, t.out2, t.out3].map((line) => (
-                <li key={line} className="flex items-start space-x-2">
-                  <CheckCircle2 className="w-4 h-4 text-[#C58B3A] shrink-0 mt-0.5" />
-                  <span>{line}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-
-        <div className="p-6 rounded-2xl bg-[#FBFBFA] border border-zinc-200 mb-12">
-          <h3 className="font-serif text-lg font-semibold text-zinc-900 mb-2">
-            {t.aiOptionalTitle}
-          </h3>
-          <p className="text-sm text-zinc-600 font-sans leading-relaxed">
-            {t.aiOptionalBody}
+          <p className="text-sm sm:text-base text-zinc-600 font-sans mt-3 leading-relaxed max-w-3xl">
+            {t.question}
           </p>
         </div>
 
@@ -133,14 +82,27 @@ export const SectorsPage: React.FC<SectorsPageProps> = ({
             <p className="text-xs sm:text-sm text-zinc-300 font-sans">{t.ctaBody}</p>
           </div>
 
-          <button
-            type="button"
-            onClick={onOpenPartnerModal}
-            className="px-6 py-3 rounded-xl bg-white text-[#1E3A2F] text-sm font-semibold hover:bg-zinc-100 transition-colors shrink-0 shadow-sm inline-flex items-center space-x-2"
-          >
-            <span>{t.ctaButton}</span>
-            <ArrowUpRight className="w-4 h-4" />
-          </button>
+          <div className="flex flex-col gap-2 shrink-0 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={onOpenPartnerModal}
+              className="px-6 py-3 rounded-xl bg-white text-[#1E3A2F] text-sm font-semibold hover:bg-zinc-100 transition-colors shadow-sm inline-flex items-center justify-center space-x-2"
+            >
+              <span>{t.ctaButton}</span>
+              <ArrowUpRight className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={onJoin}
+              className="px-6 py-2.5 rounded-xl border border-white/40 text-white text-sm font-medium hover:bg-white/10 transition-colors inline-flex items-center justify-center space-x-2"
+            >
+              <span>{t.joinCta}</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+            <p className="text-[11px] text-white/70 text-center sm:text-right leading-relaxed">
+              {t.joinHint}
+            </p>
+          </div>
         </div>
       </div>
     </div>

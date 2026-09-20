@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { CraftsmanRegisterModal } from "./components/CraftsmanRegisterModal";
 import { Footer } from "./components/Footer";
@@ -31,6 +31,27 @@ export function PublicLayout() {
   const [harnessOpen, setHarnessOpen] = useState(false);
 
   const currentView = viewFromPath(location.pathname);
+  const quietChrome =
+    currentView === "sectoren" ||
+    currentView === "lokale-netwerken" ||
+    currentView === "vakman-worden";
+
+  useEffect(() => {
+    document.title =
+      currentView === "sectoren"
+        ? lang === "nl"
+          ? "H3 — voor brancheverenigingen"
+          : "H3 — for trade associations"
+        : currentView === "lokale-netwerken"
+          ? lang === "nl"
+            ? "H3 — voor ondernemersverenigingen"
+            : "H3 — for local associations"
+          : currentView === "vakman-worden"
+            ? lang === "nl"
+              ? "H3 — Doe mee"
+              : "H3 — Get involved"
+          : "H3";
+  }, [currentView, lang]);
 
   const setLang = useCallback((next: Language) => {
     setLangState(next);
@@ -81,6 +102,7 @@ export function PublicLayout() {
           setLang={setLang}
           onOpenRegisterModal={() => navigateView("vakman-worden")}
           onOpenHarnessModal={openHarness}
+          showHarnessPreview={!quietChrome}
         />
         <main className="flex-1 pb-3">
           <Outlet />
@@ -91,6 +113,7 @@ export function PublicLayout() {
           onOpenRegisterModal={openRegister}
           onOpenPartnerModal={openPartner}
           onOpenHarnessModal={openHarness}
+          quiet={quietChrome}
         />
         <CraftsmanRegisterModal
           isOpen={registerOpen}

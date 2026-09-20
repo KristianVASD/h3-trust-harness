@@ -8,7 +8,7 @@ export function PublicSectorsPage() {
       lang={lang}
       onBackToHome={() => navigateView("home")}
       onOpenPartnerModal={() => openPartner("sector")}
-      onNavigate={navigateView}
+      onJoin={() => navigateView("vakman-worden")}
     />
   );
 }

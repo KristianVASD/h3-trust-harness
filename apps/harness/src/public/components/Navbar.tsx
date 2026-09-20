@@ -19,6 +19,7 @@ interface NavbarProps {
   setLang: (lang: Language) => void;
   onOpenRegisterModal: () => void;
   onOpenHarnessModal: () => void;
+  showHarnessPreview?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -28,6 +29,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   setLang,
   onOpenRegisterModal,
   onOpenHarnessModal,
+  showHarnessPreview = true,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const t = translations[lang].nav;
@@ -62,11 +64,13 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="min-w-0 text-left">
               <div className="flex items-center gap-2">
                 <span className="font-serif font-semibold text-[15px] sm:text-base text-zinc-900 public-nowrap">
-                  H3 Trust
+                  H3
                 </span>
+                {showHarnessPreview ? (
                 <span className="hidden sm:inline public-nowrap px-1.5 py-0.5 text-[10px] font-mono rounded bg-[#406A56]/10 text-[#1E3A2F] border border-[#406A56]/20">
                   Beneficial AI
                 </span>
+                ) : null}
               </div>
             </div>
           </button>
@@ -117,6 +121,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             </div>
 
+            {showHarnessPreview ? (
             <button
               type="button"
               onClick={onOpenHarnessModal}
@@ -125,6 +130,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Database className="w-4 h-4 text-[#C58B3A]" />
             </button>
+            ) : null}
 
             <button
               type="button"
@@ -183,6 +189,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   EN
                 </button>
               </div>
+            {showHarnessPreview ? (
               <button
                 type="button"
                 onClick={() => {
@@ -194,6 +201,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <Database className="w-3.5 h-3.5 text-[#C58B3A]" />
                 <span>{t.harnessPreview}</span>
               </button>
+            ) : null}
             </div>
           </div>
         )}

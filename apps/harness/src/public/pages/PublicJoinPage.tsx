@@ -26,6 +26,7 @@ export function PublicJoinPage() {
         lang={lang}
         onOpenRegister={openRegister}
         onOpenPartner={openPartner}
+        showIntro={false}
       />
     </div>
   );

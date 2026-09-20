@@ -6,12 +6,14 @@ interface InviteDoorsSectionProps {
   lang: Language;
   onOpenRegister: () => void;
   onOpenPartner: (kind?: string) => void;
+  showIntro?: boolean;
 }
 
 export function InviteDoorsSection({
   lang,
   onOpenRegister,
   onOpenPartner,
+  showIntro = true,
 }: InviteDoorsSectionProps) {
   const t = translations[lang].threeDoors;
 
@@ -48,6 +50,7 @@ export function InviteDoorsSection({
   return (
     <section className="public-section">
       <div className="public-page-card px-5 sm:px-8 lg:px-12 py-10 sm:py-14">
+        {showIntro ? (
         <div className="text-center max-w-2xl mx-auto mb-10">
           <span className="text-xs font-mono uppercase tracking-widest text-[#1E3A2F] font-semibold">
             {t.kicker}
@@ -59,6 +62,7 @@ export function InviteDoorsSection({
             {t.subtitle}
           </p>
         </div>
+        ) : null}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {doors.map((door) => {

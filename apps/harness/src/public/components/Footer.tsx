@@ -9,6 +9,7 @@ interface FooterProps {
   onOpenRegisterModal: () => void;
   onOpenPartnerModal: () => void;
   onOpenHarnessModal: () => void;
+  quiet?: boolean;
 }
 
 export const Footer: React.FC<FooterProps> = ({
@@ -17,6 +18,7 @@ export const Footer: React.FC<FooterProps> = ({
   onOpenRegisterModal,
   onOpenPartnerModal,
   onOpenHarnessModal,
+  quiet = false,
 }) => {
   const legal = translations[lang].legal;
   const links: { label: string; onClick?: () => void; href?: string }[] = [
@@ -58,21 +60,22 @@ export const Footer: React.FC<FooterProps> = ({
   return (
     <footer className="public-footer">
       <div className="public-footer-card px-5 sm:px-8 lg:px-10 py-8 sm:py-10">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[1.2fr_1fr_0.9fr] gap-8 lg:gap-12">
+        <div className={`grid grid-cols-1 md:grid-cols-2 ${quiet ? "lg:grid-cols-2" : "lg:grid-cols-[1.2fr_1fr_0.9fr]"} gap-8 lg:gap-12`}>
           <div className="space-y-3">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-[#406A56] text-white flex items-center justify-center font-serif font-bold text-sm">
                 H3
               </div>
               <span className="font-serif text-lg text-white font-semibold public-nowrap">
-                H3 Trust Platform
+                H3
               </span>
             </div>
             <p className="text-sm text-zinc-400 leading-relaxed max-w-sm">
               {lang === "nl"
-                ? "Lokaal-aan-lokaal: vakmensen zichtbaar op herkomst, niet op advertentiebudget. Minder kilometers, sterkere buurteconomie. H3 Trust verdient er niet aan."
-                : "Local-to-local: trades visible by provenance, not ad spend. Fewer kilometres, stronger neighborhood economy. H3 Trust does not earn from this."}
+                ? "Lokaal-aan-lokaal: vakmensen zichtbaar op herkomst, niet op advertentiebudget. Minder kilometers, sterkere buurteconomie. Wij verdienen aan abonnementen van huiseigenaren in HandyHouseHelp — niet aan vakmensen."
+                : "Local-to-local: trades visible by provenance, not ad spend. Fewer kilometres, stronger neighborhood economy. We earn from homeowner subscriptions in HandyHouseHelp — not from trades."}
             </p>
+            {quiet ? null : (
             <div className="flex flex-col gap-1.5 text-[11px] font-mono text-zinc-500">
               <a
                 href="https://bgicommons.org/"
@@ -94,6 +97,7 @@ export const Footer: React.FC<FooterProps> = ({
                   : "Part of The Artificial Superintelligence (ASI) Alliance"}
               </a>
             </div>
+            )}
           </div>
 
           <div>
@@ -126,6 +130,7 @@ export const Footer: React.FC<FooterProps> = ({
             </ul>
           </div>
 
+          {quiet ? null : (
           <div>
             <p className="font-mono text-[11px] uppercase tracking-wider text-zinc-500 mb-3">
               Open Trust Harness
@@ -144,6 +149,7 @@ export const Footer: React.FC<FooterProps> = ({
               <span>h3-trust-harness</span>
             </button>
           </div>
+          )}
         </div>
 
         <div className="mt-8 pt-5 border-t border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[11px] font-mono text-zinc-500">
@@ -179,6 +185,7 @@ export const Footer: React.FC<FooterProps> = ({
             >
               {legal.correction}
             </button>
+            {quiet ? null : (
             <button
               type="button"
               className="hover:text-zinc-300"
@@ -186,6 +193,7 @@ export const Footer: React.FC<FooterProps> = ({
             >
               {legal.memberInvite}
             </button>
+            )}
           </div>
         </div>
       </div>
