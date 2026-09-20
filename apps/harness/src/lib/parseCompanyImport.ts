@@ -1,3 +1,5 @@
+import { minimizePublicContact } from "@h3-trust/schema";
+
 export type ParsedCompanyRow = {
   name: string;
   address: string;
@@ -159,8 +161,10 @@ export function parseCompanyImport(raw: string): ParsedCompanyRow[] {
       kvk_number: kvk || undefined,
       website_url: normalizeWebsiteUrl(websiteRaw),
       specialism: specialism || undefined,
-      phone: normalizePhone(cellFor(firstCells, cells, "phone", -1, hasHeader)),
-      email: normalizeEmail(cellFor(firstCells, cells, "email", -1, hasHeader)),
+      ...minimizePublicContact({
+        phone: normalizePhone(cellFor(firstCells, cells, "phone", -1, hasHeader)),
+        email: normalizeEmail(cellFor(firstCells, cells, "email", -1, hasHeader)),
+      }),
     });
   }
   return rows;

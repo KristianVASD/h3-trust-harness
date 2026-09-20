@@ -8,6 +8,7 @@ import {
   isBlockingBarrier,
   isJunkCompanyName,
   isRegistryListUrl,
+  minimizePublicContact,
   type AccessBarrier,
   type BarrierKind,
   type Company,
@@ -971,6 +972,10 @@ function normalizeExtractPayload(
           .map((id) => accepted.find((s) => s.id === id)?.name)
           .filter((n): n is string => Boolean(n));
 
+    const contact = minimizePublicContact({
+      phone: str(c.phone) || str(c.tel),
+      email: str(c.email) || str(c.mailto),
+    });
     companies.push({
       name,
       address: str(c.address),
@@ -989,8 +994,8 @@ function normalizeExtractPayload(
         : (["name"] as SourceFieldKey[]),
       specialism: str(c.specialism),
       website_url: str(c.website_url) || str(c.website),
-      phone: str(c.phone) || str(c.tel),
-      email: str(c.email) || str(c.mailto),
+      phone: contact.phone,
+      email: contact.email,
       tier: str(c.tier),
       image: str(c.image),
     });

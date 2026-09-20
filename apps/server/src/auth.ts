@@ -257,6 +257,16 @@ export function requireLoginForMissionReads(): MiddlewareHandler<{
 }> {
   return async (c, next) => {
     if (c.get("isWorker")) return next();
+    const method = c.req.method.toUpperCase();
+    if (method !== "GET" && method !== "HEAD") return next();
+    const path = c.req.path;
+    if (
+      path.startsWith("/api/public/") ||
+      path === "/api/me" ||
+      path.startsWith("/api/search/")
+    ) {
+      return next();
+    }
     const authRequired = c.get("authRequired");
     if (!authRequired) return next();
     const auth = c.get("auth");

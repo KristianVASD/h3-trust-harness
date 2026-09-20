@@ -149,3 +149,32 @@
   color: #d4d4d8;
   box-shadow: 0 18px 50px rgba(24, 24, 27, 0.18);
 }
+
+@media print {
+  .public-shell {
+    background: #fff;
+  }
+
+  .public-chrome,
+  .public-footer,
+  .member-invite-actions {
+    display: none !important;
+  }
+
+  .public-section {
+    padding: 0;
+  }
+
+  .public-page-card,
+  .member-invite-sheet {
+    box-shadow: none;
+    border: none;
+    border-radius: 0;
+    max-width: none;
+  }
+
+  .member-invite-sheet {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}

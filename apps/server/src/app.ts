@@ -85,6 +85,7 @@ import {
   normalizeSearchDemandInput,
   recordSearchDemand,
   requireWrite,
+  requireLoginForMissionReads,
   type AppVariables,
   type Profile,
   type SearchDemand,
@@ -227,6 +228,7 @@ export function createApp(options: CreateAppOptions) {
 
   // Mutating routes need write privilege when auth is on
   app.use("/api/*", requireWrite());
+  app.use("/api/*", requireLoginForMissionReads());
 
   async function listSearchPlanVersions(): Promise<string[]> {
     try {

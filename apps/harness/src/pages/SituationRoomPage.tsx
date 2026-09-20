@@ -215,7 +215,7 @@ export function SituationRoomPage() {
               to={`/missions/${missionId}/cara?target=company`}
             />
             <Issue label="KvK gate fail" count={metrics.kvkFail} />
-            <Issue label="Blacklist flags set" count={metrics.blacklisted} />
+            <Issue label="Internal note flags set" count={metrics.blacklisted} />
             <Issue label="Rejected hypotheses" count={metrics.rejectedHyp} />
             <Issue
               label="Missing evidence on observations"

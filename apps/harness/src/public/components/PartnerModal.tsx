@@ -7,31 +7,39 @@ interface PartnerModalProps {
   isOpen: boolean;
   onClose: () => void;
   lang: Language;
+  initialKind?: string;
 }
 
 export const PartnerModal: React.FC<PartnerModalProps> = ({
   isOpen,
   onClose,
   lang,
+  initialKind = "sector",
 }) => {
   const t = translations[lang].joinForms;
+  const legal = translations[lang].legal;
   const [orgName, setOrgName] = useState("");
   const [contactName, setContactName] = useState("");
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
+  const [sourceHolderKind, setSourceHolderKind] = useState(initialKind);
+  const [shareFull, setShareFull] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!isOpen) return;
     setOrgName("");
     setContactName("");
     setEmail("");
     setMessage("");
+    setSourceHolderKind(initialKind);
+    setShareFull(false);
     setSubmitting(false);
     setSubmitted(false);
     setError(null);
-  }, [isOpen]);
+  }, [isOpen, initialKind]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -66,6 +74,8 @@ export const PartnerModal: React.FC<PartnerModalProps> = ({
           contactName: contactName.trim(),
           email: email.trim(),
           message: message.trim(),
+          sourceHolderKind,
+          shareManagedCompanyData: shareFull,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -129,13 +139,21 @@ export const PartnerModal: React.FC<PartnerModalProps> = ({
               <p className="text-sm text-zinc-700 font-sans mb-6 leading-relaxed">
                 {t.thanksShare}
               </p>
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-6 py-2.5 rounded-xl bg-[#1E3A2F] text-white text-sm font-semibold hover:bg-[#162B23]"
-              >
-                {t.close}
-              </button>
+              <div className="flex flex-col gap-2">
+                <a
+                  href="/leden-uitnodiging"
+                  className="px-6 py-2.5 rounded-xl border border-[#1E3A2F] text-[#1E3A2F] text-sm font-semibold hover:bg-[#F4F4F2]"
+                >
+                  {t.thanksInviteCta}
+                </a>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-6 py-2.5 rounded-xl bg-[#1E3A2F] text-white text-sm font-semibold hover:bg-[#162B23]"
+                >
+                  {t.close}
+                </button>
+              </div>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-3.5">
@@ -155,6 +173,23 @@ export const PartnerModal: React.FC<PartnerModalProps> = ({
                     className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-zinc-300 bg-[#FBFBFA] focus:outline-none focus:border-[#1E3A2F] focus:bg-white"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono font-medium text-zinc-700 mb-1">
+                  {t.sourceKindLabel}
+                </label>
+                <select
+                  value={sourceHolderKind}
+                  onChange={(e) => setSourceHolderKind(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-zinc-300 bg-[#FBFBFA] focus:outline-none focus:border-[#1E3A2F] focus:bg-white"
+                >
+                  <option value="sector">{t.sourceKindSector}</option>
+                  <option value="quality_mark">{t.sourceKindQuality}</option>
+                  <option value="local_association">{t.sourceKindLocal}</option>
+                  <option value="sports_club">{t.sourceKindSport}</option>
+                  <option value="other">{t.sourceKindOther}</option>
+                </select>
               </div>
 
               <div>
@@ -203,18 +238,35 @@ export const PartnerModal: React.FC<PartnerModalProps> = ({
                 />
               </div>
 
+              <label className="flex items-start gap-2 text-xs text-zinc-700 leading-relaxed">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={shareFull}
+                  onChange={(e) => setShareFull(e.target.checked)}
+                />
+                <span>{t.shareFullLabel}</span>
+              </label>
+
               {error ? (
                 <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
                   {error}
                 </p>
               ) : null}
 
+              <p className="text-[11px] text-zinc-500 leading-relaxed">
+                {t.privacyNotice}{" "}
+                <a href="/privacy" className="underline text-[#1E3A2F]">
+                  {legal.privacy}
+                </a>
+              </p>
+
               <button
                 type="submit"
                 disabled={submitting || !canSubmit}
                 className="w-full py-2.5 rounded-xl bg-[#1E3A2F] text-white font-medium text-sm hover:bg-[#162B23] disabled:opacity-50"
               >
-                {submitting ? t.sending : t.send}
+                {submitting ? t.sending : t.partnerSend}
               </button>
             </form>
           )}

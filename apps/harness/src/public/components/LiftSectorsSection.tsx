@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowUpRight, Bot, Sparkles, Building, Hammer } from 'lucide-react';
+import { ArrowUpRight, Sparkles, Building, Hammer, Users } from 'lucide-react';
 import { Language } from '../types';
 import { sectorComparisons } from '../data/mockDatabase';
 import { translations } from '../data/translations';
@@ -73,7 +73,7 @@ export const LiftSectorsSection: React.FC<LiftSectorsSectionProps> = ({
         <div className="p-8 rounded-2xl bg-[#FBFBFA] border border-zinc-200 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="space-y-2 max-w-xl">
             <div className="flex items-center space-x-2 text-[#1E3A2F]">
-              <Bot className="w-5 h-5 text-[#406A56]" />
+              <Users className="w-5 h-5 text-[#406A56]" />
               <h3 className="font-serif text-xl font-semibold text-zinc-900">
                 {t.aiHelpTitle}
               </h3>

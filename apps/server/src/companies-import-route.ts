@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   buildCompanyIndexes,
   findCompanyMatchIndex,
+  minimizePublicContact,
   type Company,
   type Producer,
   type ServiceContext,
@@ -198,8 +199,12 @@ export async function importCompaniesForMission(
     const region = (row.region ?? "").trim();
     const sector = (row.sector ?? "").trim() || specialism?.replace(/,/g, ";") || "";
     const kvk_number = (row.kvk_number ?? "").trim() || undefined;
-    const phone = normalizePhone(row.phone);
-    const email = normalizeEmail(row.email);
+    const minimized = minimizePublicContact({
+      phone: normalizePhone(row.phone),
+      email: normalizeEmail(row.email),
+    });
+    const phone = minimized.phone;
+    const email = minimized.email;
 
     const matchIndex = findCompanyMatchIndex(
       { name, kvk_number, website_url, email, address, region },

@@ -9,6 +9,7 @@ import {
   findCompanyMatchIndex,
   isLocalDirectoryMission,
   isMixedSourceCategory,
+  minimizePublicContact,
   type Company,
   type Mission,
   type Producer,
@@ -164,8 +165,7 @@ export async function importStackedMixedList(
         website_url: row.website_url,
         specialism: row.specialism,
         incomingCaps: [],
-        phone: row.phone,
-        email: row.email,
+        ...minimizePublicContact({ phone: row.phone, email: row.email }),
         serviceContexts: args.serviceContexts,
         now,
       });
@@ -366,8 +366,10 @@ export async function promoteUnknownToSectorPack(
       region: match.region || company.region,
       kvk_number: match.kvk_number || company.kvk_number,
       website_url: match.website_url || company.website_url,
-      phone: match.phone || company.phone,
-      email: match.email || company.email,
+      ...minimizePublicContact({
+        phone: match.phone || company.phone,
+        email: match.email || company.email,
+      }),
       updatedAt: now,
     })) as Company;
   } else {
@@ -564,8 +566,10 @@ export async function peelMixedOnlyFromMission(
         website_url: company.website_url,
         specialism: company.specialism,
         incomingCaps: [],
-        phone: company.phone,
-        email: company.email,
+        ...minimizePublicContact({
+          phone: company.phone,
+          email: company.email,
+        }),
         now,
       });
       const saved = (await store.upsert("companies", {

@@ -5,7 +5,7 @@ export type PublicContextValue = {
   lang: Language;
   setLang: (lang: Language) => void;
   openRegister: () => void;
-  openPartner: () => void;
+  openPartner: (kind?: string) => void;
   openHarness: () => void;
   navigateView: (view: PageView) => void;
 };

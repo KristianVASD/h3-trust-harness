@@ -34,6 +34,9 @@ import { WorkerSearchStepPage } from "./pages/worker/WorkerSearchStepPage";
 import { WorkerResultsPage } from "./pages/worker/WorkerResultsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { PublicJoinPage } from "./public/pages/PublicJoinPage";
+import { PublicLegalPage } from "./public/pages/PublicLegalPage";
+import { PublicCorrectionPage } from "./public/pages/PublicCorrectionPage";
+import { PublicMemberInvitePage } from "./public/pages/PublicMemberInvitePage";
 import { AdminCompaniesPage } from "./pages/AdminCompaniesPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { AdminVolunteersPage } from "./pages/AdminVolunteersPage";
@@ -53,6 +56,17 @@ export function App() {
         <Route path="/zoeken" element={<PublicSearchPage />} />
         <Route path="/join" element={<PublicJoinPage />} />
         <Route path="/signup" element={<Navigate to="/join" replace />} />
+        <Route path="/privacy" element={<PublicLegalPage slug="privacy" />} />
+        <Route path="/cookies" element={<PublicLegalPage slug="cookies" />} />
+        <Route path="/voorwaarden" element={<PublicLegalPage slug="voorwaarden" />} />
+        <Route
+          path="/gegevens-corrigeren"
+          element={<PublicCorrectionPage />}
+        />
+        <Route
+          path="/leden-uitnodiging"
+          element={<PublicMemberInvitePage />}
+        />
       </Route>
 
       <Route element={<HarnessLayout />}>

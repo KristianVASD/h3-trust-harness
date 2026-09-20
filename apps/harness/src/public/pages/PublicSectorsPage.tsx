@@ -7,7 +7,7 @@ export function PublicSectorsPage() {
     <SectorsPage
       lang={lang}
       onBackToHome={() => navigateView("home")}
-      onOpenPartnerModal={openPartner}
+      onOpenPartnerModal={() => openPartner("sector")}
       onNavigate={navigateView}
     />
   );

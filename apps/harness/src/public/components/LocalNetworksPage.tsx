@@ -8,6 +8,7 @@ interface LocalNetworksPageProps {
   lang: Language;
   onBackToHome: () => void;
   onOpenCommunityModal: () => void;
+  onOpenPartnerModal: () => void;
   onNavigate: (view: PageView) => void;
 }
 
@@ -15,6 +16,7 @@ export const LocalNetworksPage: React.FC<LocalNetworksPageProps> = ({
   lang,
   onBackToHome,
   onOpenCommunityModal,
+  onOpenPartnerModal,
   onNavigate,
 }) => {
   const t = translations[lang].localNetworksPage;
@@ -92,6 +94,12 @@ export const LocalNetworksPage: React.FC<LocalNetworksPageProps> = ({
           </div>
         </div>
 
+        <p className="text-sm text-zinc-500 font-sans leading-relaxed mb-10 max-w-3xl">
+          <span className="font-medium text-zinc-700">{t.aiOptionalTitle}</span>
+          {" — "}
+          {t.aiOptionalBody}
+        </p>
+
         {/* Community Anchor Callout */}
         <div className="p-8 sm:p-10 rounded-2xl bg-white border border-zinc-200 shadow-xs mb-10 flex flex-col sm:flex-row items-center justify-between gap-6">
           <div className="space-y-2 max-w-xl">
@@ -104,12 +112,39 @@ export const LocalNetworksPage: React.FC<LocalNetworksPageProps> = ({
           </div>
 
           <button
+            type="button"
             onClick={onOpenCommunityModal}
             className="px-6 py-3.5 rounded-xl bg-[#1E3A2F] text-white font-medium text-sm hover:bg-[#162B23] transition-colors shrink-0 shadow-sm inline-flex items-center space-x-2"
           >
             <span>{t.ctaButton}</span>
             <ArrowRight className="w-4 h-4" />
           </button>
+        </div>
+
+        <div className="p-8 sm:p-10 rounded-2xl bg-[#1E3A2F] text-white flex flex-col sm:flex-row items-center justify-between gap-6">
+          <div className="space-y-2 max-w-xl">
+            <h3 className="font-serif text-2xl font-semibold">{t.holderTitle}</h3>
+            <p className="text-sm text-zinc-300 font-sans leading-relaxed">
+              {t.holderBody}
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => onNavigate("leden-uitnodiging")}
+            className="px-6 py-3 rounded-xl border border-white/40 text-white font-medium text-sm hover:bg-white/10 transition-colors inline-flex items-center justify-center space-x-2"
+          >
+            <span>{t.pdfCta}</span>
+          </button>
+          <button
+            type="button"
+            onClick={onOpenPartnerModal}
+            className="px-6 py-3.5 rounded-xl bg-white text-[#1E3A2F] font-medium text-sm hover:bg-zinc-100 transition-colors shrink-0 shadow-sm inline-flex items-center space-x-2"
+          >
+            <span>{t.holderCta}</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+          </div>
         </div>
 
       </div>

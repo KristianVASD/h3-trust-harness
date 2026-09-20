@@ -112,17 +112,21 @@ export const SearchPreviewPage: React.FC<SearchPreviewPageProps> = ({
 
         <div className="mb-8 pb-6 border-b border-zinc-200">
           <div className="inline-flex items-center space-x-2 px-2.5 py-1 rounded bg-[#1E3A2F]/10 text-[#1E3A2F] text-xs font-mono font-medium mb-2">
-            <span>HandyHouseHelp • Single Search Prototype</span>
+            <span>
+              {lang === "nl"
+                ? "Vakmensen op herkomst"
+                : "Trades by provenance"}
+            </span>
           </div>
           <h1 className="font-serif text-3xl sm:text-4xl text-zinc-900 font-normal">
             {lang === "nl"
-              ? "Geverifieerde Vakmensen in de Buurt"
-              : "Verified Local Tradespeople"}
+              ? "Vakmensen in de buurt"
+              : "Local tradespeople"}
           </h1>
           <p className="text-sm text-zinc-600 font-sans mt-2">
             {lang === "nl"
-              ? "Gerangschikt op basis van onafhankelijke bronbevestiging (Why-factor) en fysieke nabijheid — niet op advertentiebudgetten."
-              : "Ranked by independent source corroboration (Why-factor) and neighborhood proximity — not advertising spend."}
+              ? "Wie op minstens één door mensen aanvaarde bron staat, tonen we als bedrijfsnaam op locatie — niet op advertentiebudget."
+              : "Anyone on at least one human-accepted source is shown as a company name by location — not by ad spend."}
           </p>
           {!usingLive ? (
             <p className="text-xs font-mono text-zinc-500 mt-3">
@@ -189,6 +193,7 @@ export const SearchPreviewPage: React.FC<SearchPreviewPageProps> = ({
               <PublicCompanyCard
                 key={company.id}
                 company={company}
+                lang={lang}
                 expanded={expandedId === company.id}
                 onToggle={() =>
                   setExpandedId(expandedId === company.id ? null : company.id)

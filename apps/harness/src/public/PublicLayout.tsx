@@ -27,6 +27,7 @@ export function PublicLayout() {
   const [lang, setLangState] = useState<Language>(readLang);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [partnerOpen, setPartnerOpen] = useState(false);
+  const [partnerKind, setPartnerKind] = useState("sector");
   const [harnessOpen, setHarnessOpen] = useState(false);
 
   const currentView = viewFromPath(location.pathname);
@@ -52,7 +53,10 @@ export function PublicLayout() {
     setRegisterOpen(true);
   }, []);
 
-  const openPartner = useCallback(() => setPartnerOpen(true), []);
+  const openPartner = useCallback((kind = "sector") => {
+    setPartnerKind(kind);
+    setPartnerOpen(true);
+  }, []);
   const openHarness = useCallback(() => setHarnessOpen(true), []);
 
   const value = useMemo(
@@ -85,6 +89,7 @@ export function PublicLayout() {
           lang={lang}
           onNavigate={navigateView}
           onOpenRegisterModal={openRegister}
+          onOpenPartnerModal={openPartner}
           onOpenHarnessModal={openHarness}
         />
         <CraftsmanRegisterModal
@@ -93,9 +98,11 @@ export function PublicLayout() {
           lang={lang}
         />
         <PartnerModal
+          key={partnerKind}
           isOpen={partnerOpen}
           onClose={() => setPartnerOpen(false)}
           lang={lang}
+          initialKind={partnerKind}
         />
         <HarnessControlModal
           isOpen={harnessOpen}

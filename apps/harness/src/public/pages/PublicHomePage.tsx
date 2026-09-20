@@ -6,7 +6,7 @@ import { LocalTrustSection } from "../components/LocalTrustSection";
 import { ProblemSection } from "../components/ProblemSection";
 import { TrustCardPreview } from "../components/TrustCardPreview";
 import { TrustLadder } from "../components/TrustLadder";
-import { TwoPathsSection } from "../components/TwoPathsSection";
+import { InviteDoorsSection } from "../components/InviteDoorsSection";
 import { usePublic } from "../PublicContext";
 
 export function PublicHomePage() {
@@ -30,11 +30,16 @@ export function PublicHomePage() {
       <HowItWorks lang={lang} />
       <TrustLadder lang={lang} />
       <LocalTrustSection lang={lang} />
-      <TwoPathsSection lang={lang} onOpenRegisterModal={openRegister} />
+      <InviteDoorsSection
+        lang={lang}
+        onOpenRegister={openRegister}
+        onOpenPartner={openPartner}
+      />
       <LiftSectorsSection lang={lang} onOpenPartnerModal={openPartner} />
       <HandyHouseHelpBridge
         lang={lang}
         onExploreMatching={() => navigateView("zoeken")}
+        onNavigate={navigateView}
       />
     </>
   );

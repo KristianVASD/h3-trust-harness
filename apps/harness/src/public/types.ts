@@ -1,14 +1,19 @@
 export type Language = 'nl' | 'en';
 
-export type PageView = 
-  | 'home' 
-  | 'hoe-het-werkt' 
-  | 'sectoren' 
-  | 'lokale-netwerken' 
-  | 'vakman-worden' 
-  | 'handyhousehelp' 
+export type PageView =
+  | 'home'
+  | 'hoe-het-werkt'
+  | 'sectoren'
+  | 'lokale-netwerken'
+  | 'vakman-worden'
+  | 'handyhousehelp'
   | 'over-h3'
-  | 'zoeken';
+  | 'zoeken'
+  | 'privacy'
+  | 'cookies'
+  | 'voorwaarden'
+  | 'gegevens-corrigeren'
+  | 'leden-uitnodiging';
 
 export interface SourceRecord {
   id: string;

@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { Hono } from "hono";
 import {
+  isCaraConfirmedSource,
   primaryTradeId,
+  publicPlaceLabel,
   TradeIdSchema,
   TRADES,
   tradeLabel,
@@ -15,6 +17,7 @@ import {
   isAdmin,
   type AppVariables,
 } from "./auth.js";
+import { createCorrectionStore } from "./correction-store.js";
 import { createInterestStore } from "./interest-store.js";
 
 export type PublicSourceRecord = {
@@ -78,20 +81,26 @@ function mapSourceType(source: Source): PublicSourceRecord["type"] {
   return "branche_vereniging";
 }
 
+function sourcePublicStatus(
+  status: string,
+): PublicSourceRecord["status"] {
+  if (status === "accepted") return "accepted";
+  if (status === "adjusted") return "adjusted";
+  return "pending";
+}
+
 function placeParts(company: Company): { city: string; neighborhood: string } {
-  const region = (company.region ?? "").trim();
-  const address = (company.address ?? "").trim();
-  if (region && address) return { city: region, neighborhood: address };
-  if (region) return { city: region, neighborhood: "" };
-  if (address) return { city: address, neighborhood: "" };
-  return { city: "", neighborhood: "" };
+  return { city: publicPlaceLabel(company.region, company.address), neighborhood: "" };
 }
 
 export function toPublicCompanyCard(
   company: Company,
   sources: Source[],
 ): PublicCompanyCard {
-  const linked = sources.filter((s) => company.source_ids.includes(s.id));
+  const linked = sources.filter(
+    (s) =>
+      company.source_ids.includes(s.id) && isCaraConfirmedSource(s.status),
+  );
   const tradeId =
     primaryTradeId(company.category || company.sector) ??
     primaryTradeId(company.sector);
@@ -131,7 +140,7 @@ export function toPublicCompanyCard(
         ? company.status
         : "candidate",
     harvestConfidence: "medium",
-    caraStatus: "pending",
+    caraStatus: "agreed",
     caraReviewedBy: "",
     caraReviewedAt: "",
     summary: company.profileSnippet ?? "",
@@ -145,7 +154,7 @@ export function toPublicCompanyCard(
       url: src.listUrl ?? src.url,
       identifier: src.id.slice(0, 8),
       verifiedAt: src.updatedAt.slice(0, 10),
-      status: "accepted",
+      status: sourcePublicStatus(src.status),
       hash: src.id.slice(0, 8),
       description: src.reason ?? src.evidence?.summary_reasons?.[0] ?? "",
     })),
@@ -170,6 +179,7 @@ async function collectPublicCompanies(
     for (const company of companies) {
       if (company.status === "unknown") continue;
       const card = toPublicCompanyCard(company, sources);
+      if (card.sourceCount < 1) continue;
       const key = card.kvkNumber.length === 8
         ? `kvk:${card.kvkNumber}`
         : `name:${card.name.trim().toLowerCase()}`;
@@ -208,18 +218,21 @@ function looksLikeEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+function asBool(value: unknown): boolean {
+  return value === true || value === "true" || value === 1 || value === "1";
+}
+
 export function registerPublicRoutes(
   app: Hono<{ Variables: AppVariables }>,
   store: Store,
   writableRoot?: string,
 ): void {
   const interest = createInterestStore(writableRoot);
+  const corrections = createCorrectionStore(writableRoot);
   app.get("/api/public/featured-companies", async (c) => {
     try {
       const all = await collectPublicCompanies(store);
-      const verified = all.filter(
-        (co) => co.sourceCount >= 3 && co.kvk_gate === "pass",
-      );
+      const verified = all.filter((co) => co.sourceCount >= 1);
       return c.json({
         success: true,
         count: verified.length,
@@ -239,7 +252,7 @@ export function registerPublicRoutes(
     const { id } = c.req.query();
     try {
       const all = await collectPublicCompanies(store);
-      const pool = all.filter((co) => co.sourceCount >= 3 && co.kvk_gate === "pass");
+      const pool = all.filter((co) => co.sourceCount >= 1);
       if (id) {
         const match = pool.find((co) => co.id === id);
         if (match) return c.json({ success: true, company: match });
@@ -385,6 +398,9 @@ export function registerPublicRoutes(
     const email = String(body.email ?? "").trim().toLowerCase();
     const contactName = String(body.contactName ?? "").trim();
     const message = String(body.message ?? "").trim();
+    const sourceHolderKind = String(body.sourceHolderKind ?? "other").trim();
+    const shareManagedCompanyData = asBool(body.shareManagedCompanyData);
+    const welcomeHhhLocally = asBool(body.welcomeHhhLocally);
     if (!organizationName || !contactName || !email) {
       return c.json(
         { success: false, error: "Naam, organisatie en e-mail zijn verplicht." },
@@ -402,6 +418,9 @@ export function registerPublicRoutes(
         contactName,
         email,
         notes: message || undefined,
+        sourceHolderKind: sourceHolderKind || undefined,
+        shareManagedCompanyData,
+        welcomeHhhLocally,
         submittedAt: new Date().toISOString(),
       });
       return c.json({ success: true, submissionId: saved.id });
@@ -411,6 +430,45 @@ export function registerPublicRoutes(
         {
           success: false,
           error: err instanceof Error ? err.message : "Aanmelding kon niet worden bewaard.",
+        },
+        500,
+      );
+    }
+  });
+
+  app.post("/api/public/correction-request", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const companyName = String(body.companyName ?? "").trim();
+    const contactName = String(body.contactName ?? "").trim();
+    const email = String(body.email ?? "").trim().toLowerCase();
+    const role = String(body.role ?? "visitor").trim();
+    const message = String(body.message ?? "").trim();
+    if (!companyName || !contactName || !email || !message) {
+      return c.json(
+        { success: false, error: "Bedrijf, naam, e-mail en toelichting zijn verplicht." },
+        400,
+      );
+    }
+    if (!looksLikeEmail(email)) {
+      return c.json({ success: false, error: "Vul een geldig e-mailadres in." }, 400);
+    }
+    try {
+      const saved = await corrections.save({
+        id: randomUUID(),
+        companyName,
+        contactName,
+        email,
+        role,
+        message,
+        submittedAt: new Date().toISOString(),
+      });
+      return c.json({ success: true, submissionId: saved.id });
+    } catch (err) {
+      console.error("[public] correction save", err);
+      return c.json(
+        {
+          success: false,
+          error: err instanceof Error ? err.message : "Melding kon niet worden bewaard.",
         },
         500,
       );

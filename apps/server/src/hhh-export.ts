@@ -1,10 +1,13 @@
 import {
+  isCaraConfirmedSource,
   isLocalDirectoryMission,
   packMatchesTrade,
   primaryTradeId,
+  publicPlaceLabel,
   tradeIdsForPackLabel,
   type Company,
   type Mission,
+  type Source,
 } from "@h3-trust/schema";
 import type { Store } from "@h3-trust/store";
 import { countriesMatch, isNationalPack } from "./pack-match.js";
@@ -16,8 +19,6 @@ export type HhhLead = {
   specialty: string;
   tags: string[];
   audience: string[];
-  email?: string;
-  phone?: string;
   website?: string;
   kvk_number?: string;
   kvk_gate: string;
@@ -38,8 +39,9 @@ function packMatchesExportFilter(mission: Mission, subsector?: string): boolean 
 }
 
 /**
- * Thin unclaimed-lead slice: sector-confirmed + on ≥2 independent lists.
- * `specialty` is the HHH door id (paint, pest, …), not raw company.sector.
+ * Unclaimed-lead slice for HandyHouseHelp: company name + place + trade
+ * when the firm sits on at least one CARA-accepted source.
+ * No phone/email from association lists. No type ranking.
  */
 export async function exportHhhHighTrustLeads(
   store: Store,
@@ -57,18 +59,23 @@ export async function exportHhhHighTrustLeads(
   const seen = new Set<string>();
 
   for (const mission of packs) {
-    const companies = (await store.listByMission(
-      "companies",
-      mission.id,
-    )) as Company[];
+    const [companies, sources] = await Promise.all([
+      store.listByMission("companies", mission.id) as Promise<Company[]>,
+      store.listByMission("sources", mission.id) as Promise<Source[]>,
+    ]);
+    const acceptedIds = new Set(
+      sources.filter((s) => isCaraConfirmedSource(s.status)).map((s) => s.id),
+    );
     for (const company of companies) {
       if (company.status === "unknown") continue;
-      const sourceCount = new Set(company.source_ids ?? []).size;
-      if (sourceCount < 2) continue;
+      const acceptedCount = (company.source_ids ?? []).filter((id) =>
+        acceptedIds.has(id),
+      ).length;
+      if (acceptedCount < 1) continue;
       const key = `${(company.kvk_number ?? "").trim() || company.name.toLowerCase()}|${mission.id}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      leads.push(toLead(company, mission, args.subsector));
+      leads.push(toLead(company, mission, acceptedCount, args.subsector));
     }
   }
 
@@ -79,6 +86,7 @@ export async function exportHhhHighTrustLeads(
 function toLead(
   company: Company,
   mission: Mission,
+  acceptedCount: number,
   requestedSubsector?: string,
 ): HhhLead {
   const tags = [
@@ -94,20 +102,19 @@ function toLead(
     fromFilter && packMatchesTrade(mission.subsector, fromFilter)
       ? fromFilter
       : (fromPack ?? mission.subsector);
+  const region = publicPlaceLabel(company.region, company.address);
   return {
     name: company.name,
-    address: company.address ?? "",
-    region: company.region ?? "",
+    address: "",
+    region,
     specialty,
     tags,
     audience: company.serviceContexts ?? [],
-    email: company.email,
-    phone: company.phone,
     website: company.website_url,
     kvk_number: company.kvk_number,
     kvk_gate: company.kvk_gate,
     list_badges: company.list_membership ?? [],
-    source_count: new Set(company.source_ids ?? []).size,
+    source_count: acceptedCount,
     country_code: mission.country,
   };
 }

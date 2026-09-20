@@ -86,6 +86,16 @@ export const HandyHouseHelpBridge: React.FC<HandyHouseHelpBridgeProps> = ({
               <ArrowRight className="w-4 h-4" />
             </button>
           ) : null}
+          {!showLayerGuide && onNavigate ? (
+            <button
+              type="button"
+              onClick={() => onNavigate("handyhousehelp")}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-zinc-300 bg-white text-sm font-medium text-zinc-700 hover:border-[#1E3A2F] hover:text-[#1E3A2F]"
+            >
+              <span>{t.moreExplain}</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          ) : null}
           <a
             href={HHH_URL}
             target="_blank"

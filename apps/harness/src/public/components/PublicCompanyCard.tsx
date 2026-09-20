@@ -1,14 +1,17 @@
 import { MapPin, ShieldCheck } from "lucide-react";
-import type { Company } from "../types";
+import type { Company, Language } from "../types";
+import { translations } from "../data/translations";
 
 export function PublicCompanyCard({
   company,
   expanded,
   onToggle,
+  lang = "nl",
 }: {
   company: Company;
   expanded: boolean;
   onToggle: () => void;
+  lang?: Language;
 }) {
   const hasWhy =
     Boolean(company.whyReliable.kvk) ||
@@ -91,18 +94,38 @@ export function PublicCompanyCard({
 
       <div className="flex flex-col items-start gap-2 pt-2 min-w-0 sm:flex-row sm:items-center sm:justify-between">
         <span className="text-[11px] font-mono text-zinc-400">
-          Status: {company.status.toUpperCase()} • CARA: {company.caraStatus}
+          {company.caraStatus === "agreed" || company.caraStatus === "adjusted"
+            ? lang === "nl"
+              ? "Menselijk nagekeken"
+              : "Human reviewed"
+            : lang === "nl"
+              ? "Bron in behandeling"
+              : "Source pending"}
         </span>
 
-        {company.sources.length > 0 ? (
-          <button
-            type="button"
-            onClick={onToggle}
-            className="text-xs font-mono text-[#1E3A2F] hover:underline"
+        <div className="flex flex-wrap gap-3">
+          {company.sources.length > 0 ? (
+            <button
+              type="button"
+              onClick={onToggle}
+              className="text-xs font-mono text-[#1E3A2F] hover:underline"
+            >
+              {expanded
+                ? lang === "nl"
+                  ? "Verberg details"
+                  : "Hide details"
+                : lang === "nl"
+                  ? "Toon brondocumenten"
+                  : "Show source records"}
+            </button>
+          ) : null}
+          <a
+            href={`/gegevens-corrigeren?bedrijf=${encodeURIComponent(company.name)}`}
+            className="text-xs font-mono text-zinc-500 hover:text-[#1E3A2F] hover:underline"
           >
-            {expanded ? "Verberg details" : "Toon brondocumenten"}
-          </button>
-        ) : null}
+            {translations[lang].legal.correction}
+          </a>
+        </div>
       </div>
 
       {expanded && company.sources.length > 0 ? (

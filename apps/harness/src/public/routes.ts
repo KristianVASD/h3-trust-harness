@@ -9,6 +9,11 @@ export const VIEW_PATH: Record<PageView, string> = {
   handyhousehelp: "/handyhousehelp",
   "over-h3": "/over-h3",
   zoeken: "/zoeken",
+  privacy: "/privacy",
+  cookies: "/cookies",
+  voorwaarden: "/voorwaarden",
+  "gegevens-corrigeren": "/gegevens-corrigeren",
+  "leden-uitnodiging": "/leden-uitnodiging",
 };
 
 export function viewFromPath(pathname: string): PageView {

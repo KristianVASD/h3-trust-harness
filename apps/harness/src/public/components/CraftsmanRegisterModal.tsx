@@ -288,6 +288,13 @@ export const CraftsmanRegisterModal: React.FC<CraftsmanRegisterModalProps> = ({
                 </p>
               ) : null}
 
+              <p className="text-[11px] text-zinc-500 leading-relaxed">
+                {t.privacyNotice}{" "}
+                <a href="/privacy" className="underline text-[#1E3A2F]">
+                  {translations[lang].legal.privacy}
+                </a>
+              </p>
+
               <div className="flex gap-2 pt-1">
                 <button
                   type="button"

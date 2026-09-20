@@ -1,11 +1,13 @@
 import React from "react";
 import { GitBranch, HeartHandshake } from "lucide-react";
+import { translations } from "../data/translations";
 import { Language, PageView } from "../types";
 
 interface FooterProps {
   lang: Language;
   onNavigate: (view: PageView) => void;
   onOpenRegisterModal: () => void;
+  onOpenPartnerModal: () => void;
   onOpenHarnessModal: () => void;
 }
 
@@ -13,8 +15,10 @@ export const Footer: React.FC<FooterProps> = ({
   lang,
   onNavigate,
   onOpenRegisterModal,
+  onOpenPartnerModal,
   onOpenHarnessModal,
 }) => {
+  const legal = translations[lang].legal;
   const links: { label: string; onClick?: () => void; href?: string }[] = [
     { label: "Home", onClick: () => onNavigate("home") },
     {
@@ -29,7 +33,10 @@ export const Footer: React.FC<FooterProps> = ({
       label: lang === "nl" ? "Netwerken" : "Networks",
       onClick: () => onNavigate("lokale-netwerken"),
     },
-    { label: "HandyHouseHelp", href: "https://handyhousehelp.ai" },
+    {
+      label: "HandyHouseHelp",
+      onClick: () => onNavigate("handyhousehelp"),
+    },
     {
       label: lang === "nl" ? "Zoeken" : "Search",
       onClick: () => onNavigate("zoeken"),
@@ -39,8 +46,12 @@ export const Footer: React.FC<FooterProps> = ({
       onClick: () => onNavigate("over-h3"),
     },
     {
-      label: lang === "nl" ? "Aanmelden" : "Join",
+      label: lang === "nl" ? "Vakbedrijf" : "Trade business",
       onClick: onOpenRegisterModal,
+    },
+    {
+      label: lang === "nl" ? "Bronhouder" : "Source holder",
+      onClick: onOpenPartnerModal,
     },
   ];
 
@@ -59,8 +70,8 @@ export const Footer: React.FC<FooterProps> = ({
             </div>
             <p className="text-sm text-zinc-400 leading-relaxed max-w-sm">
               {lang === "nl"
-                ? "Van BGI-hackathon naar de straat: decentrale beneficial AI voor lokaal vertrouwen in woningonderhoud."
-                : "From BGI hackathon to the street: decentralized beneficial AI for local trust in home maintenance."}
+                ? "Lokaal-aan-lokaal: vakmensen zichtbaar op herkomst, niet op advertentiebudget. Minder kilometers, sterkere buurteconomie. H3 Trust verdient er niet aan."
+                : "Local-to-local: trades visible by provenance, not ad spend. Fewer kilometres, stronger neighborhood economy. H3 Trust does not earn from this."}
             </p>
             <div className="flex flex-col gap-1.5 text-[11px] font-mono text-zinc-500">
               <a
@@ -120,9 +131,9 @@ export const Footer: React.FC<FooterProps> = ({
               Open Trust Harness
             </p>
             <p className="text-sm text-zinc-400 leading-relaxed mb-4">
-              {lang === "nl"
-                ? "Geen advertentieveiling. Menselijke CARA/CURAD-curatie."
-                : "No ad auction. Human CARA/CURAD curation."}
+            {lang === "nl"
+              ? "Lokale vakmensen zichtbaar op herkomst. H3 Trust verdient er niet aan."
+              : "Local trades visible by provenance. H3 Trust does not earn from this."}
             </p>
             <button
               type="button"
@@ -135,11 +146,47 @@ export const Footer: React.FC<FooterProps> = ({
           </div>
         </div>
 
-        <div className="mt-8 pt-5 border-t border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] font-mono text-zinc-500">
+        <div className="mt-8 pt-5 border-t border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[11px] font-mono text-zinc-500">
           <span>
             © {new Date().getFullYear()} H3 Trust · Open public trust utility
           </span>
-          <span>BGIcommons Track 3 · OpenBuild HyperSprint</span>
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            <button
+              type="button"
+              className="hover:text-zinc-300"
+              onClick={() => onNavigate("privacy")}
+            >
+              {legal.privacy}
+            </button>
+            <button
+              type="button"
+              className="hover:text-zinc-300"
+              onClick={() => onNavigate("cookies")}
+            >
+              {legal.cookies}
+            </button>
+            <button
+              type="button"
+              className="hover:text-zinc-300"
+              onClick={() => onNavigate("voorwaarden")}
+            >
+              {legal.terms}
+            </button>
+            <button
+              type="button"
+              className="hover:text-zinc-300"
+              onClick={() => onNavigate("gegevens-corrigeren")}
+            >
+              {legal.correction}
+            </button>
+            <button
+              type="button"
+              className="hover:text-zinc-300"
+              onClick={() => onNavigate("leden-uitnodiging")}
+            >
+              {legal.memberInvite}
+            </button>
+          </div>
         </div>
       </div>
     </footer>

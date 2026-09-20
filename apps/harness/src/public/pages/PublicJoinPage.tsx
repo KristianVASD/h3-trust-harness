@@ -1,9 +1,9 @@
-import { TwoPathsSection } from "../components/TwoPathsSection";
+import { InviteDoorsSection } from "../components/InviteDoorsSection";
 import { translations } from "../data/translations";
 import { usePublic } from "../PublicContext";
 
 export function PublicJoinPage() {
-  const { lang, openRegister } = usePublic();
+  const { lang, openRegister, openPartner } = usePublic();
   const t = translations[lang].joinPage;
 
   return (
@@ -22,7 +22,11 @@ export function PublicJoinPage() {
         </div>
       </div>
 
-      <TwoPathsSection lang={lang} onOpenRegisterModal={openRegister} />
+      <InviteDoorsSection
+        lang={lang}
+        onOpenRegister={openRegister}
+        onOpenPartner={openPartner}
+      />
     </div>
   );
 }

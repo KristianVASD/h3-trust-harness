@@ -210,7 +210,7 @@ export function CompaniesPanel({
                 : "—"}
             </p>
 
-            <h4 style={{ marginBottom: "0.35rem" }}>Blacklist flags</h4>
+            <h4 style={{ marginBottom: "0.35rem" }}>Internal note flags</h4>
             <p>
               {selected.blacklist_flags.length
                 ? selected.blacklist_flags.join(", ")
@@ -232,7 +232,7 @@ export function CompaniesPanel({
                 type="button"
                 onClick={() => void saveBlacklist(selected)}
               >
-                Save blacklist
+                Save notes
               </button>
             </div>
 

@@ -188,7 +188,9 @@ export const TrustCardPreview: React.FC<TrustCardPreviewProps> = ({ lang }) => {
           <div className="pt-4 border-t border-zinc-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 min-w-0">
             <div className="flex items-start gap-2 text-xs text-zinc-500 font-mono min-w-0">
               <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 shrink-0 mt-1" />
-              <span className="min-w-0">CARA: {currentCompany.caraReviewedBy}</span>
+              <span className="min-w-0">
+                {lang === "nl" ? "Menselijk nagekeken" : "Human reviewed"}
+              </span>
             </div>
 
             <button
@@ -268,9 +270,9 @@ export const TrustCardPreview: React.FC<TrustCardPreviewProps> = ({ lang }) => {
                       : 'Human CARA curation sealed by independent CURAD'}
                   </p>
                   <p className="text-zinc-600 mt-0.5">
-                    {lang === 'nl'
-                      ? `Beoordeeld op ${currentCompany.caraReviewedAt} door ${currentCompany.caraReviewedBy}. Geen enkel algoritme publiceert data zonder menselijke instemming.`
-                      : `Reviewed on ${currentCompany.caraReviewedAt} by ${currentCompany.caraReviewedBy}. No algorithm publishes verified data without sovereign human approval.`}
+                    {lang === "nl"
+                      ? "Een mens aanvaardt de bron voordat we de bedrijfsnaam tonen. Geen algoritme publiceert een oordeel."
+                      : "A human accepts the source before we show the company name. No algorithm publishes a verdict."}
                   </p>
                 </div>
               </div>
