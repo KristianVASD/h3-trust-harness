@@ -157,8 +157,8 @@ function JobRow({ job }: { job: ControlJobRow }) {
 export function ControlCountryPage() {
   const { country = "" } = useParams();
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
-  const { canInteract } = useCanInteract();
+  const { isAdmin, loading: authLoading, session } = useAuth();
+  const { canInteract, needsLogin } = useCanInteract();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [paste, setPaste] = useState("");
@@ -190,8 +190,13 @@ export function ControlCountryPage() {
   }
 
   useEffect(() => {
+    if (authLoading) return;
+    if (needsLogin) {
+      setError("Sign in to open this country.");
+      return;
+    }
     void load();
-  }, [country]);
+  }, [country, authLoading, needsLogin, session?.access_token]);
 
   const placeRunsLive = (data?.places ?? []).some(
     (place) => place.run?.status === "queued" || place.run?.status === "running",

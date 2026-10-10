@@ -127,9 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [applyMe, session?.access_token]);
 
-  useEffect(() => {
-    setAccessTokenGetter(() => session?.access_token ?? null);
-  }, [session?.access_token]);
+  setAccessTokenGetter(() => session?.access_token ?? null);
 
   useEffect(() => {
     let cancelled = false;

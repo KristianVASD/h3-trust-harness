@@ -15,8 +15,8 @@ function landscapeTone(
 
 export function ControlCountriesPage() {
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
-  const { canInteract } = useCanInteract();
+  const { isAdmin, loading: authLoading, session } = useAuth();
+  const { canInteract, needsLogin } = useCanInteract();
   const [countries, setCountries] = useState<ControlCountryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -37,8 +37,14 @@ export function ControlCountriesPage() {
   }
 
   useEffect(() => {
+    if (authLoading) return;
+    if (needsLogin) {
+      setLoading(false);
+      setError("Sign in to open Mission Control.");
+      return;
+    }
     void load();
-  }, []);
+  }, [authLoading, needsLogin, session?.access_token]);
 
   async function onStart(e: FormEvent) {
     e.preventDefault();

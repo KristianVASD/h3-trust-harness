@@ -196,7 +196,10 @@ export function createApp(options: CreateAppOptions) {
     admin,
     writableRoot: writableRoot ?? process.env.WRITABLE_ROOT,
   });
-  const placeCells = createPlaceCellStore(writableRoot ?? process.env.WRITABLE_ROOT);
+  const placeCells = createPlaceCellStore({
+    admin,
+    writableRoot: writableRoot ?? process.env.WRITABLE_ROOT,
+  });
 
   const corsOrigins = options.corsOrigins ?? [
     "http://localhost:5173",

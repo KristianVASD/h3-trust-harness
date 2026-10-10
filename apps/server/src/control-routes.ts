@@ -198,7 +198,10 @@ export function registerControlRoutes(
         buildCountryDoors(store, raw),
         listSearchDemands(admin, searchDemandMemory, 80),
         latestRunForTarget(admin, { countrySlug: slug }),
-        cells.list(),
+        cells.list().catch((err) => {
+          console.error("[control] place cells", err);
+          return [];
+        }),
         addressRunsByCell(admin),
       ]);
     const jobs = await listDeskJobs(store, raw);
