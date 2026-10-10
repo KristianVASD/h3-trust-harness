@@ -9,6 +9,7 @@ export const WORKER_COMMANDS = [
   "nation_map",
   "nation_harvest",
   "place_test",
+  "address_search",
 ] as const;
 export type WorkerCommand = (typeof WORKER_COMMANDS)[number];
 

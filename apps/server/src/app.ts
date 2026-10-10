@@ -55,7 +55,9 @@ import {
 } from "./companies-import-route.js";
 import { exportHhhHighTrustLeads } from "./hhh-export.js";
 import { buildCoverageDesk } from "./coverage-desk.js";
+import { registerAddressSearchRoutes } from "./address-search-routes.js";
 import { registerControlRoutes } from "./control-routes.js";
+import { createPlaceCellStore } from "./place-cell-store.js";
 import { createNationLandscapeStore } from "./nation-landscape-store.js";
 import { countriesMatch, isNationalPack } from "./pack-match.js";
 import {
@@ -194,6 +196,7 @@ export function createApp(options: CreateAppOptions) {
     admin,
     writableRoot: writableRoot ?? process.env.WRITABLE_ROOT,
   });
+  const placeCells = createPlaceCellStore(writableRoot ?? process.env.WRITABLE_ROOT);
 
   const corsOrigins = options.corsOrigins ?? [
     "http://localhost:5173",
@@ -625,8 +628,10 @@ export function createApp(options: CreateAppOptions) {
     store,
     admin,
     landscapes,
+    cells: placeCells,
     searchDemandMemory,
   });
+  registerAddressSearchRoutes(app, { store, admin, cells: placeCells });
 
   app.post("/api/packs/onboard", async (c) => {
     try {

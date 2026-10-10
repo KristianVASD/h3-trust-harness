@@ -65,6 +65,29 @@
   margin-top: 1.5rem;
 }
 
+.place-stage-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.65rem;
+}
+
+.place-stage {
+  padding: 0.12rem 0.4rem;
+  border: 1px solid var(--line, #c9c0ae);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft, #6b6458);
+}
+
+.place-stage.done {
+  border-color: var(--teal, #0f6e56);
+  color: var(--teal, #0f6e56);
+  background: rgba(15, 110, 86, 0.08);
+}
+
 .plan-wrap {
   display: grid;
   gap: 0.85rem;

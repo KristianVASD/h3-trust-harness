@@ -8,6 +8,7 @@ import {
   KvkGateSchema,
   SampleCompanySchema,
 } from "./index";
+import { LocalAuthenticityVerdictSchema } from "./address-search";
 import { AccessBarrierSchema } from "./access-barriers";
 import {
   SourceFieldKeySchema,
@@ -179,6 +180,9 @@ export const WebpageTrustProbeSchema = z.object({
   has_real_address: z.boolean().optional(),
   has_contact: z.boolean().optional(),
   notes: z.string().optional(),
+  /** Set by the address-search harvest. Not a public verdict. */
+  localVerdict: LocalAuthenticityVerdictSchema.optional(),
+  reasons: z.array(z.string()).optional(),
 });
 export const HarvestOutputSchema = z.object({
   producer: OmegaProducerSchema,

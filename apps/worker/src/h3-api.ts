@@ -84,4 +84,31 @@ export const h3 = {
       `/api/control/countries/${encodeURIComponent(country)}/landscape`,
       { method: "PUT", body: JSON.stringify({ landscape }) },
     ),
+  getPlaceCell: async (id: string) => {
+    const res = await request<{ cell: import("@h3-trust/schema").PlaceCell }>(
+      `/api/place-cells/${encodeURIComponent(id)}`,
+    );
+    return res.cell;
+  },
+  geocodeNl: async (q: string, kind: "adres" | "woonplaats" = "adres") => {
+    const res = await request<{
+      hit: { lat: number; lon: number; label: string; postcode4?: string; gemeente?: string; woonplaats?: string } | null;
+    }>("/api/geo/nl", {
+      method: "POST",
+      body: JSON.stringify({ q, kind }),
+    });
+    return res.hit;
+  },
+  applyPlaceCell: (
+    cell: import("@h3-trust/schema").PlaceCell,
+    sources: unknown[] = [],
+    companies: unknown[] = [],
+  ) =>
+    request<{ cell: import("@h3-trust/schema").PlaceCell; created: number; updated: number }>(
+      `/api/place-cells/${encodeURIComponent(cell.id)}/apply`,
+      {
+        method: "POST",
+        body: JSON.stringify({ cell, sources, companies }),
+      },
+    ),
 };

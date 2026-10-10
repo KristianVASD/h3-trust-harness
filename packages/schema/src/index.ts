@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+  AudienceModeSchema,
+  CountryCheckSchema,
+  LocalAuthenticitySchema,
+  TrustProposalSchema,
+} from "./address-search";
 import { AccessBarrierSchema } from "./access-barriers";
 import {
   SourceFieldKeySchema,
@@ -439,6 +445,13 @@ export const CompanySchema = z.object({
   profileSourceUrl: z.string().optional(),
   profileHarvestedAt: IsoDateSchema.optional(),
   profileProducer: ProducerSchema.optional(),
+  /** Derived from serviceContexts: private/hoa = B2C, commercial/industrial = B2B. */
+  audienceMode: AudienceModeSchema.optional(),
+  /** Internal. Fake-local firms are kept off the public trusted rank. */
+  localAuthenticity: LocalAuthenticitySchema.optional(),
+  countryChecks: z.array(CountryCheckSchema).optional(),
+  trustProposal: TrustProposalSchema.optional(),
+  placeCellId: z.string().uuid().optional(),
 });
 export type Company = z.infer<typeof CompanySchema>;
 
@@ -632,3 +645,4 @@ export * from "./nation-landscape";
 export * from "./sector-playbook";
 export * from "./junk-company";
 export * from "./contact-minimize";
+export * from "./address-search";

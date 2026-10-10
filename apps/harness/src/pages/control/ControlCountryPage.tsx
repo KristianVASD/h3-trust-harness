@@ -1,7 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { primaryTradeId, resolveSearchQuery } from "@h3-trust/schema";
-import { api, type ControlJobRow, type SearchDemandAggregate } from "../../api";
+import {
+  ADDRESS_SEARCH_STAGES,
+  primaryTradeId,
+  resolveSearchQuery,
+} from "@h3-trust/schema";
+import {
+  api,
+  type ControlJobRow,
+  type PlaceProgressRow,
+  type SearchDemandAggregate,
+} from "../../api";
 import { StatusChip } from "../../components/Badges";
 import { EngineRunChip } from "../../components/control/EngineRunChip";
 import { PlanReader } from "../../components/control/PlanReader";
@@ -26,6 +35,88 @@ function formatWhen(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+const STAGE_LABELS: Record<(typeof ADDRESS_SEARCH_STAGES)[number], string> = {
+  geocode: "Place",
+  ecology_ov: "OV",
+  ecology_sport: "Sport",
+  ecology_festivity: "Festivals",
+  harvest_match: "Websites",
+  trade_search: "Trades",
+  local_authenticity: "Local",
+  country_corroboration: "Country map",
+  score: "Score",
+};
+
+function placeTone(place: PlaceProgressRow): "done" | "active" | "waiting" {
+  if (place.run?.status === "failed") return "waiting";
+  if (place.run?.status === "queued" || place.run?.status === "running") return "active";
+  if (place.finishedStages.length >= place.stageTotal && place.fresh) return "done";
+  return "waiting";
+}
+
+function PlaceCard({ place }: { place: PlaceProgressRow }) {
+  const done = new Set(place.finishedStages);
+  const where = [place.address, place.postcode4, place.gemeente].filter(Boolean).join(" · ");
+  return (
+    <article className="control-door-card">
+      <h3>{place.label}</h3>
+      <p className="muted">
+        {where || "No address stored"} · {place.radiusKm} km
+        {place.fresh ? "" : " · older than 30 days"}
+      </p>
+      <div className="row" style={{ gap: "0.4rem", flexWrap: "wrap" }}>
+        <StatusChip
+          label={`${place.finishedStages.length}/${place.stageTotal} stages`}
+          tone={placeTone(place)}
+        />
+        {place.run ? (
+          <StatusChip
+            label={`${place.run.status} · ${place.run.progress_pct}%`}
+            tone={
+              place.run.status === "succeeded"
+                ? "done"
+                : place.run.status === "failed" || place.run.status === "cancelled"
+                  ? "waiting"
+                  : "active"
+            }
+          />
+        ) : (
+          <StatusChip label="no engine run" />
+        )}
+        <StatusChip
+          label={`${place.candidateCount} candidates · ${place.ecology.ov} OV · ${place.ecology.sport} sport · ${place.ecology.festivity} festivals`}
+        />
+      </div>
+      <div className="place-stage-row" aria-label="Search stages">
+        {ADDRESS_SEARCH_STAGES.map((stage) => (
+          <span key={stage} className={done.has(stage) ? "place-stage done" : "place-stage"}>
+            {STAGE_LABELS[stage]}
+          </span>
+        ))}
+      </div>
+      {place.run?.current_action ? (
+        <p className="muted" style={{ margin: "0.45rem 0 0" }}>
+          {place.run.current_action}
+        </p>
+      ) : null}
+      {place.run?.error ? <p className="error">{place.run.error}</p> : null}
+      <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.85rem" }}>
+        Updated {formatWhen(place.updatedAt)}
+      </p>
+      <div className="row" style={{ marginTop: "0.65rem", gap: "0.4rem" }}>
+        {place.run ? (
+          <Link className="btn small" to={`/admin/engine/${place.run.id}`}>
+            Open run
+          </Link>
+        ) : null}
+        <Link className="btn small secondary" to={`/work/${place.missionId}/brief`}>
+          Open job
+        </Link>
+      </div>
+    </article>
+  );
 }
 
 function JobRow({ job }: { job: ControlJobRow }) {
@@ -72,6 +163,10 @@ export function ControlCountryPage() {
   const [busy, setBusy] = useState(false);
   const [paste, setPaste] = useState("");
   const [importMsg, setImportMsg] = useState<string | null>(null);
+  const [street, setStreet] = useState("");
+  const [postcode, setPostcode] = useState("");
+  const [place, setPlace] = useState("");
+  const [searchMsg, setSearchMsg] = useState<string | null>(null);
   const [data, setData] = useState<{
     country: string;
     countrySlug: string;
@@ -82,6 +177,7 @@ export function ControlCountryPage() {
     demands: SearchDemandAggregate[];
     latestRun: WorkerRun | null;
     events: WorkerEvent[];
+    places: PlaceProgressRow[];
   } | null>(null);
 
   async function load() {
@@ -96,6 +192,18 @@ export function ControlCountryPage() {
   useEffect(() => {
     void load();
   }, [country]);
+
+  const placeRunsLive = (data?.places ?? []).some(
+    (place) => place.run?.status === "queued" || place.run?.status === "running",
+  );
+
+  useEffect(() => {
+    if (!placeRunsLive) return;
+    const timer = window.setInterval(() => {
+      void load();
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [placeRunsLive, country]);
 
   async function onMap() {
     if (!data) return;
@@ -144,6 +252,41 @@ export function ControlCountryPage() {
       navigate(`/admin/engine/${run.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Place test failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onAddressSearch(e: FormEvent) {
+    e.preventDefault();
+    if (!data || !canInteract || !isAdmin) return;
+    const address = street.trim();
+    if (!address && !postcode.trim() && !place.trim()) return;
+    setBusy(true);
+    setError(null);
+    setSearchMsg(null);
+    try {
+      const res = await api.startAddressSearch(data.countrySlug, {
+        address,
+        postcode: postcode.trim() || undefined,
+        place: place.trim() || undefined,
+      });
+      setSearchMsg(
+        res.reused
+          ? `Reused ${res.cell.label}. Filling only what is still missing.`
+          : `Queued a new cell for ${res.cell.label}.`,
+      );
+      await load();
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : "Address search failed";
+      let message = raw;
+      try {
+        const parsed = JSON.parse(raw) as { error?: string };
+        if (parsed.error) message = parsed.error;
+      } catch {
+        /* keep raw */
+      }
+      setError(message);
     } finally {
       setBusy(false);
     }
@@ -206,9 +349,70 @@ export function ControlCountryPage() {
         <h1>{data?.country ?? country}</h1>
         <p className="muted">
           Trust landscape first — 12 discovery channels for how local proof is
-          found. Then explore a sector door.
+          found. An address search reads that map at the end. It does not
+          extract the country.
         </p>
       </header>
+      {isAdmin ? (
+        <section className="panel">
+          <h2>Address search</h2>
+          <p className="hint">
+            One Dutch address is enough. The list under this form is the map of
+            towns: each card is a 15 km circle and shows which of the 9 stages
+            are done. A running search refreshes itself.
+          </p>
+          <form onSubmit={onAddressSearch} className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+            <input
+              value={street}
+              onChange={(e) => setStreet(e.target.value)}
+              placeholder="Street and number"
+              aria-label="Street and number"
+              disabled={!canInteract || busy}
+            />
+            <input
+              value={postcode}
+              onChange={(e) => setPostcode(e.target.value)}
+              placeholder="Postcode"
+              aria-label="Postcode"
+              disabled={!canInteract || busy}
+              style={{ maxWidth: "8rem" }}
+            />
+            <input
+              value={place}
+              onChange={(e) => setPlace(e.target.value)}
+              placeholder="Place"
+              aria-label="Place"
+              disabled={!canInteract || busy}
+              style={{ maxWidth: "12rem" }}
+            />
+            <button type="submit" className="btn small" disabled={!canInteract || busy}>
+              {busy ? "Queuing…" : "Search this address"}
+            </button>
+          </form>
+          {searchMsg ? <p className="hint">{searchMsg}</p> : null}
+        </section>
+      ) : null}
+
+      <section className="panel" style={{ marginTop: "1.25rem" }}>
+        <h2>Searched places</h2>
+        <p className="hint">
+          Towns this country has already grown from an address. A filled stage
+          stays filled. A fresh circle is reused for 30 days when the next
+          address falls inside it.
+        </p>
+        {(data?.places ?? []).length === 0 ? (
+          <div className="empty">
+            No places yet. Search a Dutch address above — Haarlem and Alkmaar
+            show up here as separate circles.
+          </div>
+        ) : (
+          <div className="control-door-grid">
+            {(data?.places ?? []).map((place) => (
+              <PlaceCard key={place.id} place={place} />
+            ))}
+          </div>
+        )}
+      </section>
       {error ? <div className="error">{error}</div> : null}
 
       <section className="panel">

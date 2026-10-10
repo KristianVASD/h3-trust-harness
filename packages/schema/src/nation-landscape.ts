@@ -112,6 +112,8 @@ export const NationProposedSourceSchema = z.object({
   name: z.string().min(1),
   url: z.string().optional(),
   listUrl: z.string().optional(),
+  /** Trade door ids this finder covers. Empty means the name decides. */
+  trades: z.array(z.string()).default([]),
 });
 export type NationProposedSource = z.infer<typeof NationProposedSourceSchema>;
 
@@ -232,17 +234,22 @@ function coerceProposed(raw: unknown): NationProposedSource[] {
   const out: NationProposedSource[] = [];
   for (const item of raw) {
     if (typeof item === "string" && item.trim()) {
-      out.push({ name: item.trim() });
+      out.push({ name: item.trim(), trades: [] });
       continue;
     }
     const rec = asRecord(item);
     if (!rec) continue;
     const name = String(rec.name ?? rec.title ?? "").trim();
     if (!name) continue;
+    const tradesRaw = rec.trades ?? rec.tradeIds ?? rec.doors;
+    const trades = Array.isArray(tradesRaw)
+      ? tradesRaw.map((t) => String(t).trim()).filter(Boolean)
+      : [];
     out.push({
       name,
       url: String(rec.url ?? "").trim() || undefined,
       listUrl: String(rec.listUrl ?? rec.list_url ?? "").trim() || undefined,
+      trades,
     });
   }
   return out;

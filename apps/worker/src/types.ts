@@ -8,7 +8,8 @@ export type WorkerCommand =
   | "full_mission"
   | "nation_map"
   | "nation_harvest"
-  | "place_test";
+  | "place_test"
+  | "address_search";
 
 export type WorkerStatus =
   | "queued"

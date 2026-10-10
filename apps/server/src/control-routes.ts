@@ -1,7 +1,9 @@
 import type { Hono } from "hono";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  ADDRESS_SEARCH_STAGES,
   TRADE_IDS,
+  cellIsFresh,
   coerceLandscapeInput,
   countrySlug,
   displayCountry,
@@ -25,6 +27,7 @@ import {
   listDeskJobs,
 } from "./control-desk.js";
 import type { NationLandscapeStore } from "./nation-landscape-store.js";
+import type { PlaceCellStore } from "./place-cell-store.js";
 import type { WorkerEvent, WorkerRun } from "./worker-progress.js";
 import { PackOnboardError } from "./pack-onboard-route.js";
 import { playbookIncoming, seedDoorPlaybook } from "./door-playbook-route.js";
@@ -86,16 +89,62 @@ async function eventsForRun(
   return data as WorkerEvent[];
 }
 
+export type PlaceProgressRow = {
+  id: string;
+  label: string;
+  address: string;
+  woonplaats?: string;
+  gemeente?: string;
+  postcode4?: string;
+  radiusKm: number;
+  updatedAt: string;
+  fresh: boolean;
+  finishedStages: string[];
+  stageTotal: number;
+  ecology: { ov: number; sport: number; festivity: number };
+  candidateCount: number;
+  missionId: string;
+  run: {
+    id: string;
+    status: WorkerRun["status"];
+    progress_pct: number;
+    current_action: string | null;
+    error: string | null;
+    updated_at: string;
+  } | null;
+};
+
+async function addressRunsByCell(
+  admin: SupabaseClient | null,
+): Promise<Map<string, WorkerRun>> {
+  const map = new Map<string, WorkerRun>();
+  if (!admin) return map;
+  const { data, error } = await admin
+    .from("worker_runs")
+    .select("*")
+    .eq("command", "address_search")
+    .order("created_at", { ascending: false })
+    .limit(80);
+  if (error || !data) return map;
+  for (const row of data as WorkerRun[]) {
+    const id = (row.target_id ?? "").trim();
+    if (!id || map.has(id)) continue;
+    map.set(id, row);
+  }
+  return map;
+}
+
 export function registerControlRoutes(
   app: Hono<{ Variables: AppVariables }>,
   options: {
     store: Store;
     admin: SupabaseClient | null;
     landscapes: NationLandscapeStore;
+    cells: PlaceCellStore;
     searchDemandMemory: SearchDemand[];
   },
 ): void {
-  const { store, admin, landscapes, searchDemandMemory } = options;
+  const { store, admin, landscapes, cells, searchDemandMemory } = options;
 
   app.get("/api/control/countries", async (c) => {
     const [known, lastRuns] = await Promise.all([
@@ -143,15 +192,54 @@ export function registerControlRoutes(
   app.get("/api/control/countries/:country", async (c) => {
     const raw = decodeURIComponent(c.req.param("country"));
     const slug = countrySlug(raw);
-    const [landscape, doorsPack, demandsRaw, latestRun] = await Promise.all([
-      landscapes.get(raw),
-      buildCountryDoors(store, raw),
-      listSearchDemands(admin, searchDemandMemory, 80),
-      latestRunForTarget(admin, { countrySlug: slug }),
-    ]);
+    const [landscape, doorsPack, demandsRaw, latestRun, allCells, runsByCell] =
+      await Promise.all([
+        landscapes.get(raw),
+        buildCountryDoors(store, raw),
+        listSearchDemands(admin, searchDemandMemory, 80),
+        latestRunForTarget(admin, { countrySlug: slug }),
+        cells.list(),
+        addressRunsByCell(admin),
+      ]);
     const jobs = await listDeskJobs(store, raw);
     const events = capEvents(await eventsForRun(admin, latestRun?.id));
     const demands = capDemands(aggregateSearchDemands(demandsRaw), raw);
+    const places: PlaceProgressRow[] = allCells
+      .filter((cell) => countrySlug(cell.countrySlug || cell.country) === slug)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .map((cell) => {
+        const run = runsByCell.get(cell.id);
+        return {
+          id: cell.id,
+          label: cell.label,
+          address: cell.address,
+          woonplaats: cell.woonplaats,
+          gemeente: cell.gemeente,
+          postcode4: cell.postcode4,
+          radiusKm: cell.radiusKm,
+          updatedAt: cell.updatedAt,
+          fresh: cellIsFresh(cell.updatedAt),
+          finishedStages: cell.finishedStages,
+          stageTotal: ADDRESS_SEARCH_STAGES.length,
+          ecology: {
+            ov: cell.ecology.ov.length,
+            sport: cell.ecology.sport.length,
+            festivity: cell.ecology.festivity.length,
+          },
+          candidateCount: cell.candidates.length,
+          missionId: cell.missionId,
+          run: run
+            ? {
+                id: run.id,
+                status: run.status,
+                progress_pct: run.progress_pct,
+                current_action: run.current_action,
+                error: run.error,
+                updated_at: run.updated_at,
+              }
+            : null,
+        };
+      });
     return c.json({
       country: landscape?.country ?? displayCountry(raw),
       countrySlug: slug,
@@ -162,6 +250,7 @@ export function registerControlRoutes(
       demands,
       latestRun,
       events,
+      places,
     });
   });
 

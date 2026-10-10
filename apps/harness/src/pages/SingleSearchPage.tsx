@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { v4 as uuid } from "uuid";
 import {
+  addressSearchRank,
   computeListCoverage,
   computeMissionCoverage,
   computeResultCoverage,
@@ -546,8 +547,24 @@ export function SingleSearchPage() {
             isNationalPack(prev.mission) && prev.company.status !== "unknown"
               ? prev.mission
               : bundle.mission;
+          const capabilities =
+            (company.capabilities?.length ?? 0) >= (prev.company.capabilities?.length ?? 0)
+              ? company.capabilities
+              : prev.company.capabilities;
           byKey.set(key, {
-            company: { ...keep, source_ids, list_membership },
+            company: {
+              ...keep,
+              source_ids,
+              list_membership,
+              capabilities,
+              audienceMode: company.audienceMode ?? prev.company.audienceMode,
+              localAuthenticity: company.localAuthenticity ?? prev.company.localAuthenticity,
+              countryChecks: company.countryChecks?.length
+                ? company.countryChecks
+                : prev.company.countryChecks,
+              trustProposal: company.trustProposal ?? prev.company.trustProposal,
+              placeCellId: company.placeCellId ?? prev.company.placeCellId,
+            },
             mission,
           });
         }
@@ -633,12 +650,16 @@ export function SingleSearchPage() {
             parsed.capabilityFilter,
           );
           const canBoost = canHit ? CAN_MATCH_BOOST : 0;
+          const addressRank = addressSearchRank(c);
+          if (!addressRank.include) return null;
+          const evidenceScore = Math.max(cov.score, addressRank.score);
           const displayScore =
-            (human?.humanScore != null ? human.humanScore : cov.score) +
+            (human?.humanScore != null ? human.humanScore : evidenceScore) +
             localBoost +
             canBoost;
           const coverageConfidence = computeResultCoverage(c, missionCov);
           const why = [explainResultCoverage(c, missionCov)];
+          if (addressRank.why) why.push(addressRank.why);
           if (parsed.capabilityFilter) {
             why.push(
               canHit
@@ -648,7 +669,7 @@ export function SingleSearchPage() {
           }
           return {
             company: c,
-            score: cov.score,
+            score: evidenceScore,
             onCount: cov.onCount,
             totalCount: cov.totalCount,
             lists: cov.lists.map((s) => ({ id: s.id, name: s.name })),
@@ -659,6 +680,7 @@ export function SingleSearchPage() {
             nearby: Boolean(parsed.location) && !exact && localBoost > 0,
           };
         })
+        .filter((row): row is NonNullable<typeof row> => row != null)
         .sort((a, b) => b.displayScore - a.displayScore);
 
       if (parsed.context) {

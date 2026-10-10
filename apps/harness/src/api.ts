@@ -172,6 +172,31 @@ export type ControlJobRow = {
   updatedAt: string;
 };
 
+export type PlaceProgressRow = {
+  id: string;
+  label: string;
+  address: string;
+  woonplaats?: string;
+  gemeente?: string;
+  postcode4?: string;
+  radiusKm: number;
+  updatedAt: string;
+  fresh: boolean;
+  finishedStages: string[];
+  stageTotal: number;
+  ecology: { ov: number; sport: number; festivity: number };
+  candidateCount: number;
+  missionId: string;
+  run: {
+    id: string;
+    status: WorkerStatus;
+    progress_pct: number;
+    current_action: string | null;
+    error: string | null;
+    updated_at: string;
+  } | null;
+};
+
 export type ControlCountryRow = {
   country: string;
   countrySlug: string;
@@ -488,6 +513,7 @@ export const api = {
       demands: SearchDemandAggregate[];
       latestRun: WorkerRun | null;
       events: WorkerEvent[];
+      places: PlaceProgressRow[];
     }>(`/control/countries/${encodeURIComponent(country)}`),
   getControlLandscape: (country: string) =>
     request<{ landscape: NationLandscape }>(
@@ -501,6 +527,18 @@ export const api = {
       `/control/countries/${encodeURIComponent(country)}/landscape`,
       { method: "PUT", body: JSON.stringify(landscape) },
     ),
+  startAddressSearch: (
+    country: string,
+    body: { address: string; postcode?: string; place?: string },
+  ) =>
+    request<{
+      cell: { id: string; label: string; missionId: string };
+      run: WorkerRun;
+      reused: boolean;
+    }>(`/control/countries/${encodeURIComponent(country)}/address-search`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   getControlDoor: (country: string, tradeId: string) =>
     request<{
       country: string;
