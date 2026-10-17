@@ -16,6 +16,7 @@
     "omega:smoke": "pnpm --filter @h3-trust/server omega:smoke",
     "worker": "pnpm --filter @h3-trust/worker start",
     "typecheck": "pnpm -r typecheck",
+    "test": "pnpm --filter @h3-trust/server test",
     "lint": "eslint .",
     "format": "prettier --write ."
   },

@@ -1,3 +1,4 @@
+/** Address search runs on the Vercel server. The local poller skips this command. */
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

@@ -9,7 +9,10 @@ import {
   type AddressCompanyInput,
   type AddressSeedInput,
 } from "./address-search-job.js";
+import { deferAddressSlice, scheduleAddressSearchStep } from "./address-search-kick.js";
+import { runAddressSearchSlice } from "./address-search-run.js";
 import { isAdmin, type AppVariables } from "./auth.js";
+import type { NationLandscapeStore } from "./nation-landscape-store.js";
 import type { PlaceCellStore } from "./place-cell-store.js";
 
 function engineUnavailable() {
@@ -25,6 +28,7 @@ export function registerAddressSearchRoutes(
     store: Store;
     admin: SupabaseClient | null;
     cells: PlaceCellStore;
+    landscapes: NationLandscapeStore;
   },
 ): void {
   app.post("/api/control/countries/:country/address-search", async (c) => {
@@ -48,10 +52,43 @@ export function registerAddressSearchRoutes(
         place,
         model,
       });
+      scheduleAddressSearchStep(result.run.id);
       return c.json(result, 201);
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : "Address search failed" }, 400);
     }
+  });
+
+  app.post("/api/internal/address-search/step", async (c) => {
+    if (!c.get("isWorker") && !isAdmin(c.get("auth"))) {
+      return c.json({ error: "Worker or admin only" }, 403);
+    }
+    if (!deps.admin) return c.json(engineUnavailable(), 503);
+    const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+    const runId = typeof body?.runId === "string" ? body.runId.trim() : "";
+    const lock = typeof body?.lock === "string" ? body.lock : undefined;
+    if (!runId) return c.json({ error: "runId is required" }, 400);
+    const admin = deps.admin;
+    deferAddressSlice(
+      runAddressSearchSlice({
+        admin,
+        store: deps.store,
+        cells: deps.cells,
+        landscapes: deps.landscapes,
+        runId,
+        lock,
+      })
+        .then((result) => {
+          if (result.continue && result.lock) scheduleAddressSearchStep(runId, result.lock);
+        })
+        .catch((err) => {
+          console.error(
+            "[address-search] slice failed",
+            err instanceof Error ? err.message : err,
+          );
+        }),
+    );
+    return c.json({ accepted: true }, 202);
   });
 
   app.get("/api/place-cells/:id", async (c) => {

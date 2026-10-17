@@ -32,7 +32,42 @@ export type AppVariables = {
   auth: AuthUser | null;
   authRequired: boolean;
   isWorker: boolean;
+  isPartner: boolean;
 };
+
+/** HandyHouseHelp may call only its shortlist routes. */
+export function isHhhPartnerPath(path: string): boolean {
+  const clean = path.split("?")[0] ?? path;
+  return (
+    clean === "/api/partner/hhh/shortlist" ||
+    clean.startsWith("/api/partner/hhh/shortlist/")
+  );
+}
+
+export function partnerRouteDecision(
+  isPartner: boolean,
+  path: string,
+): "allow" | "deny" | "passthrough" {
+  if (!isPartner) return "passthrough";
+  return isHhhPartnerPath(path) ? "allow" : "deny";
+}
+
+/** Shared secret for HandyHouseHelp. Must differ from H3_WORKER_TOKEN. */
+export function isHhhPartnerBearer(
+  authorizationHeader: string | undefined,
+): boolean {
+  const expected = (process.env.H3_HHH_TOKEN ?? "").trim();
+  const worker = (process.env.H3_WORKER_TOKEN ?? "").trim();
+  if (!expected || expected.length < 16) return false;
+  if (worker && expected === worker) return false;
+  if (!authorizationHeader?.startsWith("Bearer ")) return false;
+  const token = authorizationHeader.slice("Bearer ".length).trim();
+  if (!token) return false;
+  const a = Buffer.from(token);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
 
 /** Shared secret for the local engine worker. Never expose to the browser. */
 export function isWorkerBearer(
@@ -189,9 +224,11 @@ export function authMiddleware(
   return async (c, next) => {
     c.set("authRequired", authRequired);
     const header = c.req.header("Authorization");
-    const worker = isWorkerBearer(header);
+    const partner = isHhhPartnerBearer(header);
+    const worker = isWorkerBearer(header) && !partner;
+    c.set("isPartner", partner);
     c.set("isWorker", worker);
-    if (worker) {
+    if (worker || partner) {
       c.set("auth", null);
       await next();
       return;
@@ -215,6 +252,11 @@ export function requireWrite(): MiddlewareHandler<{ Variables: AppVariables }> {
       return next();
     }
     const path = c.req.path;
+    const partnerDecision = partnerRouteDecision(c.get("isPartner"), path);
+    if (partnerDecision === "deny") {
+      return c.json({ error: "Forbidden", code: "forbidden" }, 403);
+    }
+    if (partnerDecision === "allow") return next();
     // Always allow profile self-update + anonymous search quota
     if (
       path === "/api/me" ||
@@ -260,6 +302,11 @@ export function requireLoginForMissionReads(): MiddlewareHandler<{
     const method = c.req.method.toUpperCase();
     if (method !== "GET" && method !== "HEAD") return next();
     const path = c.req.path;
+    const partnerDecision = partnerRouteDecision(c.get("isPartner"), path);
+    if (partnerDecision === "deny") {
+      return c.json({ error: "Forbidden", code: "forbidden" }, 403);
+    }
+    if (partnerDecision === "allow") return next();
     if (
       path.startsWith("/api/public/") ||
       path === "/api/me" ||

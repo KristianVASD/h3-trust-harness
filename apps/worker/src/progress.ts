@@ -28,6 +28,7 @@ export async function claimNextQueuedRun(): Promise<WorkerRun | null> {
     .from("worker_runs")
     .select("*")
     .eq("status", "queued")
+    .neq("command", "address_search")
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();

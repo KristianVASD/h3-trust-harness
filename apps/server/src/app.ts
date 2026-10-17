@@ -56,6 +56,7 @@ import {
 import { exportHhhHighTrustLeads } from "./hhh-export.js";
 import { buildCoverageDesk } from "./coverage-desk.js";
 import { registerAddressSearchRoutes } from "./address-search-routes.js";
+import { registerHhhShortlistRoutes } from "./hhh-shortlist-routes.js";
 import { registerControlRoutes } from "./control-routes.js";
 import { createPlaceCellStore } from "./place-cell-store.js";
 import { createNationLandscapeStore } from "./nation-landscape-store.js";
@@ -634,7 +635,17 @@ export function createApp(options: CreateAppOptions) {
     cells: placeCells,
     searchDemandMemory,
   });
-  registerAddressSearchRoutes(app, { store, admin, cells: placeCells });
+  registerAddressSearchRoutes(app, {
+    store,
+    admin,
+    cells: placeCells,
+    landscapes,
+  });
+  registerHhhShortlistRoutes(app, {
+    store,
+    admin,
+    cells: placeCells,
+  });
 
   app.post("/api/packs/onboard", async (c) => {
     try {

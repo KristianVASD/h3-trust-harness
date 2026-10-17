@@ -10,7 +10,7 @@
   "functions": {
     "api/index.mjs": {
       "maxDuration": 60,
-      "includeFiles": "searchplans/**"
+      "includeFiles": "{searchplans/**,apps/worker/prompts/address-search.md,writable/docs/data/*.csv}"
     }
   }
 }

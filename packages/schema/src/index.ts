@@ -5,6 +5,7 @@ import {
   LocalAuthenticitySchema,
   TrustProposalSchema,
 } from "./address-search";
+import { PartnerTrustSchema } from "./hhh-shortlist";
 import { AccessBarrierSchema } from "./access-barriers";
 import {
   SourceFieldKeySchema,
@@ -452,6 +453,11 @@ export const CompanySchema = z.object({
   countryChecks: z.array(CountryCheckSchema).optional(),
   trustProposal: TrustProposalSchema.optional(),
   placeCellId: z.string().uuid().optional(),
+  /**
+   * HandyHouseHelp shortlist outcome. Separate from curator `status`.
+   * Only geverifieerd and lokaal_verbonden are returned to HHH.
+   */
+  partnerTrust: PartnerTrustSchema.optional(),
 });
 export type Company = z.infer<typeof CompanySchema>;
 
@@ -646,3 +652,4 @@ export * from "./sector-playbook";
 export * from "./junk-company";
 export * from "./contact-minimize";
 export * from "./address-search";
+export * from "./hhh-shortlist";

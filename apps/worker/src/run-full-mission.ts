@@ -2,7 +2,6 @@ import type { SearchPlan } from "@h3-trust/schema";
 import { decideNextStep } from "./decide.js";
 import { h3 } from "./h3-api.js";
 import { getRun, heartbeat, loadRecentLessons, markStatus, writeEvent } from "./progress.js";
-import { processAddressSearch } from "./run-address-search.js";
 import { processNationMap } from "./run-nation-map.js";
 import { executeDecision } from "./run-step.js";
 import type { WorkerRun } from "./types.js";
@@ -32,7 +31,11 @@ export async function processRun(run: WorkerRun): Promise<void> {
     return;
   }
   if (run.command === "address_search") {
-    await processAddressSearch(run);
+    await markStatus(run.id, "failed", {
+      currentAction: "Address search runs on the server",
+      error: "address_search is executed by the Vercel server, not the local worker.",
+      progressPct: 0,
+    });
     return;
   }
 

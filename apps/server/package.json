@@ -11,13 +11,15 @@
     "fixtures:load": "tsx src/load-fixture.ts",
     "omega:smoke": "tsx src/omega/smoke.ts",
     "omega:import-smoke": "tsx src/omega/import-smoke.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --import tsx --test src/hhh-shortlist.test.ts"
   },
   "dependencies": {
     "@h3-trust/schema": "workspace:*",
     "@h3-trust/store": "workspace:*",
     "@hono/node-server": "^1.13.7",
     "@supabase/supabase-js": "^2.49.1",
+    "@vercel/functions": "^3.9.11",
     "hono": "^4.6.14",
     "uuid": "^11.0.3"
   },

@@ -355,7 +355,7 @@ If that loop feels natural, the product thesis is working: you ran a trust **inv
 Local default remains `STORE_DRIVER=file` (JSON under `writable/`). Production uses Supabase Postgres via the same `Store` interface.
 
 1. Create a Supabase project and run the SQL in [`supabase/migrations/`](supabase/migrations/) in order (see [`supabase/README.md`](supabase/README.md)), including `20260830_worker_progress.sql` for Admin Engine runs.
-2. On Vercel, set env: `STORE_DRIVER=postgres`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `AUTH_REQUIRED=true`, `ADMIN_EMAIL`, `CORS_ORIGIN`, `H3_WORKER_TOKEN`, plus `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` for the SPA build. Do **not** set `OPENROUTER_API_KEY` on Vercel.
+2. On Vercel, set env: `STORE_DRIVER=postgres`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `AUTH_REQUIRED=true`, `ADMIN_EMAIL`, `CORS_ORIGIN`, `H3_WORKER_TOKEN`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, plus `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` for the SPA build. `OPENROUTER_API_KEY` is server-only. Do **not** set `VITE_OPENROUTER_API_KEY`. Leave `H3_API_BASE` unset on Vercel so slices call the deployment URL. Address search runs inside this API. Other engine commands still need the local worker.
 3. Deploy — `vercel.json` builds the harness SPA and routes `/api/*` to the Hono serverless entry ([`api/index.ts`](api/index.ts)).
 4. Seed once with `STORE_DRIVER=postgres pnpm seed` so `/search` has Haarlemmermeer demo data.
 5. Sign up as CURAD volunteer → admin approves at `/admin/volunteers` → CARA writes unlock.
