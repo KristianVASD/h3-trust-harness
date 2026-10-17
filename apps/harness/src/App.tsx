@@ -14,6 +14,7 @@ import { PublicSearchPage } from "./public/pages/PublicSearchPage";
 import { ControlLayout } from "./pages/control/ControlLayout";
 import { ControlCountriesPage } from "./pages/control/ControlCountriesPage";
 import { ControlCountryPage } from "./pages/control/ControlCountryPage";
+import { ControlHhhPage } from "./pages/control/ControlHhhPage";
 import { ControlSectorPage } from "./pages/control/ControlSectorPage";
 import { SingleSearchPage } from "./pages/SingleSearchPage";
 import { WorkspacePage } from "./pages/WorkspacePage";
@@ -72,6 +73,7 @@ export function App() {
       <Route element={<HarnessLayout />}>
         <Route path="/control" element={<ControlLayout />}>
           <Route index element={<ControlCountriesPage />} />
+          <Route path="hhh" element={<ControlHhhPage />} />
           <Route path=":country" element={<ControlCountryPage />} />
           <Route path=":country/:tradeId" element={<ControlSectorPage />} />
         </Route>

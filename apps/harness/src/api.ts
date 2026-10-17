@@ -69,6 +69,28 @@ export type SearchDemandRow = {
   created_at: string;
 };
 
+export type HhhDeskJob = {
+  id: string;
+  requestId: string;
+  status: "queued" | "running" | "ready" | "failed";
+  updatedAt: string;
+  place: string;
+  postcode4?: string;
+  gemeente?: string;
+  tradeId: string;
+  jobText: string;
+  stage: string;
+  fromCache: boolean;
+  companies: Array<{
+    name: string;
+    website: string;
+    status: string;
+    score: number;
+    matchNote: string;
+  }>;
+  withheld: string[];
+};
+
 export type SearchDemandAggregate = {
   key: string;
   what: string;
@@ -842,4 +864,17 @@ export const api = {
     request<{ versions: string[]; latest: string }>("/searchplans"),
   getSearchPlan: (version: string) =>
     request<SearchPlan>(`/searchplans/${encodeURIComponent(version)}`),
+  listHhhShortlistJobs: () =>
+    request<{ jobs: HhhDeskJob[] }>("/control/hhh-shortlist"),
+  startHhhShortlist: (body: {
+    requestId: string;
+    postcode4?: string;
+    gemeente?: string;
+    tradeId: string;
+    jobText?: string;
+  }) =>
+    request<{ jobId: string; status: string; requestId: string }>(
+      "/partner/hhh/shortlist",
+      { method: "POST", body: JSON.stringify(body) },
+    ),
 };

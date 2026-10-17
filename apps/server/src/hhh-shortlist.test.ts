@@ -20,6 +20,7 @@ import {
   isWorkerBearer,
   partnerRouteDecision,
 } from "./auth.js";
+import { toDeskJob } from "./hhh-shortlist-jobs.js";
 
 const NOW = Date.parse("2026-10-16T12:00:00.000Z");
 const FRESH = "2027-01-01T00:00:00.000Z";
@@ -218,5 +219,42 @@ describe("partner token", () => {
       partnerRouteDecision(true, "/api/partner/hhh/shortlist/11111111-1111-4111-8111-111111111111"),
       "allow",
     );
+    assert.equal(partnerRouteDecision(true, "/api/control/hhh-shortlist"), "deny");
+  });
+});
+
+describe("shortlist desk", () => {
+  it("summarises a stored job without the full payload", () => {
+    const desk = toDeskJob({
+      id: "job-1",
+      request_id: "hhh-1",
+      status: "ready",
+      updated_at: "2026-10-17T10:00:00.000Z",
+      payload: {
+        placeLabel: "Amsterdam",
+        postcode4: "1012",
+        tradeId: "roof",
+        jobText: "lekkage onder de dakgoot",
+        stage: "store",
+        fromCache: false,
+        drops: ["Scam BV: fake_local"],
+      },
+      public_result: {
+        fromCache: false,
+        companies: [
+          {
+            name: "Dakwerk",
+            website: "https://dak.example",
+            status: "geverifieerd",
+            score: 40,
+            matchNote: "Dakwerk matches this roof job.",
+          },
+        ],
+      },
+    });
+    assert.equal(desk.requestId, "hhh-1");
+    assert.equal(desk.place, "Amsterdam");
+    assert.equal(desk.companies[0]?.name, "Dakwerk");
+    assert.deepEqual(desk.withheld, ["Scam BV: fake_local"]);
   });
 });

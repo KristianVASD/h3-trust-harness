@@ -6,7 +6,7 @@ import type { Store } from "@h3-trust/store";
 import { geocodeCached } from "./address-search-job.js";
 import { isAdmin, type AppVariables } from "./auth.js";
 import { deferHhhSlice, scheduleHhhShortlistStep, scheduleLocalSourceGeocode } from "./hhh-shortlist-kick.js";
-import { findPartnerJobByRequest, getPartnerJob, insertPartnerJob } from "./hhh-shortlist-jobs.js";
+import { findPartnerJobByRequest, getPartnerJob, insertPartnerJob, listPartnerJobs } from "./hhh-shortlist-jobs.js";
 import { runHhhShortlistSlice } from "./hhh-shortlist-run.js";
 import {
   geocodePendingSources,
@@ -97,6 +97,17 @@ export function registerHhhShortlistRoutes(
     }
     if (job.status === "failed") return c.json({ jobId: job.id, status: "failed" });
     return c.json({ jobId: job.id, status: job.status });
+  });
+
+  app.get("/api/control/hhh-shortlist", async (c) => {
+    if (!isAdmin(c.get("auth"))) return c.json({ error: "Admin only" }, 403);
+    if (!deps.admin) return c.json(engineUnavailable(), 503);
+    try {
+      const jobs = await listPartnerJobs(deps.admin);
+      return c.json({ jobs });
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : "Could not list shortlist jobs" }, 500);
+    }
   });
 
   app.post("/api/internal/hhh-shortlist/step", async (c) => {

@@ -88,3 +88,72 @@ export async function savePartnerJob(
     .eq("id", row.id);
   if (error) throw new Error(error.message);
 }
+
+export type HhhDeskJob = {
+  id: string;
+  requestId: string;
+  status: PartnerJobStatus;
+  updatedAt: string;
+  place: string;
+  postcode4?: string;
+  gemeente?: string;
+  tradeId: string;
+  jobText: string;
+  stage: string;
+  fromCache: boolean;
+  companies: Array<{
+    name: string;
+    website: string;
+    status: string;
+    score: number;
+    matchNote: string;
+  }>;
+  withheld: string[];
+};
+
+function textOf(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+export function toDeskJob(row: Record<string, unknown>): HhhDeskJob {
+  const job = asJob(row);
+  const payload = job.payload;
+  const companies = (job.public_result?.companies ?? []).map((company) => ({
+    name: company.name,
+    website: company.website,
+    status: company.status,
+    score: company.score,
+    matchNote: company.matchNote,
+  }));
+  const withheld = Array.isArray(payload.drops)
+    ? payload.drops.filter((item): item is string => typeof item === "string")
+    : [];
+  return {
+    id: job.id,
+    requestId: job.request_id,
+    status: job.status,
+    updatedAt: textOf(row.updated_at),
+    place: textOf(payload.placeLabel),
+    postcode4: textOf(payload.postcode4) || undefined,
+    gemeente: textOf(payload.gemeente) || undefined,
+    tradeId: textOf(payload.tradeId),
+    jobText: textOf(payload.jobText),
+    stage: textOf(payload.stage),
+    fromCache: payload.fromCache === true,
+    companies,
+    withheld,
+  };
+}
+
+export async function listPartnerJobs(
+  admin: SupabaseClient,
+  limit = 40,
+): Promise<HhhDeskJob[]> {
+  const { data, error } = await admin
+    .from("partner_jobs")
+    .select("id,request_id,status,payload,public_result,updated_at")
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => toDeskJob(row as Record<string, unknown>));
+}

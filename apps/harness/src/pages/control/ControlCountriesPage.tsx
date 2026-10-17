@@ -72,6 +72,12 @@ export function ControlCountriesPage() {
         <p className="muted">
           Start a country, then explore sectors. Nation mapping is the trust
           landscape — how local proof is found — before you open a trade door.
+          {isAdmin ? (
+            <>
+              {" "}
+              <Link to="/control/hhh">HandyHouseHelp shortlists</Link>
+            </>
+          ) : null}
         </p>
       </header>
       {error ? <div className="error">{error}</div> : null}
