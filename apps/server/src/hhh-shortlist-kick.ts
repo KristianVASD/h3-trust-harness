@@ -48,6 +48,11 @@ export function scheduleHhhShortlistStep(jobId: string, lock?: string): void {
   postInternal("/api/internal/hhh-shortlist/step", { jobId, lock }, "hhh-shortlist");
 }
 
+/** Homepage antifaker. Runs after the Gemini answer is already stored. */
+export function scheduleHhhFoundKnockout(jobId: string): void {
+  postInternal("/api/internal/hhh-found/knockout", { jobId }, "hhh-found");
+}
+
 export function scheduleLocalSourceGeocode(): void {
   postInternal("/api/internal/local-sources/geocode", {}, "local-sources");
 }

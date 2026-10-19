@@ -213,6 +213,7 @@ describe("partner token", () => {
     assert.equal(isWorkerBearer("Bearer hhh-partner-token1"), false);
     assert.equal(isHhhPartnerPath("/api/internal/hhh-shortlist/step"), false);
     assert.equal(partnerRouteDecision(true, "/api/internal/hhh-shortlist/step"), "deny");
+    assert.equal(partnerRouteDecision(true, "/api/internal/hhh-found/knockout"), "deny");
     assert.equal(partnerRouteDecision(true, "/api/internal/address-search/step"), "deny");
     assert.equal(partnerRouteDecision(true, "/api/partner/hhh/shortlist"), "allow");
     assert.equal(
@@ -220,6 +221,10 @@ describe("partner token", () => {
       "allow",
     );
     assert.equal(partnerRouteDecision(true, "/api/control/hhh-shortlist"), "deny");
+    assert.equal(
+      partnerRouteDecision(true, "/api/control/hhh-shortlist/11111111-1111-4111-8111-111111111111/step"),
+      "deny",
+    );
   });
 });
 
@@ -256,5 +261,6 @@ describe("shortlist desk", () => {
     assert.equal(desk.place, "Amsterdam");
     assert.equal(desk.companies[0]?.name, "Dakwerk");
     assert.deepEqual(desk.withheld, ["Scam BV: fake_local"]);
+    assert.deepEqual(desk.progress, []);
   });
 });

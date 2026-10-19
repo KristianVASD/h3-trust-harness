@@ -155,6 +155,27 @@ export async function listActiveLocalSources(
   return (data ?? []) as LocalSourceRow[];
 }
 
+export async function summarizeLocalSources(admin: SupabaseClient): Promise<{
+  ov: number;
+  sport: number;
+  located: number;
+  pending: number;
+}> {
+  const { data, error } = await admin
+    .from("local_sources")
+    .select("kind,lat")
+    .eq("active", true)
+    .in("kind", ["ov", "sport"]);
+  if (error) throw new Error(error.message);
+  const rows = data ?? [];
+  return {
+    ov: rows.filter((row) => row.kind === "ov").length,
+    sport: rows.filter((row) => row.kind === "sport").length,
+    located: rows.filter((row) => typeof row.lat === "number").length,
+    pending: rows.filter((row) => row.lat == null).length,
+  };
+}
+
 export async function geocodePendingSources(
   admin: SupabaseClient,
   limit = 12,

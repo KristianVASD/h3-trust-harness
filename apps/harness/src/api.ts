@@ -89,6 +89,17 @@ export type HhhDeskJob = {
     matchNote: string;
   }>;
   withheld: string[];
+  progress: string[];
+  lastError?: string;
+  checked: number;
+  visitCount: number;
+};
+
+export type LocalSourceSummary = {
+  ov: number;
+  sport: number;
+  located: number;
+  pending: number;
 };
 
 export type SearchDemandAggregate = {
@@ -877,4 +888,15 @@ export const api = {
       "/partner/hhh/shortlist",
       { method: "POST", body: JSON.stringify(body) },
     ),
+  stepHhhShortlist: (jobId: string) =>
+    request<{ job: HhhDeskJob; continued: boolean }>(
+      `/control/hhh-shortlist/${encodeURIComponent(jobId)}/step`,
+      { method: "POST", body: "{}" },
+    ),
+  getLocalSources: () => request<LocalSourceSummary>("/control/local-sources"),
+  importLocalSources: (csv: string) =>
+    request<{ imported: number; skipped: number }>("/control/local-sources/import", {
+      method: "POST",
+      body: JSON.stringify({ csv }),
+    }),
 };

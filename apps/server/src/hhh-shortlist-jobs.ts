@@ -109,6 +109,10 @@ export type HhhDeskJob = {
     matchNote: string;
   }>;
   withheld: string[];
+  progress: string[];
+  lastError?: string;
+  checked: number;
+  visitCount: number;
 };
 
 function textOf(value: unknown): string {
@@ -142,6 +146,12 @@ export function toDeskJob(row: Record<string, unknown>): HhhDeskJob {
     fromCache: payload.fromCache === true,
     companies,
     withheld,
+    progress: Array.isArray(payload.progress)
+      ? payload.progress.filter((item): item is string => typeof item === "string")
+      : [],
+    lastError: textOf(payload.lastError) || undefined,
+    checked: typeof payload.assessIndex === "number" ? payload.assessIndex : 0,
+    visitCount: Array.isArray(payload.shortlist) ? payload.shortlist.length : 0,
   };
 }
 

@@ -27,7 +27,7 @@ export const CategorySignalSchema = z.enum([
 export type CategorySignal = z.infer<typeof CategorySignalSchema>;
 
 export const PartnerFactSchema = z.object({
-  kind: z.enum(["website", "list_mention", "search"]),
+  kind: z.enum(["website", "list_mention", "search", "ov", "sport", "festivity"]),
   sourceUrl: z.string().min(1),
   observedAt: z.string().min(1),
   expiresAt: z.string().min(1),
@@ -78,18 +78,25 @@ export const HhhShortlistCompanySchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1),
   place: z.string().min(1),
-  website: z.string().min(1),
+  website: z.string().default(""),
+  phone: z.string().optional(),
+  email: z.string().optional(),
   tradeId: TradeIdSchema,
-  status: z.enum(["geverifieerd", "lokaal_verbonden"]),
+  status: z.enum(["gevonden", "geverifieerd", "lokaal_verbonden"]),
+  /** Gemini route: number of unique local sources, capped at 4. */
+  sourceCount: z.number().int().min(1).max(4).optional(),
   score: z.number().min(0).max(100),
   matchNote: z.string().min(1),
   evidence: z.array(HhhShortlistEvidenceSchema).default([]),
 });
 export type HhhShortlistCompany = z.infer<typeof HhhShortlistCompanySchema>;
 
+/** Gemini answers may return five firms. The older website shortlist still stops at three. */
+export const PUBLIC_SHORTLIST_MAX = 5;
+
 export const HhhPublicShortlistSchema = z.object({
   fromCache: z.boolean(),
-  companies: z.array(HhhShortlistCompanySchema).max(SHORTLIST_RETURN_COUNT),
+  companies: z.array(HhhShortlistCompanySchema).max(PUBLIC_SHORTLIST_MAX),
 });
 export type HhhPublicShortlist = z.infer<typeof HhhPublicShortlistSchema>;
 

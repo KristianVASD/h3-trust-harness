@@ -10,8 +10,10 @@ import {
   displayCountry,
   factExpiry,
   findCompanyMatchIndex,
+  foundFacts,
   placeCellSector,
   type Company,
+  type GeminiFoundCompany,
   type HhhShortlistCompany,
   type Mission,
   type PartnerFact,
@@ -286,6 +288,123 @@ export async function storeShortlistCompanies(args: {
     ids.set(row.website, created.id);
   }
   return ids;
+}
+
+export async function storeFoundCompanies(args: {
+  store: Store;
+  cells: PlaceCellStore;
+  place: {
+    postcode4?: string;
+    gemeente?: string;
+    woonplaats?: string;
+    placeLabel: string;
+    lat: number;
+    lon: number;
+    tradeId: string;
+  };
+  rows: GeminiFoundCompany[];
+  observedAt: string;
+}): Promise<{ ids: Map<string, string>; withheld: string[] }> {
+  const cell = await ensureShortlistCell(args.store, args.cells, args.place);
+  const mission = await args.store.getMission(cell.missionId);
+  if (!mission) throw new Error("Shortlist mission is missing");
+  const companies = await args.store.listByMission("companies", mission.id);
+  const ids = new Map<string, string>();
+  const withheld: string[] = [];
+  for (const row of args.rows) {
+    const indexes = buildCompanyIndexes(companies);
+    let matchAt = findCompanyMatchIndex(
+      { name: row.name, website_url: row.website, region: args.place.placeLabel, email: row.email },
+      indexes,
+    );
+    if (matchAt == null) {
+      const needle = row.name.trim().toLowerCase();
+      const byName = companies.findIndex((company) => company.name.trim().toLowerCase() === needle);
+      if (byName >= 0) matchAt = byName;
+    }
+    const prev = matchAt != null ? companies[matchAt] : undefined;
+    if (prev?.localAuthenticity?.verdict === "fake_local") {
+      withheld.push(`${row.name}: fake_local`);
+      continue;
+    }
+    const trust = PartnerTrustSchema.parse({
+      status: "gevonden",
+      tradeId: args.place.tradeId,
+      postcode4: args.place.postcode4,
+      gemeente: args.place.gemeente,
+      woonplaats: args.place.woonplaats,
+      score: row.sourceCount,
+      matchNote: row.matchNote,
+      elementCodes: prev?.partnerTrust?.elementCodes ?? [],
+      categorySignal: "in_category",
+      facts: foundFacts(row, args.observedAt),
+    });
+    const membership = [...new Set(row.hits.map((hit) => hit.sourceName).filter(Boolean))];
+    if (prev && matchAt != null) {
+      const next = CompanySchema.parse({
+        ...prev,
+        region: prev.region || args.place.placeLabel,
+        category: args.place.tradeId,
+        address: row.address || prev.address,
+        website_url: row.website || prev.website_url,
+        phone: row.phone || prev.phone,
+        email: row.email || prev.email,
+        list_membership: [...new Set([...(prev.list_membership ?? []), ...membership])],
+        partnerTrust: trust,
+        placeCellId: cell.id,
+        updatedAt: args.observedAt,
+      });
+      companies[matchAt] = await args.store.upsert("companies", next);
+      ids.set(row.name, next.id);
+      continue;
+    }
+    const created = CompanySchema.parse({
+      id: randomUUID(),
+      missionId: mission.id,
+      producer: "ExternalAI",
+      createdAt: args.observedAt,
+      updatedAt: args.observedAt,
+      v: 1,
+      name: row.name,
+      address: row.address,
+      region: args.place.placeLabel,
+      sector: placeCellSector(),
+      category: args.place.tradeId,
+      website_url: row.website || undefined,
+      phone: row.phone || undefined,
+      email: row.email || undefined,
+      list_membership: membership,
+      status: "candidate",
+      kvk_gate: "unchecked",
+      partnerTrust: trust,
+      placeCellId: cell.id,
+    });
+    companies.push(await args.store.upsert("companies", created));
+    ids.set(row.name, created.id);
+  }
+  return { ids, withheld };
+}
+
+export async function markFoundKnockout(args: {
+  store: Store;
+  companyId: string;
+  verdict: "real_local" | "thin_local" | "fake_local" | "unknown";
+  reasons: string[];
+  checkedAt: string;
+}): Promise<void> {
+  const companies = await loadTrustedCompanies(args.store);
+  const prev = companies.find((company) => company.id === args.companyId);
+  if (!prev) return;
+  const next = CompanySchema.parse({
+    ...prev,
+    localAuthenticity: {
+      verdict: args.verdict,
+      reasons: args.reasons,
+      checkedAt: args.checkedAt,
+    },
+    updatedAt: args.checkedAt,
+  });
+  await args.store.upsert("companies", next);
 }
 
 export function cardsFromStored(args: {

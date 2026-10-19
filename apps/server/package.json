@@ -12,7 +12,7 @@
     "omega:smoke": "tsx src/omega/smoke.ts",
     "omega:import-smoke": "tsx src/omega/import-smoke.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test src/hhh-shortlist.test.ts"
+    "test": "node --import tsx --test src/hhh-shortlist.test.ts src/hhh-gemini-found.test.ts"
   },
   "dependencies": {
     "@h3-trust/schema": "workspace:*",

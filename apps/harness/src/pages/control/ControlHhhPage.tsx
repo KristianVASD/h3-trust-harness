@@ -1,10 +1,22 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { TRADE_IDS, tradeLabel } from "@h3-trust/schema";
-import { api, type HhhDeskJob } from "../../api";
+import { api, type HhhDeskJob, type LocalSourceSummary } from "../../api";
 import { StatusChip } from "../../components/Badges";
 import { useAuth } from "../../auth/AuthContext";
 import { useCanInteract } from "../../hooks/useCanInteract";
+
+const LIST_EXAMPLE = `kind,name,town,postcode,website
+ov,Ondernemersvereniging Bollenstreek,Lisse,2161,https://www.ov-bollenstreek.nl
+sport,FC Lisse,Lisse,2161,https://www.fclisse.nl`;
+
+const STAGE_RAIL = [
+  { id: "lookup", label: "Stored" },
+  { id: "find", label: "Find" },
+  { id: "check", label: "Check" },
+  { id: "gate", label: "Local mention" },
+  { id: "done", label: "Result" },
+] as const;
 
 function tone(status: HhhDeskJob["status"]): "done" | "active" | "waiting" {
   if (status === "ready") return "done";
@@ -17,10 +29,23 @@ function placeOf(job: HhhDeskJob): string {
   return bits.length > 0 ? bits.join(" · ") : "Place not stored yet";
 }
 
+function railIndex(job: HhhDeskJob): number {
+  if (job.status === "ready" || job.stage === "done" || job.stage === "store") return 4;
+  if (job.stage === "gate" || job.stage === "assess") return 3;
+  if (job.stage === "check" || job.stage === "category") return 2;
+  if (job.stage === "find" || job.stage === "search" || job.stage === "recheck") return 1;
+  return 0;
+}
+
+function liveJob(job: HhhDeskJob): boolean {
+  return job.status === "queued" || job.status === "running";
+}
+
 export function ControlHhhPage() {
   const { isAdmin, loading: authLoading } = useAuth();
   const { needsLogin } = useCanInteract();
   const [jobs, setJobs] = useState<HhhDeskJob[]>([]);
+  const [sources, setSources] = useState<LocalSourceSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [postcode4, setPostcode4] = useState("");
@@ -29,16 +54,48 @@ export function ControlHhhPage() {
   const [jobText, setJobText] = useState("");
   const [requestId, setRequestId] = useState("");
   const [saving, setSaving] = useState(false);
+  const [csv, setCsv] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importNote, setImportNote] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [drivingId, setDrivingId] = useState<string | null>(null);
+  const driveRef = useRef(false);
+  const kicked = useRef(false);
 
   async function load() {
     try {
-      const res = await api.listHhhShortlistJobs();
-      setJobs(res.jobs);
+      const [jobsRes, sourceRes] = await Promise.all([
+        api.listHhhShortlistJobs(),
+        api.getLocalSources(),
+      ]);
+      setJobs(jobsRes.jobs);
+      setSources(sourceRes);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load shortlist jobs");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function drive(jobId: string) {
+    if (driveRef.current) return;
+    driveRef.current = true;
+    setDrivingId(jobId);
+    setOpenId(jobId);
+    try {
+      for (let step = 0; step < 24; step += 1) {
+        const res = await api.stepHhhShortlist(jobId);
+        setJobs((current) => current.map((job) => (job.id === res.job.id ? res.job : job)));
+        if (res.job.status === "ready" || res.job.status === "failed") break;
+        if (!res.continued) await new Promise((resolve) => window.setTimeout(resolve, 3000));
+      }
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update the shortlist");
+    } finally {
+      driveRef.current = false;
+      setDrivingId(null);
     }
   }
 
@@ -50,12 +107,20 @@ export function ControlHhhPage() {
     void load();
   }, [authLoading, needsLogin, isAdmin]);
 
-  const live = jobs.some((job) => job.status === "queued" || job.status === "running");
+  const live = jobs.some(liveJob);
   useEffect(() => {
-    if (!live || !isAdmin) return;
+    if (!live || !isAdmin || driveRef.current) return;
     const timer = window.setInterval(() => void load(), 4000);
     return () => window.clearInterval(timer);
   }, [live, isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin || loading || kicked.current || driveRef.current) return;
+    const stuck = jobs.find(liveJob);
+    if (!stuck) return;
+    kicked.current = true;
+    void drive(stuck.id);
+  }, [isAdmin, loading, jobs]);
 
   async function onStart(e: FormEvent) {
     e.preventDefault();
@@ -73,7 +138,7 @@ export function ControlHhhPage() {
     setSaving(true);
     setError(null);
     try {
-      await api.startHhhShortlist({
+      const started = await api.startHhhShortlist({
         requestId: requestId.trim() || `desk-${crypto.randomUUID()}`,
         ...(code ? { postcode4: code } : {}),
         ...(town ? { gemeente: town } : {}),
@@ -83,10 +148,29 @@ export function ControlHhhPage() {
       setRequestId("");
       setJobText("");
       await load();
+      void drive(started.jobId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not start the shortlist");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function onImport(e: FormEvent) {
+    e.preventDefault();
+    if (!csv.trim() || importing) return;
+    setImporting(true);
+    setImportNote(null);
+    setError(null);
+    try {
+      const res = await api.importLocalSources(csv);
+      setImportNote(`Saved ${res.imported} organisations. Skipped ${res.skipped} rows. Placing them on the map next.`);
+      setCsv("");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not import the list");
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -110,10 +194,61 @@ export function ControlHhhPage() {
 
       {isAdmin ? (
         <section className="panel control-start">
+          <h2>Local lists</h2>
+          <p className="hint">
+            Upload ondernemersverenigingen and sport clubs. These are organisation
+            websites, not the painting companies themselves. The search still runs
+            without them. With them, a firm named on a nearby list is preferred.
+          </p>
+          <p className="muted">
+            {sources
+              ? `${sources.ov} ondernemersverenigingen · ${sources.sport} sport clubs · ${sources.located} placed on the map · ${sources.pending} still waiting for a location`
+              : "Loading lists…"}
+          </p>
+          <form className="form-stack" onSubmit={(e) => void onImport(e)}>
+            <label>
+              CSV file
+              <input
+                type="file"
+                accept=".csv,text/csv,text/plain"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  void file.text().then(setCsv);
+                }}
+              />
+            </label>
+            <label>
+              Or paste the CSV
+              <textarea
+                value={csv}
+                onChange={(e) => setCsv(e.target.value)}
+                rows={6}
+                placeholder={LIST_EXAMPLE}
+              />
+            </label>
+            <pre className="muted" style={{ margin: 0, whiteSpace: "pre-wrap" }}>
+              {LIST_EXAMPLE}
+            </pre>
+            <p className="hint">
+              Columns: kind, name, town, postcode, website. kind is ov or sport.
+              postcode is four digits. website is the organisation’s own site.
+            </p>
+            <button className="btn" type="submit" disabled={importing || !csv.trim()}>
+              {importing ? "Uploading…" : "Upload lists"}
+            </button>
+          </form>
+          {importNote ? <p>{importNote}</p> : null}
+        </section>
+      ) : null}
+
+      {isAdmin ? (
+        <section className="panel control-start">
           <h2>Start a shortlist</h2>
           <p className="hint">
             Same fields HandyHouseHelp sends: a 4-digit postcode or a gemeente, a
-            trade, and the job in plain words. No street address.
+            trade, and the job in plain words. No street address. Status and the
+            companies open on the request below.
           </p>
           <form className="form-stack" onSubmit={(e) => void onStart(e)}>
             <label>
@@ -123,7 +258,7 @@ export function ControlHhhPage() {
                 onChange={(e) => setPostcode4(e.target.value)}
                 inputMode="numeric"
                 maxLength={4}
-                placeholder="1012"
+                placeholder="2161"
               />
             </label>
             <label>
@@ -131,7 +266,7 @@ export function ControlHhhPage() {
               <input
                 value={gemeente}
                 onChange={(e) => setGemeente(e.target.value)}
-                placeholder="Amsterdam"
+                placeholder="Lisse"
               />
             </label>
             <label>
@@ -151,7 +286,7 @@ export function ControlHhhPage() {
                 onChange={(e) => setJobText(e.target.value)}
                 maxLength={400}
                 rows={3}
-                placeholder="Lekkage onder de dakgoot, bitumen plat dak"
+                placeholder="Schilderen kozijnen voor en achter, begane grond en 1e verdieping"
               />
             </label>
             <label>
@@ -177,43 +312,100 @@ export function ControlHhhPage() {
           {!loading && jobs.length === 0 ? (
             <div className="empty">No shortlist requests yet.</div>
           ) : null}
-          {jobs.map((job) => (
-            <article key={job.id} className="mission-card">
-              <div className="row" style={{ gap: "0.4rem", flexWrap: "wrap" }}>
-                <StatusChip label={job.status} tone={tone(job.status)} />
-                {job.stage ? <StatusChip label={job.stage} /> : null}
-                {job.fromCache ? <StatusChip label="from cache" tone="done" /> : null}
-              </div>
-              <h3 style={{ margin: "0.6rem 0 0.2rem" }}>
-                {tradeLabel(job.tradeId)} · {placeOf(job)}
-              </h3>
-              <p className="muted" style={{ margin: 0 }}>
-                {job.requestId}
-                {job.updatedAt ? ` · ${new Date(job.updatedAt).toLocaleString()}` : ""}
-              </p>
-              {job.jobText ? <p style={{ margin: "0.45rem 0 0" }}>{job.jobText}</p> : null}
-              {job.companies.length > 0 ? (
-                <ul style={{ margin: "0.6rem 0 0", paddingLeft: "1.1rem" }}>
-                  {job.companies.map((company) => (
-                    <li key={company.website}>
-                      <a href={company.website} target="_blank" rel="noreferrer">
-                        {company.name}
-                      </a>{" "}
-                      <span className="muted">
-                        {company.status} · {company.score}
-                      </span>
-                      <div className="muted">{company.matchNote}</div>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-              {job.withheld.length > 0 ? (
-                <p className="muted" style={{ margin: "0.5rem 0 0" }}>
-                  Not returned: {job.withheld.join("; ")}
+          {jobs.map((job) => {
+            const open = openId === job.id;
+            const at = railIndex(job);
+            const latest = job.progress[job.progress.length - 1];
+            return (
+              <article key={job.id} className="mission-card">
+                <div className="row" style={{ gap: "0.4rem", flexWrap: "wrap" }}>
+                  <StatusChip label={job.status} tone={tone(job.status)} />
+                  {job.stage ? <StatusChip label={job.stage} /> : null}
+                  {job.fromCache ? <StatusChip label="from cache" tone="done" /> : null}
+                  {job.visitCount > 0 && job.stage === "assess" ? (
+                    <StatusChip label={`${job.checked}/${job.visitCount} websites`} tone="active" />
+                  ) : null}
+                </div>
+                <h3 style={{ margin: "0.6rem 0 0.2rem" }}>
+                  {tradeLabel(job.tradeId)} · {placeOf(job)}
+                </h3>
+                <p className="muted" style={{ margin: 0 }}>
+                  {job.requestId}
+                  {job.updatedAt ? ` · ${new Date(job.updatedAt).toLocaleString()}` : ""}
                 </p>
-              ) : null}
-            </article>
-          ))}
+                {job.jobText ? <p style={{ margin: "0.45rem 0 0" }}>{job.jobText}</p> : null}
+                <p style={{ margin: "0.45rem 0 0" }}>
+                  {drivingId === job.id
+                    ? "Updating…"
+                    : latest || (liveJob(job) ? "Waiting to start." : "No status notes yet.")}
+                </p>
+                <div className="place-stage-row" aria-label="Shortlist progress">
+                  {STAGE_RAIL.map((stage, index) => (
+                    <span
+                      key={stage.id}
+                      className={
+                        job.status === "ready" || index < at ? "place-stage done" : "place-stage"
+                      }
+                    >
+                      {stage.label}
+                    </span>
+                  ))}
+                </div>
+                <button
+                  className="btn secondary"
+                  type="button"
+                  style={{ marginTop: "0.75rem" }}
+                  onClick={() => {
+                    setOpenId(open ? null : job.id);
+                    if (!open && liveJob(job)) void drive(job.id);
+                  }}
+                >
+                  {open ? "Hide status and result" : "Status and result"}
+                </button>
+                {open ? (
+                  <div style={{ marginTop: "0.8rem" }}>
+                    {job.lastError ? <div className="error">{job.lastError}</div> : null}
+                    {job.progress.length > 0 ? (
+                      <ol style={{ margin: "0.4rem 0 0", paddingLeft: "1.2rem" }}>
+                        {job.progress.map((line, index) => (
+                          <li key={`${job.id}-${index}`}>{line}</li>
+                        ))}
+                      </ol>
+                    ) : (
+                      <p className="muted">No updates yet. The first step looks up companies already on file.</p>
+                    )}
+                    {job.companies.length > 0 ? (
+                      <>
+                        <h3 style={{ margin: "0.9rem 0 0.3rem" }}>Result</h3>
+                        <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+                          {job.companies.map((company) => (
+                            <li key={company.website}>
+                              <a href={company.website} target="_blank" rel="noreferrer">
+                                {company.name}
+                              </a>{" "}
+                              <span className="muted">
+                                {company.status === "gevonden"
+                                  ? `${company.status} · ${company.score} bronnen`
+                                  : `${company.status} · ${company.score}`}
+                              </span>
+                              <div className="muted">{company.matchNote}</div>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    ) : job.status === "ready" ? (
+                      <p>No company was returned.</p>
+                    ) : null}
+                    {job.withheld.length > 0 ? (
+                      <p className="muted" style={{ margin: "0.5rem 0 0" }}>
+                        Not returned: {job.withheld.join("; ")}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </article>
+            );
+          })}
         </section>
       ) : null}
     </div>

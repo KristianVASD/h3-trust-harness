@@ -24,6 +24,7 @@ import {
 import type { Store } from "@h3-trust/store";
 import { fetchPage, pageBlocked, extractBusinesses } from "./address-search-fetch.js";
 import { assessCompany } from "./company-assess.js";
+import { runGeminiFoundSlice } from "./hhh-gemini-run.js";
 import { getPartnerJob, savePartnerJob } from "./hhh-shortlist-jobs.js";
 import { browserSearchCompanies } from "./hhh-shortlist-search.js";
 import { listActiveLocalSources } from "./hhh-shortlist-sources.js";
@@ -84,6 +85,8 @@ type JobPayload = {
   recheckIndex: number;
   drops: string[];
   fromCache: boolean;
+  progress: string[];
+  lastError?: string;
 };
 
 function asString(value: unknown): string | undefined {
@@ -120,7 +123,15 @@ function readPayload(raw: Record<string, unknown>): JobPayload {
     recheckIndex: typeof raw.recheckIndex === "number" ? raw.recheckIndex : 0,
     drops: Array.isArray(raw.drops) ? raw.drops.filter((item): item is string => typeof item === "string") : [],
     fromCache: raw.fromCache === true,
+    progress: Array.isArray(raw.progress)
+      ? raw.progress.filter((item): item is string => typeof item === "string").slice(-30)
+      : [],
+    lastError: asString(raw.lastError),
   };
+}
+
+function note(payload: JobPayload, message: string): void {
+  payload.progress = [...payload.progress, message].slice(-30);
 }
 
 function canRun(payload: JobPayload, incoming?: string): boolean {
@@ -140,9 +151,12 @@ export async function runHhhShortlistSlice(args: {
   cells: PlaceCellStore;
   jobId: string;
   lock?: string;
+  release?: boolean;
 }): Promise<{ continue: boolean; lock?: string }> {
   const job = await getPartnerJob(args.admin, args.jobId);
-  if (!job || job.status === "ready" || job.status === "failed") return { continue: false };
+  if (!job) return { continue: false };
+  if (job.payload?.route === "gemini-found") return runGeminiFoundSlice(args);
+  if (job.status === "ready" || job.status === "failed") return { continue: false };
   const payload = readPayload(job.payload);
   if (!canRun(payload, args.lock)) return { continue: false };
   const lock = randomUUID();
@@ -177,10 +191,23 @@ export async function runHhhShortlistSlice(args: {
       payload: { ...payload },
       publicResult,
     });
-    return { continue: true, lock };
+    if (args.release) {
+      payload.lock = undefined;
+      payload.lockAt = undefined;
+      await savePartnerJob(args.admin, {
+        id: job.id,
+        status: "running",
+        payload: { ...payload },
+        publicResult,
+      });
+    }
+    return { continue: true, lock: args.release ? undefined : lock };
   } catch (err) {
-    console.error("[hhh-shortlist]", err instanceof Error ? err.message : err);
+    const message = err instanceof Error ? err.message : "Shortlist step failed";
+    console.error("[hhh-shortlist]", message);
     payload.lock = undefined;
+    payload.lastError = message;
+    note(payload, message);
     await savePartnerJob(args.admin, {
       id: job.id,
       status: "failed",
@@ -237,6 +264,7 @@ async function lookup(
   const outcome = lookupOutcome(fresh.length, stale.length);
   if (outcome === "ready") {
     payload.fromCache = true;
+    note(payload, `Found ${fresh.length} fresh companies already checked for this place. Returning those.`);
     setPublic(
       HhhPublicShortlistSchema.parse({
         fromCache: true,
@@ -265,9 +293,11 @@ async function lookup(
     payload.recheckIndex = 0;
     payload.assessed = [];
     payload.stage = "recheck";
+    note(payload, `Rechecking ${payload.recheck.length} stored websites before searching again.`);
     return "continue";
   }
   payload.stage = "search";
+  note(payload, "No fresh shortlist on file. Starting a web search.");
   return "continue";
 }
 
@@ -276,7 +306,10 @@ async function recheck(payload: JobPayload): Promise<"continue"> {
   const row = passes >= 3 ? undefined : payload.recheck[payload.recheckIndex];
   if (!row) {
     payload.stage = passes >= 3 ? "store" : "search";
-    if (payload.stage === "search") payload.assessed = [];
+    if (payload.stage === "search") {
+      payload.assessed = [];
+      note(payload, "Stored websites were not enough. Starting a web search.");
+    }
     return "continue";
   }
   const assessment = await assessCompany({
@@ -300,6 +333,11 @@ async function recheck(payload: JobPayload): Promise<"continue"> {
   });
   if (!assessment.pass && assessment.withholdReason) {
     payload.drops.push(`${row.name}: ${assessment.withholdReason}`);
+    note(payload, `Rechecked ${row.name}. Not returned (${assessment.withholdReason}).`);
+  } else if (assessment.pass) {
+    note(payload, `Rechecked ${row.name}. Still a match.`);
+  } else {
+    note(payload, `Rechecked ${row.name}.`);
   }
   payload.recheckIndex += 1;
   return "continue";
@@ -315,6 +353,12 @@ async function search(payload: JobPayload): Promise<void> {
     elementCodes: payload.elementCodes,
   });
   payload.stage = "category";
+  note(
+    payload,
+    payload.hits.length > 0
+      ? `Web search found ${payload.hits.length} companies in ${payload.placeLabel}.`
+      : `Web search found no companies in ${payload.placeLabel}.`,
+  );
 }
 
 async function category(admin: SupabaseClient, payload: JobPayload): Promise<void> {
@@ -397,6 +441,18 @@ async function category(admin: SupabaseClient, payload: JobPayload): Promise<voi
   payload.assessIndex = 0;
   payload.assessed = [];
   payload.stage = payload.shortlist.length === 0 ? "store" : "assess";
+  const readable = pages.filter((page) => page.text).length;
+  if (ovs.length + sports.length === 0) {
+    note(
+      payload,
+      "No geocoded ondernemersvereniging or sport-club sites within 25 km. Upload those lists, then the next job can prefer local firms. Checking the search hits anyway.",
+    );
+  } else {
+    note(
+      payload,
+      `Read ${readable} of ${ovs.length + sports.length} nearby organisation sites. ${payload.shortlist.length} companies to check.`,
+    );
+  }
 }
 
 async function assessOne(payload: JobPayload): Promise<void> {
@@ -426,6 +482,15 @@ async function assessOne(payload: JobPayload): Promise<void> {
   });
   if (!assessment.pass && assessment.withholdReason) {
     payload.drops.push(`${row.name}: ${assessment.withholdReason}`);
+    note(
+      payload,
+      `Checked ${row.name} (${payload.assessIndex + 1}/${payload.shortlist.length}). Not returned (${assessment.withholdReason}).`,
+    );
+  } else {
+    note(
+      payload,
+      `Checked ${row.name} (${payload.assessIndex + 1}/${payload.shortlist.length}). ${assessment.pass ? "Kept." : "Not returned."}`,
+    );
   }
   payload.assessIndex += 1;
   if (payload.assessIndex >= payload.shortlist.length) payload.stage = "store";
@@ -462,11 +527,18 @@ async function storePass(
   const rankedCards = ordered
     .map((row) => cards.find((card) => card.website === row.website))
     .filter((card): card is NonNullable<typeof card> => Boolean(card));
+  const companies = rankedCards.slice(0, 3);
   setPublic(
     HhhPublicShortlistSchema.parse({
       fromCache: false,
-      companies: rankedCards.slice(0, 3),
+      companies,
     }),
   );
   payload.fromCache = false;
+  note(
+    payload,
+    companies.length > 0
+      ? `Finished. Returning ${companies.length} ${companies.length === 1 ? "company" : "companies"}.`
+      : "Finished. No company passed the website check.",
+  );
 }
