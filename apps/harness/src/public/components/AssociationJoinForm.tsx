@@ -37,7 +37,7 @@ export const AssociationJoinForm: React.FC<AssociationJoinFormProps> = ({
           organizationName: orgName.trim(),
           contactName: contactName.trim(),
           email: email.trim(),
-          message: `Plaats: ${place.trim()}`,
+          city: place.trim(),
           sourceHolderKind,
           shareManagedCompanyData: false,
         }),

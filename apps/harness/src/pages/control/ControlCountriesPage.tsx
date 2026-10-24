@@ -75,6 +75,8 @@ export function ControlCountriesPage() {
           {isAdmin ? (
             <>
               {" "}
+              <Link to="/control/applications">Aanmeldingen</Link>
+              {" · "}
               <Link to="/control/hhh">HandyHouseHelp shortlists</Link>
             </>
           ) : null}

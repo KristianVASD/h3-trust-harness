@@ -380,6 +380,36 @@ export const api = {
         created_at: string;
       }>;
     }>("/admin/company-accounts"),
+  listInterestApplications: (limit = 100) =>
+    request<{
+      applications: Array<{
+        id: string;
+        type: "company" | "sector";
+        status: "pending" | "contacted" | "closed";
+        companyName?: string;
+        organization?: string;
+        contactName: string;
+        email: string;
+        trade?: string;
+        city?: string;
+        notes?: string;
+        sourceHolderKind?: string;
+        shareManagedCompanyData?: boolean;
+        welcomeHhhLocally?: boolean;
+        submittedAt: string;
+      }>;
+    }>(`/admin/interest-applications?limit=${limit}`),
+  setInterestApplicationStatus: (
+    id: string,
+    status: "pending" | "contacted" | "closed",
+  ) =>
+    request<{ application: unknown }>(
+      `/admin/interest-applications/${id}/status`,
+      {
+        method: "POST",
+        body: JSON.stringify({ status }),
+      },
+    ),
   approveCompanyAccount: (id: string) =>
     request<{ account: unknown }>(`/admin/company-accounts/${id}/approve`, {
       method: "POST",

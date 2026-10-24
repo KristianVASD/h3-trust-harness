@@ -15,6 +15,7 @@ import { ControlLayout } from "./pages/control/ControlLayout";
 import { ControlCountriesPage } from "./pages/control/ControlCountriesPage";
 import { ControlCountryPage } from "./pages/control/ControlCountryPage";
 import { ControlHhhPage } from "./pages/control/ControlHhhPage";
+import { ControlApplicationsPage } from "./pages/control/ControlApplicationsPage";
 import { ControlSectorPage } from "./pages/control/ControlSectorPage";
 import { SingleSearchPage } from "./pages/SingleSearchPage";
 import { WorkspacePage } from "./pages/WorkspacePage";
@@ -74,6 +75,7 @@ export function App() {
         <Route path="/control" element={<ControlLayout />}>
           <Route index element={<ControlCountriesPage />} />
           <Route path="hhh" element={<ControlHhhPage />} />
+          <Route path="applications" element={<ControlApplicationsPage />} />
           <Route path=":country" element={<ControlCountryPage />} />
           <Route path=":country/:tradeId" element={<ControlSectorPage />} />
         </Route>

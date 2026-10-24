@@ -398,6 +398,7 @@ export function registerPublicRoutes(
     const email = String(body.email ?? "").trim().toLowerCase();
     const contactName = String(body.contactName ?? "").trim();
     const message = String(body.message ?? "").trim();
+    const city = String(body.city ?? body.place ?? "").trim();
     const sourceHolderKind = String(body.sourceHolderKind ?? "other").trim();
     const shareManagedCompanyData = asBool(body.shareManagedCompanyData);
     const welcomeHhhLocally = asBool(body.welcomeHhhLocally);
@@ -417,6 +418,7 @@ export function registerPublicRoutes(
         organization: organizationName,
         contactName,
         email,
+        city: city || undefined,
         notes: message || undefined,
         sourceHolderKind: sourceHolderKind || undefined,
         shareManagedCompanyData,
@@ -434,6 +436,34 @@ export function registerPublicRoutes(
         500,
       );
     }
+  });
+
+  app.get("/api/admin/interest-applications", async (c) => {
+    const auth = c.get("auth");
+    if (!isAdmin(auth)) {
+      return c.json({ error: "Admin only" }, 403);
+    }
+    const limitRaw = Number(c.req.query("limit") ?? 100);
+    const applications = await interest.list(limitRaw);
+    return c.json({ applications });
+  });
+
+  app.post("/api/admin/interest-applications/:id/status", async (c) => {
+    const auth = c.get("auth");
+    if (!isAdmin(auth)) {
+      return c.json({ error: "Admin only" }, 403);
+    }
+    const id = c.req.param("id");
+    const body = await c.req.json().catch(() => ({}));
+    const status = String(body.status ?? "").trim();
+    if (status !== "pending" && status !== "contacted" && status !== "closed") {
+      return c.json({ error: "status must be pending, contacted, or closed" }, 400);
+    }
+    const application = await interest.setStatus(id, status);
+    if (!application) {
+      return c.json({ error: "Not found" }, 404);
+    }
+    return c.json({ application });
   });
 
   app.post("/api/public/correction-request", async (c) => {
