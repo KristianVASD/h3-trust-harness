@@ -7,7 +7,15 @@ import { geocodeCached } from "./address-search-job.js";
 import { isAdmin, type AppVariables } from "./auth.js";
 import { runFoundKnockout } from "./hhh-gemini-run.js";
 import { deferHhhSlice, scheduleHhhShortlistStep, scheduleLocalSourceGeocode } from "./hhh-shortlist-kick.js";
-import { findPartnerJobByRequest, getPartnerJob, insertPartnerJob, listPartnerJobs, toDeskJob } from "./hhh-shortlist-jobs.js";
+import {
+  abortLivePartnerJobs,
+  deleteRecentPartnerJobs,
+  findPartnerJobByRequest,
+  getPartnerJob,
+  insertPartnerJob,
+  listPartnerJobs,
+  toDeskJob,
+} from "./hhh-shortlist-jobs.js";
 import { runHhhShortlistSlice } from "./hhh-shortlist-run.js";
 import {
   geocodePendingSources,
@@ -42,9 +50,7 @@ export function registerHhhShortlistRoutes(
     try {
       const existing = await findPartnerJobByRequest(deps.admin, input.requestId);
       if (existing) {
-        if (existing.status === "queued" || existing.status === "running") {
-          scheduleHhhShortlistStep(existing.id);
-        }
+        // Do not re-kick live jobs on every partner retry — that stacks worker threads.
         return c.json({ jobId: existing.id, status: existing.status, requestId: input.requestId }, 202);
       }
       const query = input.postcode4 ?? input.gemeente ?? "";
@@ -140,6 +146,40 @@ export function registerHhhShortlistRoutes(
     }
   });
 
+  app.post("/api/control/hhh-shortlist/abort-live", async (c) => {
+    if (!isAdmin(c.get("auth"))) return c.json({ error: "Admin only" }, 403);
+    if (!deps.admin) return c.json(engineUnavailable(), 503);
+    try {
+      const aborted = await abortLivePartnerJobs(deps.admin);
+      return c.json({ aborted });
+    } catch (err) {
+      return c.json(
+        { error: err instanceof Error ? err.message : "Could not abort shortlist jobs" },
+        500,
+      );
+    }
+  });
+
+  app.post("/api/control/hhh-shortlist/delete-recent", async (c) => {
+    if (!isAdmin(c.get("auth"))) return c.json({ error: "Admin only" }, 403);
+    if (!deps.admin) return c.json(engineUnavailable(), 503);
+    const body = (await c.req.json().catch(() => null)) as { limit?: unknown } | null;
+    const limit =
+      typeof body?.limit === "number" && Number.isFinite(body.limit)
+        ? body.limit
+        : 40;
+    try {
+      await abortLivePartnerJobs(deps.admin);
+      const deleted = await deleteRecentPartnerJobs(deps.admin, limit);
+      return c.json({ deleted });
+    } catch (err) {
+      return c.json(
+        { error: err instanceof Error ? err.message : "Could not delete shortlist jobs" },
+        500,
+      );
+    }
+  });
+
   app.get("/api/control/local-sources", async (c) => {
     if (!isAdmin(c.get("auth"))) return c.json({ error: "Admin only" }, 403);
     if (!deps.admin) return c.json(engineUnavailable(), 503);
@@ -160,6 +200,10 @@ export function registerHhhShortlistRoutes(
     const lock = typeof body?.lock === "string" ? body.lock : undefined;
     if (!jobId) return c.json({ error: "jobId is required" }, 400);
     const admin = deps.admin;
+    const existing = await getPartnerJob(admin, jobId);
+    if (!existing || existing.status === "failed" || existing.status === "ready") {
+      return c.json({ accepted: false, skipped: true, status: existing?.status ?? "missing" }, 200);
+    }
     deferHhhSlice(
       runHhhShortlistSlice({
         admin,
@@ -168,7 +212,9 @@ export function registerHhhShortlistRoutes(
         jobId,
         lock,
       })
-        .then((result) => {
+        .then(async (result) => {
+          const latest = await getPartnerJob(admin, jobId);
+          if (!latest || latest.status === "failed" || latest.status === "ready") return;
           if (result.continue && result.lock) scheduleHhhShortlistStep(jobId, result.lock);
         })
         .catch((err) => {

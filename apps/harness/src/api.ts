@@ -923,6 +923,16 @@ export const api = {
       `/control/hhh-shortlist/${encodeURIComponent(jobId)}/step`,
       { method: "POST", body: "{}" },
     ),
+  abortLiveHhhShortlistJobs: () =>
+    request<{ aborted: number }>("/control/hhh-shortlist/abort-live", {
+      method: "POST",
+      body: "{}",
+    }),
+  deleteRecentHhhShortlistJobs: (limit = 40) =>
+    request<{ deleted: number }>("/control/hhh-shortlist/delete-recent", {
+      method: "POST",
+      body: JSON.stringify({ limit }),
+    }),
   getLocalSources: () => request<LocalSourceSummary>("/control/local-sources"),
   importLocalSources: (csv: string) =>
     request<{ imported: number; skipped: number }>("/control/local-sources/import", {

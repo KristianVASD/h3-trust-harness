@@ -59,8 +59,8 @@ export function ControlHhhPage() {
   const [importNote, setImportNote] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [drivingId, setDrivingId] = useState<string | null>(null);
+  const [stopping, setStopping] = useState(false);
   const driveRef = useRef(false);
-  const kicked = useRef(false);
 
   async function load() {
     try {
@@ -114,13 +114,42 @@ export function ControlHhhPage() {
     return () => window.clearInterval(timer);
   }, [live, isAdmin]);
 
-  useEffect(() => {
-    if (!isAdmin || loading || kicked.current || driveRef.current) return;
-    const stuck = jobs.find(liveJob);
-    if (!stuck) return;
-    kicked.current = true;
-    void drive(stuck.id);
-  }, [isAdmin, loading, jobs]);
+  async function onAbortLive() {
+    if (!isAdmin || stopping) return;
+    setStopping(true);
+    setError(null);
+    try {
+      const res = await api.abortLiveHhhShortlistJobs();
+      setImportNote(`Stopped ${res.aborted} live job(s).`);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not stop jobs");
+    } finally {
+      setStopping(false);
+    }
+  }
+
+  async function onDeleteRecent() {
+    if (!isAdmin || stopping) return;
+    if (
+      !window.confirm(
+        "Delete the 40 most recent HHH shortlist jobs? Live ones are stopped first.",
+      )
+    ) {
+      return;
+    }
+    setStopping(true);
+    setError(null);
+    try {
+      const res = await api.deleteRecentHhhShortlistJobs(40);
+      setImportNote(`Deleted ${res.deleted} recent job(s).`);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete jobs");
+    } finally {
+      setStopping(false);
+    }
+  }
 
   async function onStart(e: FormEvent) {
     e.preventDefault();
@@ -184,6 +213,27 @@ export function ControlHhhPage() {
           the same request by hand.{" "}
           <Link to="/control">Back to countries</Link>
         </p>
+        {isAdmin ? (
+          <div className="row" style={{ marginTop: "0.85rem", gap: "0.5rem" }}>
+            <button
+              className="btn secondary small"
+              type="button"
+              disabled={stopping || !live}
+              onClick={() => void onAbortLive()}
+            >
+              {stopping ? "Stopping…" : "Stop live jobs"}
+            </button>
+            <button
+              className="btn secondary small"
+              type="button"
+              disabled={stopping}
+              onClick={() => void onDeleteRecent()}
+            >
+              Delete recent jobs
+            </button>
+          </div>
+        ) : null}
+        {importNote ? <p className="muted">{importNote}</p> : null}
       </header>
 
       {needsLogin ? <div className="error">Sign in to open Mission Control.</div> : null}

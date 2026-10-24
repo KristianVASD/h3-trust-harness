@@ -167,3 +167,57 @@ export async function listPartnerJobs(
   if (error) throw new Error(error.message);
   return (data ?? []).map((row) => toDeskJob(row as Record<string, unknown>));
 }
+
+/** Mark every queued/running job failed so kick chains stop. */
+export async function abortLivePartnerJobs(
+  admin: SupabaseClient,
+  reason = "Aborted from Mission Control",
+): Promise<number> {
+  const { data, error } = await admin
+    .from("partner_jobs")
+    .select("id,payload")
+    .in("status", ["queued", "running"]);
+  if (error) throw new Error(error.message);
+  const rows = data ?? [];
+  let aborted = 0;
+  for (const row of rows) {
+    const payload = {
+      ...((row.payload ?? {}) as Record<string, unknown>),
+      lastError: reason,
+      lock: null,
+      lockAt: null,
+    };
+    const { error: updateError } = await admin
+      .from("partner_jobs")
+      .update({
+        status: "failed",
+        payload,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", row.id);
+    if (!updateError) aborted += 1;
+  }
+  return aborted;
+}
+
+/** Delete the newest partner_jobs rows (desk cleanup). */
+export async function deleteRecentPartnerJobs(
+  admin: SupabaseClient,
+  limit = 40,
+): Promise<number> {
+  const capped = Math.min(Math.max(limit, 1), 200);
+  const { data, error } = await admin
+    .from("partner_jobs")
+    .select("id")
+    .order("updated_at", { ascending: false })
+    .limit(capped);
+  if (error) throw new Error(error.message);
+  const ids = (data ?? []).map((row) => String(row.id));
+  if (ids.length === 0) return 0;
+  const { error: deleteError } = await admin
+    .from("partner_jobs")
+    .delete()
+    .in("id", ids);
+  if (deleteError) throw new Error(deleteError.message);
+  return ids.length;
+}
