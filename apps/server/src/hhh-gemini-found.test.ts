@@ -288,6 +288,91 @@ describe("gemini local mention gate", () => {
   });
 });
 
+describe("model words for a football sponsor", () => {
+  it("keeps kind sponsor and category football_club as one sport source", () => {
+    const check = GeminiCheckSchema.parse({
+      sources: [
+        {
+          id: "s1",
+          name: "Bedrijvenvereniging Beverkoog",
+          url: "https://www.beverkoog.nl/bedrijf-beverkoog/coppens-alkmaar-bv",
+          category: "local_business_association",
+          scope: "local",
+          place: "Alkmaar",
+        },
+        {
+          id: "s2",
+          name: "Alkmaarsche Boys",
+          url: "https://www.alkmaarscheboys.nl/248/3963/nieuws-van-de-sponsorcommissie/",
+          category: "football_club",
+          scope: "local",
+          place: "Alkmaar",
+        },
+      ],
+      companies: [
+        {
+          name: "Coppens Alkmaar",
+          phone: "072 - 511 42 30",
+          email: "info@coppensalkmaar.nl",
+          website: "https://coppensalkmaar.nl",
+          claims: [
+            {
+              kind: "ov",
+              outcome: "member",
+              about: "company",
+              org_name: "Bedrijvenvereniging Beverkoog",
+              relation: "Vermeld in het bedrijfsregister van het industrieterrein",
+              source_ids: ["s1"],
+            },
+          ],
+        },
+        {
+          name: "Installatiebedrijf Kusch",
+          phone: "072 - 562 34 34",
+          email: "info@kuschalkmaar.nl",
+          website: "https://www.kuschalkmaar.nl",
+          claims: [
+            {
+              kind: "sponsor",
+              outcome: "sponsor",
+              about: "company",
+              org_name: "Alkmaarsche Boys",
+              relation: "Sponsor van voetbalclub Alkmaarsche Boys",
+              source_ids: ["s2"],
+            },
+          ],
+        },
+      ],
+    });
+    const found = companiesWithLocalMention(
+      [
+        {
+          name: "Coppens Alkmaar",
+          website: "https://coppensalkmaar.nl",
+          address: "",
+          phone: "",
+          email: "",
+        },
+        {
+          name: "Installatiebedrijf Kusch",
+          website: "https://www.kuschalkmaar.nl",
+          address: "",
+          phone: "",
+          email: "",
+        },
+      ],
+      check,
+    );
+    assert.deepEqual(
+      found.map((row) => [row.name, row.sourceCount, row.hits[0]?.kind]),
+      [
+        ["Coppens Alkmaar", 1, "ov"],
+        ["Installatiebedrijf Kusch", 1, "sport"],
+      ],
+    );
+  });
+});
+
 describe("stored gevonden lookup", () => {
   const fresh = "2027-01-01T00:00:00.000Z";
   const now = Date.parse("2026-10-18T12:00:00.000Z");

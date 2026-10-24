@@ -23,6 +23,8 @@ const LOCAL_KIND: Record<string, "ov" | "sport" | "festivity"> = {
   ov: "ov",
   sport: "sport",
   sports_club: "sport",
+  football_club: "sport",
+  sponsor: "sport",
   festivity: "festivity",
 };
 
@@ -31,6 +33,7 @@ const LOCAL_CATEGORY: Record<string, "local_business_association" | "sponsorship
   sponsorship: "sponsorship",
   municipal_initiative: "municipal_initiative",
   sports_club: "sponsorship",
+  football_club: "sponsorship",
   festivity: "municipal_initiative",
 };
 

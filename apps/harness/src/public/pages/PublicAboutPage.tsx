@@ -8,6 +8,7 @@ export function PublicAboutPage() {
       lang={lang}
       onBackToHome={() => navigateView("home")}
       onOpenHarnessModal={openHarness}
+      onJoin={() => navigateView("vakman-worden")}
     />
   );
 }

@@ -31,26 +31,34 @@ export function PublicLayout() {
   const [harnessOpen, setHarnessOpen] = useState(false);
 
   const currentView = viewFromPath(location.pathname);
-  const quietChrome =
-    currentView === "sectoren" ||
-    currentView === "lokale-netwerken" ||
-    currentView === "vakman-worden";
+
+  const goToSection = useCallback(
+    (id: string) => {
+      if (location.pathname === "/") {
+        document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+        window.history.replaceState(null, "", `/#${id}`);
+        return;
+      }
+      navigate({ pathname: "/", hash: `#${id}` });
+    },
+    [location.pathname, navigate],
+  );
 
   useEffect(() => {
     document.title =
-      currentView === "sectoren"
+      currentView === "home" || currentView === "lokale-netwerken"
         ? lang === "nl"
-          ? "H3 — voor brancheverenigingen"
-          : "H3 — for trade associations"
-        : currentView === "lokale-netwerken"
+          ? "H3 — voor ondernemersverenigingen"
+          : "H3 — for local associations"
+        : currentView === "sectoren"
           ? lang === "nl"
-            ? "H3 — voor ondernemersverenigingen"
-            : "H3 — for local associations"
+            ? "H3 — voor brancheverenigingen"
+            : "H3 — for trade associations"
           : currentView === "vakman-worden"
             ? lang === "nl"
-              ? "H3 — Doe mee"
-              : "H3 — Get involved"
-          : "H3";
+              ? "H3 — voor vakbedrijven"
+              : "H3 — for trade businesses"
+            : "H3";
   }, [currentView, lang]);
 
   const setLang = useCallback((next: Language) => {
@@ -94,27 +102,18 @@ export function PublicLayout() {
 
   return (
     <PublicProvider value={value}>
-      <div className="public-shell min-h-screen flex flex-col bg-[#F4F4F2] text-[#18181B] selection:bg-[#406A56]/20 selection:text-[#1E3A2F]">
+      <div className="public-shell min-h-screen flex flex-col">
         <Navbar
           currentView={currentView}
-          setCurrentView={navigateView}
           lang={lang}
           setLang={setLang}
-          onOpenRegisterModal={() => navigateView("vakman-worden")}
-          onOpenHarnessModal={openHarness}
-          showHarnessPreview={!quietChrome}
+          onNavigate={navigateView}
+          onGoToSection={goToSection}
         />
-        <main className="flex-1 pb-3">
+        <main className="flex-1">
           <Outlet />
         </main>
-        <Footer
-          lang={lang}
-          onNavigate={navigateView}
-          onOpenRegisterModal={openRegister}
-          onOpenPartnerModal={openPartner}
-          onOpenHarnessModal={openHarness}
-          quiet={quietChrome}
-        />
+        <Footer lang={lang} onNavigate={navigateView} onGoToSection={goToSection} />
         <CraftsmanRegisterModal
           isOpen={registerOpen}
           onClose={() => setRegisterOpen(false)}

@@ -1,33 +1,44 @@
-import { InviteDoorsSection } from "../components/InviteDoorsSection";
+import { CraftsmanJoinForm } from "../components/CraftsmanJoinForm";
 import { translations } from "../data/translations";
 import { usePublic } from "../PublicContext";
 
 export function PublicJoinPage() {
-  const { lang, openRegister, openPartner } = usePublic();
-  const t = translations[lang].joinPage;
+  const { lang } = usePublic();
+  const t = translations[lang].craftsmanPage;
 
   return (
-    <div>
-      <div className="public-section">
-        <div className="public-page-card px-5 sm:px-8 lg:px-12 py-8 sm:py-10">
-          <p className="text-xs font-mono uppercase tracking-widest text-[#1E3A2F] font-semibold">
-            {t.kicker}
-          </p>
-          <h1 className="font-serif text-3xl sm:text-5xl text-zinc-900 font-normal mt-2">
-            {t.title}
-          </h1>
-          <p className="text-sm text-zinc-600 mt-3 max-w-2xl leading-relaxed">
-            {t.subtitle}
-          </p>
-        </div>
+    <div className="public-home">
+      <div className="hero">
+        <p className="eyebrow">{t.eyebrow}</p>
+        <h1>{t.headline}</h1>
+        <p className="lead">{t.lead}</p>
       </div>
 
-      <InviteDoorsSection
-        lang={lang}
-        onOpenRegister={openRegister}
-        onOpenPartner={openPartner}
-        showIntro={false}
-      />
+      <section>
+        <div className="grid">
+          {t.benefits.map((item) => (
+            <div className="card" key={item.title}>
+              <h3>{item.title}</h3>
+              <p>{item.body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <h2>{t.notTitle}</h2>
+        <ul className="not">
+          {t.notItems.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      </section>
+
+      <section id="aanmelden">
+        <h2>{t.formTitle}</h2>
+        <p>{t.formIntro}</p>
+        <CraftsmanJoinForm lang={lang} />
+      </section>
     </div>
   );
 }

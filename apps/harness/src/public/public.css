@@ -22,9 +22,16 @@
 }
 
 .public-shell {
-  font-family: var(--font-sans);
-  background-color: var(--color-canvas);
-  color: var(--color-ink-primary);
+  --shell-bg: #f6f2ec;
+  --shell-surface: #fffdf9;
+  --shell-fg: #1f1b16;
+  --shell-muted: #6b6157;
+  --shell-line: #e2d9cc;
+  --shell-accent: #c45a12;
+  --shell-accent-ink: #fffdf9;
+  font-family: "Nunito", "Segoe UI", Helvetica, Arial, sans-serif;
+  background-color: var(--shell-bg);
+  color: var(--shell-fg);
   min-height: 100%;
   max-width: 100%;
   overflow-x: clip;
@@ -64,7 +71,12 @@
 }
 
 .public-shell .font-serif {
-  font-family: var(--font-serif);
+  font-family: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+}
+
+.public-shell ::selection {
+  background: #c45a12;
+  color: #fffdf9;
 }
 
 .public-shell .font-mono {
@@ -87,13 +99,9 @@
   position: sticky;
   top: 0;
   z-index: 40;
-  padding: 0.65rem 0.75rem 0;
-}
-
-@media (min-width: 640px) {
-  .public-chrome {
-    padding: 0.85rem 1rem 0;
-  }
+  background: color-mix(in srgb, var(--shell-bg) 92%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--shell-line);
 }
 
 .public-chrome-card {
@@ -101,11 +109,7 @@
   max-width: min(80rem, 100%);
   min-width: 0;
   overflow-x: clip;
-  border: 1px solid rgba(24, 24, 27, 0.08);
-  border-radius: 1.25rem;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 10px 30px rgba(24, 24, 27, 0.06);
-  backdrop-filter: blur(16px);
+  background: transparent;
 }
 
 .public-section {
@@ -130,24 +134,317 @@
 }
 
 .public-footer {
-  padding: 0.85rem 0.75rem 1rem;
-  margin-top: 0.25rem;
-}
-
-@media (min-width: 640px) {
-  .public-footer {
-    padding: 0.85rem 1rem 1.25rem;
-  }
+  border-top: 1px solid var(--shell-line);
+  margin-top: 0.5rem;
+  color: var(--shell-muted);
+  font-size: 0.9rem;
 }
 
 .public-footer-card {
   margin: 0 auto;
-  max-width: 80rem;
-  border: 1px solid #27272a;
-  border-radius: 1.5rem;
-  background: #18181b;
-  color: #d4d4d8;
-  box-shadow: 0 18px 50px rgba(24, 24, 27, 0.18);
+  max-width: min(80rem, 100%);
+  padding: 2rem 1.25rem 3rem;
+}
+
+.public-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.85rem 1.4rem;
+  border-radius: 999px;
+  background: var(--shell-accent);
+  color: var(--shell-accent-ink);
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-decoration: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.public-btn:hover {
+  background: #a34b0f;
+}
+
+.public-btn:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.public-btn-wide {
+  width: 100%;
+}
+
+.public-btn-nav {
+  display: none;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+}
+
+@media (min-width: 768px) {
+  .public-btn-nav {
+    display: inline-flex;
+  }
+}
+
+.public-btn-ghost {
+  background: transparent;
+  color: var(--shell-fg);
+  box-shadow: inset 0 0 0 1px var(--shell-line);
+}
+
+.public-btn-ghost:hover {
+  background: var(--shell-surface);
+}
+
+.public-home {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+  word-spacing: normal;
+  letter-spacing: normal;
+}
+
+.public-home h1,
+.public-home h2,
+.public-home h3,
+.public-home p,
+.public-home span,
+.public-home button,
+.public-home a,
+.public-home li,
+.public-home label {
+  word-spacing: normal;
+  letter-spacing: normal;
+}
+
+.public-home h1,
+.public-home h2,
+.public-home h3 {
+  font-family: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+  font-weight: 600;
+  line-height: 1.12;
+  text-wrap: balance;
+  margin: 0;
+}
+
+.public-home h1 {
+  font-size: clamp(2.5rem, 6vw, 4.25rem);
+  max-width: 16ch;
+  margin-bottom: 1.5rem;
+}
+
+.public-home h2 {
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  margin-bottom: 1.25rem;
+}
+
+.public-home h3 {
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.public-home p {
+  margin: 0 0 1rem;
+  max-width: 65ch;
+}
+
+.public-home section {
+  padding-block: 4rem;
+  border-top: 1px solid var(--shell-line);
+}
+
+.public-home .hero {
+  padding-block: 4.5rem 3.5rem;
+  border-top: 0;
+}
+
+.public-home .eyebrow {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--shell-muted);
+  margin-bottom: 0.75rem;
+}
+
+.public-home .lead {
+  font-size: 1.15rem;
+  color: var(--shell-muted);
+  max-width: 52ch;
+  margin-bottom: 2rem;
+}
+
+.public-home .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.public-home .grid {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.public-home .card {
+  background: var(--shell-surface);
+  border: 1px solid var(--shell-line);
+  border-radius: 14px;
+  padding: 1.5rem;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+  display: block;
+  height: 100%;
+}
+
+.public-home .card p {
+  color: var(--shell-muted);
+  margin: 0;
+}
+
+.public-home .routes a:hover h3 {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.public-home .steps {
+  counter-reset: step;
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.public-home .steps li {
+  counter-increment: step;
+  border-top: 2px solid var(--shell-fg);
+  padding-top: 1rem;
+  min-width: 0;
+}
+
+.public-home .steps li::before {
+  content: counter(step);
+  display: block;
+  font-family: "Cormorant Garamond", Georgia, serif;
+  font-size: 2.2rem;
+  color: var(--shell-accent);
+  line-height: 1;
+  margin-bottom: 0.5rem;
+}
+
+.public-home .steps p {
+  color: var(--shell-muted);
+  margin: 0;
+}
+
+.public-home .not {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.public-home .not li {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--shell-line);
+  border-radius: 999px;
+  background: var(--shell-surface);
+}
+
+.public-home .status {
+  display: grid;
+  gap: 0;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.public-home .status li {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) 1fr;
+  gap: 1rem;
+  padding: 0.9rem 0;
+  border-bottom: 1px solid var(--shell-line);
+}
+
+.public-home .status span {
+  color: var(--shell-muted);
+}
+
+.public-home form.join {
+  display: grid;
+  gap: 0.9rem;
+  max-width: 520px;
+}
+
+.public-home form.join label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.public-home form.join input,
+.public-home form.join select {
+  font: inherit;
+  font-weight: 400;
+  padding: 0.75rem 0.9rem;
+  border-radius: 10px;
+  border: 1px solid var(--shell-line);
+  background: var(--shell-surface);
+  color: var(--shell-fg);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.public-home .address-line,
+.public-home .address-place {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.public-home .address-line {
+  grid-template-columns: 1fr 6rem;
+}
+
+.public-home .address-place {
+  grid-template-columns: 8rem 1fr;
+}
+
+.public-home #aanmelden,
+.public-home #hoe-het-werkt {
+  scroll-margin-top: 5.5rem;
+}
+
+.public-home .form-note {
+  color: var(--shell-muted);
+  font-size: 0.9rem;
+  font-weight: 400;
+}
+
+.public-home .form-status {
+  color: var(--shell-accent);
+  font-weight: 700;
+  min-height: 1.6em;
+}
+
+.public-home .form-status.error {
+  color: #9b2c2c;
+}
+
+@media (max-width: 560px) {
+  .public-home .status li {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
 }
 
 @media print {

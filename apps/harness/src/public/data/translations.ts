@@ -7,10 +7,125 @@ export const translations = {
       localNetworks: 'Lokale Netwerken',
       becomeCraftsman: 'Vakman Worden',
       handyHouseHelp: 'HandyHouseHelp',
-      about: 'Over H3 & Technologie',
+      about: 'Over H3',
       search: 'Vakmensen Bekijken',
       join: 'Doe mee',
       harnessPreview: 'Hoe we data wegen',
+      forAssociations: 'Voor verenigingen',
+      trades: 'Vakbedrijven',
+      registerAssociation: 'Meld onze vereniging aan',
+      aboutShort: 'Over H3',
+    },
+    homeShell: {
+      eyebrow: 'Voor ondernemersverenigingen',
+      headline: 'Jullie kennen de vakmensen. Wij helpen de buurt ze te vinden.',
+      lead: 'H3 zet de vakbedrijven uit jullie vereniging zichtbaar voor huishoudens in de buurt. Bewoners vinden hen via HandyHouseHelp, en bij elke vermelding is zichtbaar waar die op rust.',
+      ctaPrimary: 'Meld onze vereniging aan',
+      ctaSecondary: 'Bekijk hoe het werkt',
+      benefitsTitle: 'Wat jullie leden krijgen',
+      benefits: [
+        {
+          title: 'Zichtbaar om de hoek',
+          body: 'Bewoners die een vakman zoeken, vinden de bedrijfsnaam en plaats van leden die al in de wijk werken.',
+        },
+        {
+          title: 'Werk dat in de buurt blijft',
+          body: 'Kortere ritten, minder uitstoot en omzet die bij lokale ondernemers terechtkomt.',
+        },
+        {
+          title: 'Een ledenvoordeel zonder extra werk',
+          body: 'Het is een voordeel dat jullie zelf kunnen noemen. Geen extra keurmerk, geen ledenadministratie.',
+        },
+      ],
+      stepsTitle: 'Zo werkt het',
+      steps: [
+        {
+          title: 'Jullie geven de bron',
+          body: 'Jullie bepalen welke vakbedrijven zichtbaar mogen zijn. Een ledenlijst hoeft er vooraf niet te komen.',
+        },
+        {
+          title: 'Een mens controleert',
+          body: 'Wij leggen de vermelding naast openbare bronnen zoals de Kamer van Koophandel. Een menselijke beoordelaar tekent af voordat iets publiek wordt.',
+        },
+        {
+          title: 'Bewoners vinden hen',
+          body: 'Via HandyHouseHelp zoekt een huishouden een vakman in de buurt, met de herkomst van de vermelding erbij.',
+        },
+      ],
+      notTitle: 'Wat we niet doen',
+      notItems: [
+        'Geen commissie op opdrachten',
+        'Geen betaalde plek bovenaan',
+        'Geen verkoop van leads',
+        'Geen tweede keurmerk',
+        'Geen ledenlijst eisen om te beginnen',
+      ],
+      statusTitle: 'Wat een vermelding betekent',
+      statusIntro: 'Geen score en geen sterren. We laten zien wat er is gevonden en hoe het is gecontroleerd.',
+      statuses: [
+        {
+          title: 'Vermeld in een bron',
+          body: 'Het bedrijf staat op een openbare lijst of bij een vereniging.',
+        },
+        {
+          title: 'Vermeld in meerdere bronnen',
+          body: 'Er zijn meerdere afzonderlijke bronnen gevonden die elkaar bevestigen.',
+        },
+        {
+          title: 'Bron door een mens beoordeeld',
+          body: 'Een menselijke beoordelaar heeft de bron gecontroleerd.',
+        },
+      ],
+      formTitle: 'Meld jullie vereniging aan',
+      formIntro: 'Het begint met een gesprek van een half uur. Geen toezegging vooraf, geen ledenlijst.',
+      fieldOrg: 'Naam vereniging',
+      fieldContact: 'Contactpersoon',
+      fieldEmail: 'E-mailadres',
+      fieldPlace: 'Plaats',
+      formSubmit: 'Plan een kennismaking',
+      formSending: 'Verzenden…',
+      formSuccess:
+        'We hebben je aanmelding ontvangen. We nemen contact op om een moment te prikken. Er is nog niets ingepland.',
+      routesTitle: 'Kies je route',
+      tradeTitle: 'Ik ben vakbedrijf',
+      tradeBody: 'Laat bewoners zien wie je bent en waar je werkt. Zichtbaar op naam en plaats.',
+      branchTitle: 'Ik vertegenwoordig een branche',
+      branchBody:
+        'Brancheorganisaties en keurmerken helpen bewoners hun netwerk te vinden. Jullie blijven bepalen wie erbij hoort.',
+      footerLine: 'Openbare vertrouwensinfrastructuur voor lokale vakmensen.',
+    },
+    craftsmanPage: {
+      eyebrow: 'Voor vakbedrijven',
+      headline: 'Bewoners zoeken een vakman om de hoek. Laat zien wie je bent.',
+      lead: 'Zichtbaar op naam en plaats via HandyHouseHelp. Geen advertentieplek, geen commissie. Een mens controleert de bron voordat iets publiek wordt.',
+      benefits: [
+        {
+          title: 'Naam en plaats',
+          body: 'Huishoudens in de buurt zien je bedrijfsnaam en waar je werkt. Niet een advertentie.',
+        },
+        {
+          title: 'Werk dat in de buurt blijft',
+          body: 'Kortere ritten en omzet die bij jou terechtkomt.',
+        },
+        {
+          title: 'Geen ranglijst die je koopt',
+          body: 'Wie bovenaan staat, koopt die plek niet. We tonen herkomst, geen score.',
+        },
+      ],
+      notTitle: 'Wat we niet doen',
+      notItems: [
+        'Geen commissie op opdrachten',
+        'Geen betaalde plek bovenaan',
+        'Geen verkoop van leads',
+      ],
+      formTitle: 'Meld je bedrijf aan',
+      formIntro:
+        'Naam, adres en e-mail zijn genoeg. Geen wachtwoord. Je aanmelding wordt bekeken voordat je zichtbaar wordt.',
+      formSubmit: 'Meld mijn bedrijf aan',
+      formSending: 'Verzenden…',
+      formSuccess:
+        'We hebben je aanmelding ontvangen. Je bedrijf staat nog niet live. We nemen contact op.',
+      address: 'Adres',
     },
     hero: {
       headline: 'Echt vakmanschap verdient een eerlijk podium.',
@@ -289,37 +404,32 @@ export const translations = {
       joinCta: 'Doe mee',
     },
     aboutPage: {
-      badge: 'Visie & Architectuur',
-      heroTitle: 'Het Echte Verhaal: Van BGI-hackathon naar de straat',
-      heroSub: 'Decentrale Beneficial AI voor lokaal vertrouwen. Geen marketing-hype, maar een filosofisch en technisch fundament dat de menselijke maat herstelt.',
-      originTitle: '1. De Oorsprong: Waar we vandaan komen',
-      originBody: `Tijdens de HyperSprint hackathon van BGIcommons.org en OpenBuild kozen de meeste bouwers voor abstracte wiskunde, crypto-speculatie of gesloten agent-systemen. In Track 3 stond één project dat een fundamenteel andere vraag stelde:
-
-"Wat heeft een loodgieter, een timmerman of een huishouden met een lekkend dak aan gedecentraliseerde AI?"
-
-Als enige deelnemer in deze track die de vertaalslag maakte naar de fysieke maatschappij, legde H3 het fundament voor een open trust-harness. Niet om een theoretisch model te bouwen, maar om decentrale beneficial AI naar echte mensen te brengen. Vandaag is dat project uitgegroeid tot een werkende architectuur en zijn we in actieve dialoog met netwerken en partners om deze standaard in de praktijk te verankeren.`,
-      rootsTitle: '2. De Roots in Beneficial AI & SingularityNET',
-      rootsBody: `De link met BGIcommons.org en SingularityNET (het wereldwijde ecosysteem rondom Ben Goertzel gericht op gedecentraliseerde, mensgerichte AGI) geeft H3 een filosofisch en technisch fundament dat 99% van de platforms mist:`,
-      rootsPoints: [
-        {
-          title: 'Niet-extractief',
-          desc: 'H3 Trust verdient niet aan advertenties of commissies van kleine zelfstandigen. Geen verkoop van ledenlijsten.',
-        },
-        {
-          title: 'Curator in plaats van rechter',
-          desc: 'We verzamelen openbare vermeldingen van registers, verenigingen en keurmerken. Een mens aanvaardt de bron. Er is geen geautomatiseerd vonnis en geen zwarte lijst.',
-        },
-        {
-          title: 'Dienstbaar aan de menselijke soevereiniteit',
-          desc: 'AI bereidt het veldwerk voor. De uiteindelijke aanvaarding van een bron ligt bij mensen via CARA en CURAD.',
-        },
+      badge: 'Over H3',
+      heroTitle: 'De meeste mensen zijn eerlijk.',
+      heroSub:
+        'Marktplaatsen belonen wantrouwen. Wij bouwen aan iets anders: lokale kwaliteit die weer zichtbaar is — zodat buurten elkaar kunnen vertrouwen.',
+      worldTitle: 'De wereld die we kennen',
+      worldBody:
+        'Er is genoeg oplichting. Genoeg slechte ervaringen. Reviews die te koop zijn. Commissies die kleine zelfstandigen knijpen. Wie het hardst schreeuwt, komt bovenaan.',
+      hopeTitle: 'En toch',
+      hopeBody:
+        'De meeste mensen zijn gewoon eerlijk. De meeste vakmensen willen netjes werk afleveren. De meeste buurten willen elkaar helpen. H3 is de keuze om af te stappen van dat marktplaats-wantrouwen. Om samen te werken. Om elkaar te helpen. Om elkaar te vertrouwen.',
+      howTitle: 'Wat wij doen',
+      howPoints: [
+        'We maken lokale vakbedrijven vindbaar op naam en plaats — niet op wie de meeste advertenties koopt.',
+        'Een mens kijkt mee voordat iets publiek wordt. Geen automatische stempel.',
+        'Geen commissie. Geen gekochte plek bovenaan. Geen verkoop van leads.',
       ],
-      caraTitle: '3. Menselijke Soevereiniteit: CARA & CURAD',
-      caraDesc: `In onze architectuur is een strikte scheiding aangebracht tussen machine-arbeid en menselijke besluitvorming:`,
-      caraCaraDef: 'CARA (Content Agreement & Review Action): De discrete actie waarbij een verzameld signaal of bronfeil wordt beoordeeld (Agree, Adjust, Disagree).',
-      curadDef: 'CURAD: De menselijke curator (van lokale wijkvrijwilliger tot ervaren sectorexpert) die het mandaat heeft de stempel te zetten. Geen enkel bedrijf wordt zonder menselijke blik als "volledig geverifieerd" aangemerkt.',
-      futureTitle: '4. De Toekomst: Een Openbaar Nutsbedrijf voor Vertrouwen',
-      futureBody: `We zijn op dit moment in gesprek om deze infrastructuur te koppelen aan lokale netwerken, coöperaties en gemeenten. Het doel is niet om een beursgenoteerd monopolie te worden, maar een openbare vertrouwenslaag voor de fysieke wereld: lokaal werk, lokaal zichtbaar.`,
+      howHarnessLink: 'Wil je weten hoe we data wegen?',
+      rootsTitle: 'Waar we vandaan komen',
+      rootsBody:
+        'Het begon bij een hackathon van BGI Commons en OpenBuild met één simpele vraag: wat heeft een loodgieter, een timmerman of een huishouden met een lekkend dak aan slimme technologie? Die vraag bracht ons naar de straat. Vandaag werkt het — en praten we met netwerken, verenigingen en partners om het lokaal te verankeren.',
+      whyTitle: 'Waarom',
+      whyBody:
+        'Ik bouw dit omdat het beter moet. En omdat het beter kan. Niet als nog een platform dat verdient aan wantrouwen — maar als een laag vertrouwen voor de straat.',
+      cta: 'Doe mee',
+      ctaHint: 'Vereniging, vakbedrijf of buurt — begin waar jij staat.',
+      backHome: 'Terug naar homepage',
     },
     memberInvite: {
       kicker: 'Van jullie vereniging',
@@ -384,10 +494,125 @@ Als enige deelnemer in deze track die de vertaalslag maakte naar de fysieke maat
       localNetworks: 'Local Networks',
       becomeCraftsman: 'Join as Craftsman',
       handyHouseHelp: 'HandyHouseHelp',
-      about: 'About H3 & Tech',
+      about: 'About H3',
       search: 'Browse Craftspeople',
       join: 'Get Involved',
       harnessPreview: 'How we weigh data',
+      forAssociations: 'For associations',
+      trades: 'Trade businesses',
+      registerAssociation: 'Register our association',
+      aboutShort: 'About H3',
+    },
+    homeShell: {
+      eyebrow: 'For local business associations',
+      headline: 'You know the trades. We help the neighborhood find them.',
+      lead: 'H3 makes the trade businesses in your association visible to households nearby. Residents find them through HandyHouseHelp, and every listing shows what it rests on.',
+      ctaPrimary: 'Register our association',
+      ctaSecondary: 'See how it works',
+      benefitsTitle: 'What your members get',
+      benefits: [
+        {
+          title: 'Visible around the corner',
+          body: 'Residents looking for a tradesperson find the company name and place of members who already work in the neighborhood.',
+        },
+        {
+          title: 'Work that stays nearby',
+          body: 'Shorter trips, less emissions, and revenue that stays with local businesses.',
+        },
+        {
+          title: 'A member benefit without extra work',
+          body: 'It is a benefit you can name yourselves. No extra quality mark, no member administration.',
+        },
+      ],
+      stepsTitle: 'How it works',
+      steps: [
+        {
+          title: 'You provide the source',
+          body: 'You decide which trade businesses may be visible. A member list does not have to come first.',
+        },
+        {
+          title: 'A person checks',
+          body: 'We set the listing next to public sources such as the Chamber of Commerce. A human reviewer signs off before anything becomes public.',
+        },
+        {
+          title: 'Residents find them',
+          body: 'Through HandyHouseHelp a household looks for a tradesperson nearby, with the origin of the listing shown.',
+        },
+      ],
+      notTitle: 'What we do not do',
+      notItems: [
+        'No commission on jobs',
+        'No paid place at the top',
+        'No selling of leads',
+        'No second quality mark',
+        'No member list required to start',
+      ],
+      statusTitle: 'What a listing means',
+      statusIntro: 'No score and no stars. We show what was found and how it was checked.',
+      statuses: [
+        {
+          title: 'Listed in a source',
+          body: 'The company appears on a public list or with an association.',
+        },
+        {
+          title: 'Listed in several sources',
+          body: 'Several separate sources were found that confirm each other.',
+        },
+        {
+          title: 'Source reviewed by a person',
+          body: 'A human reviewer has checked the source.',
+        },
+      ],
+      formTitle: 'Register your association',
+      formIntro: 'It starts with a half-hour conversation. No commitment up front, no member list.',
+      fieldOrg: 'Association name',
+      fieldContact: 'Contact person',
+      fieldEmail: 'Email address',
+      fieldPlace: 'Place',
+      formSubmit: 'Plan an introduction',
+      formSending: 'Sending…',
+      formSuccess:
+        'We have received your registration. We will be in touch to find a time. Nothing is scheduled yet.',
+      routesTitle: 'Choose your route',
+      tradeTitle: 'I am a trade business',
+      tradeBody: 'Show residents who you are and where you work. Visible by name and place.',
+      branchTitle: 'I represent a trade sector',
+      branchBody:
+        'Trade associations and quality marks help residents find their network. You still decide who belongs.',
+      footerLine: 'Public trust infrastructure for local trades.',
+    },
+    craftsmanPage: {
+      eyebrow: 'For trade businesses',
+      headline: 'Residents are looking for a tradesperson nearby. Show them who you are.',
+      lead: 'Visible by name and place through HandyHouseHelp. No ad slot, no commission. A person checks the source before anything becomes public.',
+      benefits: [
+        {
+          title: 'Name and place',
+          body: 'Households nearby see your company name and where you work. Not an advertisement.',
+        },
+        {
+          title: 'Work that stays nearby',
+          body: 'Shorter trips, and revenue that comes to you.',
+        },
+        {
+          title: 'No ranking you can buy',
+          body: 'The top place is not for sale. We show origin, not a score.',
+        },
+      ],
+      notTitle: 'What we do not do',
+      notItems: [
+        'No commission on jobs',
+        'No paid place at the top',
+        'No selling of leads',
+      ],
+      formTitle: 'Register your business',
+      formIntro:
+        'Name, address and email are enough. No password. Your registration is reviewed before you become visible.',
+      formSubmit: 'Register my business',
+      formSending: 'Sending…',
+      formSuccess:
+        'We have received your registration. Your business is not live yet. We will be in touch.',
+      address: 'Address',
     },
     hero: {
       headline: 'Real craft deserves an honest stage.',
@@ -666,37 +891,32 @@ Als enige deelnemer in deze track die de vertaalslag maakte naar de fysieke maat
       joinCta: 'Get involved',
     },
     aboutPage: {
-      badge: 'Vision & Architecture',
-      heroTitle: 'The Real Story: From BGI Hackathon to the Street',
-      heroSub: 'Decentralized Beneficial AI for local trust. No marketing hype, but a philosophical and technical bedrock restoring human proportions.',
-      originTitle: '1. The Origin: Where We Began',
-      originBody: `During the BGIcommons.org and OpenBuild HyperSprint hackathon, most participants focused on abstract mathematics, crypto speculation, or walled agent architectures. In Track 3, one project asked a fundamentally different question:
-
-"What does a plumber, a carpenter, or a household with a leaking roof gain from decentralized AI?"
-
-As the only participant in this track to bridge decentralized AI with real physical society, H3 established the foundation for an open trust-harness. Not to build another theoretical model, but to bring beneficial AI to real people. Today, that project has evolved into a working architecture and active dialogues with municipal and sector networks.`,
-      rootsTitle: '2. Roots in Beneficial AI & SingularityNET',
-      rootsBody: `Our connection with BGIcommons.org and SingularityNET (Ben Goertzel's global ecosystem dedicated to decentralized, human-centric AGI) gives H3 a foundation that 99% of commercial platforms lack:`,
-      rootsPoints: [
-        {
-          title: 'Non-Extractive',
-          desc: 'H3 Trust does not earn from ads or commissions on small trades. No sale of member lists.',
-        },
-        {
-          title: 'Curator Instead of Judge',
-          desc: 'We collect public listings from registers, associations and quality marks. A human accepts the source. There is no automated verdict and no blacklist.',
-        },
-        {
-          title: 'Subservient to Human Sovereignty',
-          desc: 'AI prepares the field work. Final acceptance of a source sits with people via CARA and CURAD.',
-        },
+      badge: 'About H3',
+      heroTitle: 'Most people are honest.',
+      heroSub:
+        'Marketplaces reward distrust. We are building something else: local quality made visible again — so neighborhoods can trust each other.',
+      worldTitle: 'The world we know',
+      worldBody:
+        'There is plenty of fraud. Plenty of bad experiences. Reviews for sale. Commissions that squeeze small trades. Whoever shouts loudest rises to the top.',
+      hopeTitle: 'And yet',
+      hopeBody:
+        'Most people are simply honest. Most tradespeople want to deliver decent work. Most neighborhoods want to help each other. H3 is the choice to step away from that marketplace distrust. To work together. To help each other. To trust each other.',
+      howTitle: 'What we do',
+      howPoints: [
+        'We make local trades findable by name and place — not by who buys the most ads.',
+        'A human looks before anything goes public. No automatic stamp.',
+        'No commission. No paid top spot. No selling of leads.',
       ],
-      caraTitle: '3. Human Sovereignty: CARA & CURAD',
-      caraDesc: `Our architecture maintains a strict boundary between automated synthesis and sovereign human judgment:`,
-      caraCaraDef: 'CARA (Content Agreement & Review Action): The discrete human action where an incoming signal is evaluated (Agree, Adjust, or Disagree).',
-      curadDef: 'CURAD: The human curator role (from neighborhood peer to accredited industry guild master) authorized to stamp verified trust. No business is verified without human oversight.',
-      futureTitle: '4. The Future: A Public Trust Utility',
-      futureBody: `We are actively engaged in connecting this infrastructure with local cooperatives, trade bodies, and municipalities. The goal is not a proprietary monopoly, but an open trust layer for physical communities: local work, locally visible.`,
+      howHarnessLink: 'Want to know how we weigh data?',
+      rootsTitle: 'Where we come from',
+      rootsBody:
+        'It started at a BGI Commons and OpenBuild hackathon with one simple question: what does a plumber, a carpenter, or a household with a leaking roof gain from smart technology? That question brought us to the street. Today it works — and we talk with networks, associations and partners to anchor it locally.',
+      whyTitle: 'Why',
+      whyBody:
+        'I build this because it has to be better. And because it can be better. Not as yet another platform that profits from distrust — but as a trust layer for the street.',
+      cta: 'Join us',
+      ctaHint: 'Association, trade business or neighborhood — start where you are.',
+      backHome: 'Back to homepage',
     },
     memberInvite: {
       kicker: 'From your association',
