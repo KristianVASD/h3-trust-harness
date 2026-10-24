@@ -33,15 +33,15 @@ export const translations = {
           body: 'Kortere ritten, minder uitstoot en omzet die bij lokale ondernemers terechtkomt.',
         },
         {
-          title: 'Een ledenvoordeel zonder extra werk',
-          body: 'Het is een voordeel dat jullie zelf kunnen noemen. Geen extra keurmerk, geen ledenadministratie.',
+          title: 'Serieuze klanten voor lokale bedrijven',
+          body: 'Jullie helpen leden aan huishoudens die echt in de buurt zoeken — niet aan wie het hardst adverteert.',
         },
       ],
       stepsTitle: 'Zo werkt het',
       steps: [
         {
           title: 'Jullie geven de bron',
-          body: 'Jullie bepalen welke vakbedrijven zichtbaar mogen zijn. Een ledenlijst hoeft er vooraf niet te komen.',
+          body: 'Jullie bepalen welke vakbedrijven zichtbaar mogen zijn.',
         },
         {
           title: 'Een mens controleert',
@@ -58,7 +58,6 @@ export const translations = {
         'Geen betaalde plek bovenaan',
         'Geen verkoop van leads',
         'Geen tweede keurmerk',
-        'Geen ledenlijst eisen om te beginnen',
       ],
       statusTitle: 'Wat een vermelding betekent',
       statusIntro: 'Geen score en geen sterren. We laten zien wat er is gevonden en hoe het is gecontroleerd.',
@@ -77,7 +76,7 @@ export const translations = {
         },
       ],
       formTitle: 'Meld jullie vereniging aan',
-      formIntro: 'Het begint met een gesprek van een half uur. Geen toezegging vooraf, geen ledenlijst.',
+      formIntro: 'Het begint met een gesprek van een half uur. Geen toezegging vooraf.',
       fieldOrg: 'Naam vereniging',
       fieldContact: 'Contactpersoon',
       fieldEmail: 'E-mailadres',
@@ -220,7 +219,7 @@ export const translations = {
       sectorKicker: 'Kennismaking',
       sectorTitle: 'Een half uur is genoeg',
       sectorIntro:
-        'Naam, organisatie en e-mail. Geen toezegging, geen ledenlijst. We nemen contact op voor een kennismaking.',
+        'Naam, organisatie en e-mail. Geen toezegging. We nemen contact op voor een kennismaking.',
       companyName: 'Bedrijfsnaam',
       yourName: 'Jouw naam',
       email: 'E-mail',
@@ -270,13 +269,13 @@ export const translations = {
       sectorTitle: 'Branche & keurmerk',
       sectorSubtitle: 'Eerst een gesprek',
       sectorPoint1: 'Geen tweede keurmerk. Dat hebben jullie al.',
-      sectorPoint2: 'Wie lid is, bepalen jullie. Geen ledenlijst gevraagd.',
+      sectorPoint2: 'Wie lid is, bepalen jullie.',
       sectorPoint3: 'Naam en plaats bij huiseigenaren in hun gemeente.',
       sectorCta: 'Plan een kennismaking',
       localTitle: 'Ondernemersvereniging',
       localSubtitle: 'Eerst een gesprek',
       localPoint1: 'Leden zichtbaar bij bewoners in de wijk.',
-      localPoint2: 'Iets dat jullie als ledenvoordeel kunnen brengen.',
+      localPoint2: 'Help lokale bedrijven aan serieuze klanten om de hoek.',
       localPoint3: 'Werk dat in de buurt blijft. Geen keurmerk, geen oordeel.',
       localCta: 'Plan een kennismaking',
     },
@@ -364,9 +363,9 @@ export const translations = {
       card1Title: 'Wat in de wijk blijft',
       card1Desc:
         'Bewoners vinden een vakman om de hoek. Minder kilometers, omzet die lokaal blijft — iets dat jullie naar de gemeente kunnen brengen.',
-      card2Title: 'Een ledenvoordeel zonder extra werk',
+      card2Title: 'Serieuze klanten voor lokale bedrijven',
       card2Desc:
-        'Jullie leden zichtbaar op naam en plaats. Jullie kunnen het zelf als voordeel brengen. Wij vragen geen ledenlijst.',
+        'Jullie leden zichtbaar op naam en plaats bij huishoudens die echt in de buurt zoeken — niet bij wie het hardst adverteert.',
       card3Title: 'Geen keurmerk, geen oordeel',
       card3Desc:
         'Jullie vereniging is geen schildersgilde — en dat hoeft ook niet. Het gaat om een levendige kern, niet om vaknormen.',
@@ -389,7 +388,7 @@ export const translations = {
         'Dat hebben jullie al. Wij verzinnen niet wie tot het vak hoort. Wie lid is, bepalen jullie.',
       card2Title: 'Naam en plaats',
       card2Desc:
-        'We tonen aangesloten vakbedrijven bij huiseigenaren in hun eigen gemeente. Openbare gegevens. Geen ledenlijst gevraagd.',
+        'We tonen aangesloten vakbedrijven bij huiseigenaren in hun eigen gemeente. Openbare gegevens.',
       card3Title: 'Jullie blijven de bron',
       card3Desc:
         'Geen stempel van ons over jullie leden. Geen ranking kopen. Jullie naam hangt aan wat jullie al kennen.',
@@ -398,7 +397,7 @@ export const translations = {
         'Waaraan ziet een particulier dat hij met een vakman te maken heeft? Vertel het ons — dan bouwen we dat in. Wat meetelt ligt vast en is na te lezen; een mens tekent af, geen algoritme.',
       ctaTitle: 'Een half uur kennismaken',
       ctaBody:
-        'Geen toezegging, geen ledenlijst, geen voorwaarde vooraf. Ik kom naar jullie toe, of we bellen.',
+        'Geen toezegging, geen voorwaarde vooraf. Ik kom naar jullie toe, of we bellen.',
       ctaButton: 'Plan een kennismaking',
       joinHint: 'Al gesproken, of klaar om mee te doen?',
       joinCta: 'Doe mee',
@@ -520,15 +519,15 @@ export const translations = {
           body: 'Shorter trips, less emissions, and revenue that stays with local businesses.',
         },
         {
-          title: 'A member benefit without extra work',
-          body: 'It is a benefit you can name yourselves. No extra quality mark, no member administration.',
+          title: 'Serious customers for local businesses',
+          body: 'You help members reach households that are really searching nearby — not whoever advertises the loudest.',
         },
       ],
       stepsTitle: 'How it works',
       steps: [
         {
           title: 'You provide the source',
-          body: 'You decide which trade businesses may be visible. A member list does not have to come first.',
+          body: 'You decide which trade businesses may be visible.',
         },
         {
           title: 'A person checks',
@@ -545,7 +544,6 @@ export const translations = {
         'No paid place at the top',
         'No selling of leads',
         'No second quality mark',
-        'No member list required to start',
       ],
       statusTitle: 'What a listing means',
       statusIntro: 'No score and no stars. We show what was found and how it was checked.',
@@ -564,7 +562,7 @@ export const translations = {
         },
       ],
       formTitle: 'Register your association',
-      formIntro: 'It starts with a half-hour conversation. No commitment up front, no member list.',
+      formIntro: 'It starts with a half-hour conversation. No commitment up front.',
       fieldOrg: 'Association name',
       fieldContact: 'Contact person',
       fieldEmail: 'Email address',
@@ -707,7 +705,7 @@ export const translations = {
       sectorKicker: 'Introduction',
       sectorTitle: 'Half an hour is enough',
       sectorIntro:
-        'Name, organisation and email. No commitment, no member list. We will get in touch to arrange an introduction.',
+        'Name, organisation and email. No commitment. We will get in touch to arrange an introduction.',
       companyName: 'Company name',
       yourName: 'Your name',
       email: 'Email',
@@ -757,13 +755,13 @@ export const translations = {
       sectorTitle: 'Trade body & quality mark',
       sectorSubtitle: 'A conversation first',
       sectorPoint1: 'No second quality mark. You already have one.',
-      sectorPoint2: 'Who is a member is yours to decide. No member list asked.',
+      sectorPoint2: 'Who is a member is yours to decide.',
       sectorPoint3: 'Name and place with homeowners in their municipality.',
       sectorCta: 'Arrange an introduction',
       localTitle: 'Business association',
       localSubtitle: 'A conversation first',
       localPoint1: 'Members visible to residents on the street.',
-      localPoint2: 'Something you can present as a member benefit.',
+      localPoint2: 'Help local businesses reach serious customers nearby.',
       localPoint3: 'Work that stays nearby. No quality mark, no verdict.',
       localCta: 'Arrange an introduction',
     },
@@ -851,9 +849,9 @@ export const translations = {
       card1Title: 'What stays in the neighborhood',
       card1Desc:
         'Residents find a tradesperson around the corner. Fewer kilometres, turnover that stays local — something you can take to the municipality.',
-      card2Title: 'A member benefit without extra work',
+      card2Title: 'Serious customers for local businesses',
       card2Desc:
-        'Your members visible by name and place. You can present that as a benefit yourselves. We do not ask for a member list.',
+        'Your members visible by name and place to households that are really searching nearby — not to whoever advertises the loudest.',
       card3Title: 'No quality mark, no verdict',
       card3Desc:
         'Your association is not a painters’ guild — and it does not need to be. This is about a living high street, not trade norms.',
@@ -876,7 +874,7 @@ export const translations = {
         'You already have one. We do not invent who belongs to the trade. Who is a member is yours to decide.',
       card2Title: 'Name and place',
       card2Desc:
-        'We show member firms to homeowners in their own municipality. Public details. No member list asked.',
+        'We show member firms to homeowners in their own municipality. Public details.',
       card3Title: 'You remain the source',
       card3Desc:
         'No stamp from us on your members. No ranking to buy. Your name sits on what you already know.',
@@ -885,7 +883,7 @@ export const translations = {
         'How does a private customer see that they are dealing with a tradesperson? Tell us — then we build that in. What counts is written down and readable; a human signs off, not an algorithm.',
       ctaTitle: 'Half an hour to meet',
       ctaBody:
-        'No commitment, no member list, no condition up front. I come to you, or we call.',
+        'No commitment, no condition up front. I come to you, or we call.',
       ctaButton: 'Arrange an introduction',
       joinHint: 'Already spoken, or ready to join?',
       joinCta: 'Get involved',
