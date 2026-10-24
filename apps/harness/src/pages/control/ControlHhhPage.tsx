@@ -5,6 +5,7 @@ import { api, type HhhDeskJob, type LocalSourceSummary } from "../../api";
 import { StatusChip } from "../../components/Badges";
 import { useAuth } from "../../auth/AuthContext";
 import { useCanInteract } from "../../hooks/useCanInteract";
+import { InterestApplicationsPanel } from "./InterestApplicationsPanel";
 
 const LIST_EXAMPLE = `kind,name,town,postcode,website
 ov,Ondernemersvereniging Bollenstreek,Lisse,2161,https://www.ov-bollenstreek.nl
@@ -241,6 +242,8 @@ export function ControlHhhPage() {
         <div className="error">Admin access is required to see partner shortlists.</div>
       ) : null}
       {error ? <div className="error">{error}</div> : null}
+
+      {isAdmin ? <InterestApplicationsPanel enabled={isAdmin} /> : null}
 
       {isAdmin ? (
         <section className="panel control-start">
