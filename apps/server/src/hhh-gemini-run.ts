@@ -172,9 +172,9 @@ async function find(payload: GeminiPayload): Promise<HhhPublicShortlist | null> 
   payload.findRaw = found.raw || undefined;
   note(
     payload,
-    found.raw
-      ? "Find step reply was not usable JSON."
-      : `Find step kept ${candidates.length} companies${found.skipped.length ? `, skipped ${found.skipped.length}` : ""}.`,
+    found.parsed
+      ? `Find step kept ${candidates.length} companies${found.skipped.length ? `, skipped ${found.skipped.length}` : ""}.`
+      : "Find step reply was not usable JSON.",
   );
   payload.stage = candidates.length > 0 ? "check" : "done";
   if (candidates.length === 0) {

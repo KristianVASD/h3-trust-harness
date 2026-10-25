@@ -81,7 +81,8 @@ async function ask(messages: { role: string; content: string }[]): Promise<{ con
     plugins: [{ id: "web", max_results: 5 }],
     provider: { sort: "price" },
     temperature: 0.1,
-    max_tokens: 800,
+    max_tokens: 4000,
+    reasoning: { enabled: false },
   };
   try {
     return await complete(withWeb);
@@ -89,7 +90,13 @@ async function ask(messages: { role: string; content: string }[]): Promise<{ con
     const message = err instanceof Error ? err.message : String(err);
     if (!message.includes("OpenRouter 400")) throw err;
     const online = model.endsWith(":online") ? model : `${model}:online`;
-    return complete({ model: online, messages, temperature: 0.1, max_tokens: 800 });
+    return complete({
+      model: online,
+      messages,
+      temperature: 0.1,
+      max_tokens: 4000,
+      reasoning: { enabled: false },
+    });
   }
 }
 
@@ -141,7 +148,7 @@ export async function findLocalCompanies(args: {
   tradeLabel: string;
   jobText: string;
   place: string;
-}): Promise<{ companies: GeminiCandidate[]; skipped: string[]; raw: string }> {
+}): Promise<{ companies: GeminiCandidate[]; skipped: string[]; raw: string; parsed: boolean }> {
   const jobLine = args.jobText.trim() || `particulier onderhoud door een ${args.tradeLabel.toLowerCase()}`;
   const messages = [
     {
@@ -169,16 +176,21 @@ export async function findLocalCompanies(args: {
     },
   ];
   const { content } = await ask(messages);
+  if (!content) {
+    throw new Error("Find step returned no company list. The model used the whole reply before the JSON.");
+  }
   let proposed: GeminiCandidate[] = [];
   let raw = "";
+  let parsed = true;
   try {
     proposed = proposedCandidates(parseJsonObject(content));
   } catch {
     raw = content.slice(0, 500);
+    parsed = false;
   }
   const reviewed = reviewFoundFirms(proposed);
   if (reviewed.kept.length === 0 && !raw) raw = content.slice(0, 500);
-  return { companies: reviewed.kept, skipped: reviewed.skipped, raw };
+  return { companies: reviewed.kept, skipped: reviewed.skipped, raw, parsed };
 }
 
 /** Second Gemini question: local mentions only. A missing company means no mention. */
