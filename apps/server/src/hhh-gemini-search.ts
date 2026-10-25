@@ -105,21 +105,29 @@ function asText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function proposedCandidates(raw: Record<string, unknown>): GeminiCandidate[] {
+function firstText(row: Record<string, unknown>, keys: readonly string[]): string {
+  for (const key of keys) {
+    const value = asText(row[key]);
+    if (value) return value;
+  }
+  return "";
+}
+
+/** Read the model list. A missing website stays empty so a phone or address can still be kept. */
+export function proposedCandidates(raw: Record<string, unknown>): GeminiCandidate[] {
   const list = Array.isArray(raw.companies) ? raw.companies : [];
   const out: GeminiCandidate[] = [];
   for (const item of list) {
     if (!item || typeof item !== "object") continue;
     const row = item as Record<string, unknown>;
-    const name = asText(row.name);
-    const website = asText(row.website);
-    if (!name || !website) continue;
+    const name = firstText(row, ["name", "naam"]);
+    if (!name) continue;
     out.push({
       name,
-      website,
-      address: asText(row.address),
-      phone: localPhone(asText(row.phone)),
-      email: asText(row.email),
+      website: firstText(row, ["website", "url", "site"]),
+      address: firstText(row, ["address", "adres"]),
+      phone: localPhone(firstText(row, ["phone", "telefoon"])),
+      email: firstText(row, ["email", "e-mail"]),
     });
   }
   return out;
@@ -169,6 +177,7 @@ export async function findLocalCompanies(args: {
     raw = content.slice(0, 500);
   }
   const reviewed = reviewFoundFirms(proposed);
+  if (reviewed.kept.length === 0 && !raw) raw = content.slice(0, 500);
   return { companies: reviewed.kept, skipped: reviewed.skipped, raw };
 }
 

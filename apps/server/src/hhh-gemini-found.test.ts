@@ -4,10 +4,12 @@ import {
   GeminiCheckSchema,
   companiesFromSearch,
   companiesWithLocalMention,
+  reviewFoundFirms,
   selectFoundFirms,
   selectFreshFound,
   type GeminiCandidate,
 } from "@h3-trust/schema";
+import { proposedCandidates } from "./hhh-gemini-search.js";
 
 const alkmaarCheck = GeminiCheckSchema.parse({
   place: "Alkmaar",
@@ -315,17 +317,33 @@ describe("first search firms", () => {
   });
 
   it("keeps a named firm that has a phone and no website", () => {
-    const kept = selectFoundFirms([
-      {
-        name: "Loodgietersbedrijf De Bollen",
-        website: "",
-        address: "Heereweg 12, Lisse",
-        phone: "0252 412 345",
-        email: "",
-      },
-    ]);
+    const read = proposedCandidates({
+      companies: [
+        {
+          name: "Loodgietersbedrijf De Bollen",
+          website: "",
+          address: "Heereweg 12, Lisse",
+          phone: "0252 412 345",
+          email: "",
+        },
+      ],
+    });
+    const kept = reviewFoundFirms(read).kept;
     assert.equal(kept.length, 1);
+    assert.equal(kept[0]?.name, "Loodgietersbedrijf De Bollen");
     assert.equal(kept[0]?.website, "");
+    assert.equal(kept[0]?.phone, "0252 412 345");
+  });
+
+  it("reads a Dutch naam and telefoon", () => {
+    const read = proposedCandidates({
+      companies: [{ naam: "Loodgietersbedrijf De Bollen", telefoon: "0252 412 345", adres: "Heereweg 12, Lisse" }],
+    });
+    const kept = reviewFoundFirms(read).kept;
+    assert.equal(kept.length, 1);
+    assert.equal(kept[0]?.name, "Loodgietersbedrijf De Bollen");
+    assert.equal(kept[0]?.phone, "0252 412 345");
+    assert.equal(kept[0]?.address, "Heereweg 12, Lisse");
   });
 });
 
