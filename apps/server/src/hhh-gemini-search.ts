@@ -82,9 +82,10 @@ async function ask(messages: { role: string; content: string }[]): Promise<{ con
   const withWeb = {
     model,
     messages,
-    plugins: [{ id: "web", max_results: 8 }],
+    plugins: [{ id: "web", max_results: 5 }],
     provider: { sort: "price" },
     temperature: 0.1,
+    max_tokens: 800,
   };
   try {
     return await complete(withWeb);
@@ -92,7 +93,7 @@ async function ask(messages: { role: string; content: string }[]): Promise<{ con
     const message = err instanceof Error ? err.message : String(err);
     if (!message.includes("OpenRouter 400")) throw err;
     const online = model.endsWith(":online") ? model : `${model}:online`;
-    return complete({ model: online, messages, temperature: 0.1 });
+    return complete({ model: online, messages, temperature: 0.1, max_tokens: 800 });
   }
 }
 
@@ -142,9 +143,10 @@ export async function findLocalCompanies(args: {
     {
       role: "system",
       content: [
-        "Zoek op het live Nederlandse web naar lokale vakbedrijven.",
+        "Zoek op het live Nederlandse web naar vakbedrijven voor een huishouden.",
         'Antwoord alleen met JSON: {"companies":[{"name":"","address":"","website":"","phone":"","email":""}]}',
-        "Geef hooguit 5 bedrijven die dit werk voor particulieren doen en fysiek in de plaats gevestigd zijn.",
+        "Geef hooguit 5 bedrijven die dit soort werk doen. Een bedrijf in de plaats of in een buurdorp mag.",
+        "Een vermelding bij een vereniging of club is niet nodig.",
         "Geen tussenpersonen (geen Werkspot, Trustoo, Zoofy) en geen landelijke 085- of 088-nummers.",
         "Gebruik de eigen website van het bedrijf. Elke website moet een URL zijn die in de zoekresultaten stond.",
         "Ontbreekt het e-mailadres, laat het leeg en geef het lokale telefoonnummer. Verzin geen contact en geen URL.",

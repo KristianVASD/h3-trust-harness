@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   GeminiCheckSchema,
+  companiesFromSearch,
   companiesWithLocalMention,
   selectFreshFound,
   type GeminiCandidate,
@@ -285,6 +286,28 @@ describe("gemini local mention gate", () => {
     assert.equal(found.length, 1);
     assert.equal(found[0]!.sourceCount, 4);
     assert.equal(found[0]!.hits.length, 5);
+  });
+});
+
+describe("first search is enough", () => {
+  it("keeps a firm the search found when no club page names it", () => {
+    const found = companiesFromSearch(
+      [
+        candidates[0]!,
+        {
+          name: "Facilitair Totaal Zundert",
+          website: "https://facilitairtotaalzundert.nl/klus-onderhoud",
+          address: "Achtmaalseweg 80, 4881 VM Zundert",
+          phone: "06-29005196",
+          email: "info@facilitairtotaalzundert.nl",
+        },
+      ],
+      alkmaarCheck,
+    );
+    const local = found.find((row) => row.name === "Facilitair Totaal Zundert");
+    assert.ok(local);
+    assert.equal(local.hits[0]?.kind, "search");
+    assert.equal(found.some((row) => row.name === "Coppens Alkmaar" && row.sourceCount === 2), true);
   });
 });
 

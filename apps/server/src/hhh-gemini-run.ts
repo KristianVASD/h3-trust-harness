@@ -5,7 +5,7 @@ import {
   cardFromFound,
   cardFromStoredFound,
   classifyLocalAuthenticity,
-  companiesWithLocalMention,
+  companiesFromSearch,
   lookupFoundOutcome,
   selectFreshFound,
   tradeLabel,
@@ -171,20 +171,28 @@ async function find(payload: GeminiPayload): Promise<HhhPublicShortlist | null> 
 }
 
 async function check(payload: GeminiPayload): Promise<void> {
-  const checked = await checkLocalMentions({
-    place: payload.placeLabel,
-    tradeLabel: tradeLabel(payload.tradeId),
-    companies: payload.candidates,
-  });
-  const found = companiesWithLocalMention(payload.candidates, checked);
-  const kept = new Set(found.map((row) => row.name));
+  let found = companiesFromSearch(payload.candidates, null);
+  try {
+    const checked = await checkLocalMentions({
+      place: payload.placeLabel,
+      tradeLabel: tradeLabel(payload.tradeId),
+      companies: payload.candidates,
+    });
+    found = companiesFromSearch(payload.candidates, checked);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Local-mention check failed";
+    note(payload, `${message} Returning the companies from the first search.`);
+  }
+  const mentioned = found.filter((row) => row.hits.some((hit) => hit.kind !== "search")).length;
   payload.found = found;
-  payload.drops = payload.candidates.filter((row) => !kept.has(row.name)).map((row) => row.name);
+  payload.drops = [];
   note(
     payload,
-    found.length > 0
-      ? `Check step kept ${found.length} companies with a local mention.`
-      : "Check step found no local mention.",
+    found.length === 0
+      ? "The first search returned no company."
+      : mentioned > 0
+        ? `Returning ${found.length} companies. ${mentioned} also have a local mention.`
+        : `No club or association page. Returning ${found.length} companies from the search.`,
   );
   payload.stage = "store";
 }
@@ -294,15 +302,22 @@ export async function runGeminiFoundSlice(args: {
     let outcome: "continue" | "ready" = "continue";
     if (payload.stage === "lookup") outcome = await lookup(args.store, payload, (next) => (publicResult = next));
     else if (payload.stage === "find") {
-      note(payload, "Searching the live web for local companies.");
-      await savePartnerJob(args.admin, {
-        id: job.id,
-        status: "running",
-        payload: { ...payload },
-        publicResult,
-      });
-      const empty = await find(payload);
-      if (empty) publicResult = empty;
+      const tries = payload.progress.filter((line) => line.startsWith("Searching the live web")).length;
+      if (tries >= 2) {
+        payload.stage = "done";
+        note(payload, "Live search was started twice and did not finish.");
+        publicResult = HhhPublicShortlistSchema.parse({ fromCache: false, companies: [] });
+      } else {
+        note(payload, "Searching the live web for local companies.");
+        await savePartnerJob(args.admin, {
+          id: job.id,
+          status: "running",
+          payload: { ...payload },
+          publicResult,
+        });
+        const empty = await find(payload);
+        if (empty) publicResult = empty;
+      }
     } else if (payload.stage === "check") await check(payload);
     else if (payload.stage === "gate") payload.stage = "store";
     else if (payload.stage === "store") {

@@ -91,7 +91,7 @@ export type GeminiCandidate = {
 };
 
 export type LocalHit = {
-  kind: "ov" | "sport" | "festivity";
+  kind: "ov" | "sport" | "festivity" | "search";
   sourceName: string;
   url: string;
   relation: string;
@@ -183,6 +183,52 @@ export function companiesWithLocalMention(
     });
   }
   return rankFound(found);
+}
+
+/**
+ * The first search is enough to return a firm.
+ * A local mention raises that firm. It does not delete the others.
+ */
+export function companiesFromSearch(
+  candidates: readonly GeminiCandidate[],
+  check: GeminiCheck | null,
+): GeminiFoundCompany[] {
+  const mentioned = check ? companiesWithLocalMention(candidates, check) : [];
+  const out: GeminiFoundCompany[] = [];
+  for (const candidate of candidates) {
+    const rich = mentioned.find((row) => namesMatch(row.name, candidate.name));
+    if (rich) {
+      out.push(rich);
+      continue;
+    }
+    const website = canonicalSearchSite(candidate.website);
+    const host = website ? websiteHost(website) : null;
+    if (!website || !host) continue;
+    out.push({
+      name: candidate.name,
+      website,
+      address: candidate.address,
+      phone: candidate.phone,
+      email: candidate.email,
+      sourceCount: 1,
+      matchNote: "Eigen website stond in de zoekresultaten.",
+      hits: [
+        {
+          kind: "search",
+          sourceName: candidate.name,
+          url: website,
+          relation: "Eigen website",
+          host,
+        },
+      ],
+    });
+  }
+  return rankFound(out);
+}
+
+function canonicalSearchSite(raw: string): string | null {
+  const website = httpsUrl(raw) ?? httpsUrl(raw.startsWith("http") ? raw : `https://${raw}`);
+  return website;
 }
 
 export function rankFound<T extends { name: string; sourceCount: number }>(rows: readonly T[]): T[] {
