@@ -4,6 +4,7 @@ import {
   HhhShortlistCompanySchema,
   evidenceFresh,
   factExpiry,
+  canonicalWebsite,
   placeMatchesTrust,
   websiteHost,
   type HhhShortlistCompany,
@@ -89,6 +90,30 @@ export type GeminiCandidate = {
   phone: string;
   email: string;
 };
+
+const LEAD_HOST = /(?:^|\.)(?:werkspot|trustoo|zoofy|vergelijk)\.nl$/i;
+
+/** First-step firms. A lead site is dropped. A missing citation is not. */
+export function selectFoundFirms(proposed: readonly GeminiCandidate[]): GeminiCandidate[] {
+  const out: GeminiCandidate[] = [];
+  const seen = new Set<string>();
+  for (const row of proposed) {
+    const name = row.name.trim();
+    const website = canonicalWebsite(row.website);
+    const host = website ? websiteHost(website) : null;
+    if (!name || !website || !host || LEAD_HOST.test(host) || seen.has(host)) continue;
+    seen.add(host);
+    out.push({
+      name,
+      website,
+      address: row.address.trim(),
+      phone: row.phone.trim(),
+      email: row.email.trim(),
+    });
+    if (out.length >= FOUND_RETURN_COUNT) break;
+  }
+  return out;
+}
 
 export type LocalHit = {
   kind: "ov" | "sport" | "festivity" | "search";
@@ -211,7 +236,7 @@ export function companiesFromSearch(
       phone: candidate.phone,
       email: candidate.email,
       sourceCount: 1,
-      matchNote: "Eigen website stond in de zoekresultaten.",
+      matchNote: "Gevonden in de eerste zoekstap.",
       hits: [
         {
           kind: "search",
@@ -227,8 +252,7 @@ export function companiesFromSearch(
 }
 
 function canonicalSearchSite(raw: string): string | null {
-  const website = httpsUrl(raw) ?? httpsUrl(raw.startsWith("http") ? raw : `https://${raw}`);
-  return website;
+  return canonicalWebsite(raw);
 }
 
 export function rankFound<T extends { name: string; sourceCount: number }>(rows: readonly T[]): T[] {

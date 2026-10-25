@@ -1,14 +1,10 @@
 import {
   GeminiCheckSchema,
-  canonicalWebsite,
-  filterHitsToSearch,
-  websiteHost,
+  selectFoundFirms,
   type GeminiCandidate,
   type GeminiCheck,
 } from "@h3-trust/schema";
 import { parseJsonObject } from "./address-search-llm.js";
-
-const LEAD_HOST = /(?:^|\.)(?:werkspot|trustoo|zoofy|vergelijk)\.nl$/i;
 
 type Annotation = {
   type?: string;
@@ -130,8 +126,8 @@ function proposedCandidates(raw: Record<string, unknown>): GeminiCandidate[] {
 }
 
 /**
- * First Gemini question: local firms for this place and trade.
- * A website is kept only when its host appeared in the search annotations.
+ * First question: up to five local firms.
+ * Lead sites and national 085/088 numbers are dropped. A missing citation is not.
  */
 export async function findLocalCompanies(args: {
   tradeLabel: string;
@@ -143,13 +139,13 @@ export async function findLocalCompanies(args: {
     {
       role: "system",
       content: [
-        "Zoek op het live Nederlandse web naar vakbedrijven voor een huishouden.",
+        "Zoek naar vakbedrijven die fysiek in de plaats gevestigd zijn, of het lokale netnummer hebben.",
         'Antwoord alleen met JSON: {"companies":[{"name":"","address":"","website":"","phone":"","email":""}]}',
-        "Geef hooguit 5 bedrijven die dit soort werk doen. Een bedrijf in de plaats of in een buurdorp mag.",
-        "Een vermelding bij een vereniging of club is niet nodig.",
+        "Geef hooguit 5 bedrijven voor particulier onderhoud. Een bedrijf in een buurdorp mag.",
+        "Lokale verankering, zoals een familiebedrijf, een bedrijventerrein of een club, is een plus en geen eis.",
         "Geen tussenpersonen (geen Werkspot, Trustoo, Zoofy) en geen landelijke 085- of 088-nummers.",
-        "Gebruik de eigen website van het bedrijf. Elke website moet een URL zijn die in de zoekresultaten stond.",
-        "Ontbreekt het e-mailadres, laat het leeg en geef het lokale telefoonnummer. Verzin geen contact en geen URL.",
+        "Gebruik de eigen website van het bedrijf. Verzin geen bedrijf en geen URL.",
+        "Ontbreekt het e-mailadres, geef het lokale telefoonnummer. Zoek niet eindeloos naar een e-mailadres.",
         "Zijn er minder dan 5 echte bedrijven, geef er minder terug.",
       ].join("\n"),
     },
@@ -163,30 +159,14 @@ export async function findLocalCompanies(args: {
       ].join("\n"),
     },
   ];
-  const { content, urls } = await ask(messages);
+  const { content } = await ask(messages);
   let proposed: GeminiCandidate[] = [];
   try {
     proposed = proposedCandidates(parseJsonObject(content));
   } catch {
     proposed = [];
   }
-  const allowed = urls.filter((url) => websiteHost(url));
-  return filterHitsToSearch(proposed, allowed)
-    .filter((row) => {
-      const host = websiteHost(row.website);
-      return Boolean(host) && !LEAD_HOST.test(host ?? "");
-    })
-    .map((row) => {
-      const full = proposed.find((item) => canonicalWebsite(item.website) === row.website);
-      return {
-        name: row.name,
-        website: row.website,
-        address: full?.address ?? "",
-        phone: full?.phone ?? "",
-        email: full?.email ?? "",
-      };
-    })
-    .slice(0, 5);
+  return selectFoundFirms(proposed);
 }
 
 /** Second Gemini question: local mentions only. A missing company means no mention. */

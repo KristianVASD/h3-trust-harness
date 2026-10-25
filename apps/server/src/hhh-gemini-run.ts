@@ -162,7 +162,7 @@ async function find(payload: GeminiPayload): Promise<HhhPublicShortlist | null> 
     place: [payload.placeLabel, payload.postcode4].filter(Boolean).join(" "),
   });
   payload.candidates = candidates;
-  note(payload, `Find step kept ${candidates.length} companies whose website showed up in search.`);
+  note(payload, `Find step kept ${candidates.length} companies.`);
   payload.stage = candidates.length > 0 ? "check" : "done";
   if (candidates.length === 0) {
     return HhhPublicShortlistSchema.parse({ fromCache: false, companies: [] });

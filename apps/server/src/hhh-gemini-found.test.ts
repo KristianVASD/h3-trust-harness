@@ -4,6 +4,7 @@ import {
   GeminiCheckSchema,
   companiesFromSearch,
   companiesWithLocalMention,
+  selectFoundFirms,
   selectFreshFound,
   type GeminiCandidate,
 } from "@h3-trust/schema";
@@ -286,6 +287,31 @@ describe("gemini local mention gate", () => {
     assert.equal(found.length, 1);
     assert.equal(found[0]!.sourceCount, 4);
     assert.equal(found[0]!.hits.length, 5);
+  });
+});
+
+describe("first search firms", () => {
+  it("keeps a named firm when its site was not in the citations and drops a lead site", () => {
+    const kept = selectFoundFirms([
+      {
+        name: "Dakdekkersbedrijf Zundert",
+        website: "https://dakdekker-zundert.nl",
+        address: "Molenstraat 1, Zundert",
+        phone: "076 123 4567",
+        email: "",
+      },
+      {
+        name: "Werkspot",
+        website: "https://www.werkspot.nl/dakdekker",
+        address: "",
+        phone: "085 123 4567",
+        email: "",
+      },
+    ]);
+    assert.deepEqual(
+      kept.map((row) => row.name),
+      ["Dakdekkersbedrijf Zundert"],
+    );
   });
 });
 
