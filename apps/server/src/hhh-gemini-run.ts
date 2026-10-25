@@ -18,7 +18,11 @@ import { fetchPage, pageBlocked } from "./address-search-fetch.js";
 import { checkLocalMentions, findLocalCompanies } from "./hhh-gemini-search.js";
 import { getPartnerJob, savePartnerJob } from "./hhh-shortlist-jobs.js";
 import { scheduleHhhFoundKnockout } from "./hhh-shortlist-kick.js";
-import { loadTrustedCompanies, markFoundKnockout, storeFoundCompanies } from "./hhh-shortlist-persist.js";
+import {
+  loadFoundCompaniesForPlace,
+  markFoundKnockout,
+  storeFoundCompanies,
+} from "./hhh-shortlist-persist.js";
 import type { PlaceCellStore } from "./place-cell-store.js";
 import type { Store } from "@h3-trust/store";
 
@@ -133,7 +137,7 @@ async function lookup(
   payload: GeminiPayload,
   setPublic: (result: HhhPublicShortlist) => void,
 ): Promise<"continue" | "ready"> {
-  const companies = await loadTrustedCompanies(store);
+  const companies = await loadFoundCompaniesForPlace(store, placeQuery(payload));
   const fresh = selectFreshFound(companies, placeQuery(payload));
   if (lookupFoundOutcome(fresh.length) === "ready") {
     const cards = fresh.flatMap((company) => {
@@ -186,7 +190,7 @@ async function check(payload: GeminiPayload): Promise<void> {
 }
 
 async function rememberedCards(store: Store, payload: GeminiPayload): Promise<HhhPublicShortlist["companies"]> {
-  const companies = await loadTrustedCompanies(store);
+  const companies = await loadFoundCompaniesForPlace(store, placeQuery(payload));
   return selectFreshFound(companies, placeQuery(payload)).flatMap((company) => {
     const card = cardFromStoredFound(company, payload.placeLabel);
     return card ? [card] : [];
@@ -290,6 +294,13 @@ export async function runGeminiFoundSlice(args: {
     let outcome: "continue" | "ready" = "continue";
     if (payload.stage === "lookup") outcome = await lookup(args.store, payload, (next) => (publicResult = next));
     else if (payload.stage === "find") {
+      note(payload, "Searching the live web for local companies.");
+      await savePartnerJob(args.admin, {
+        id: job.id,
+        status: "running",
+        payload: { ...payload },
+        publicResult,
+      });
       const empty = await find(payload);
       if (empty) publicResult = empty;
     } else if (payload.stage === "check") await check(payload);

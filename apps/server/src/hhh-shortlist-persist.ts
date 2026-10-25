@@ -21,7 +21,7 @@ import {
   type PlaceCell,
   type ServiceContext,
 } from "@h3-trust/schema";
-import type { Store } from "@h3-trust/store";
+import { isPostgresStore, type Store } from "@h3-trust/store";
 import type { PlaceCellStore } from "./place-cell-store.js";
 import type { CompanyAssessment } from "./company-assess.js";
 
@@ -55,6 +55,32 @@ export async function loadTrustedCompanies(store: Store): Promise<Company[]> {
     relevant.map((mission) => store.listByMission("companies", mission.id)),
   );
   return lists.flat().filter((company) => company.partnerTrust);
+}
+
+/**
+ * One query for companies already stored for this place and trade.
+ * Falls back to the full mission scan only when that query cannot run.
+ */
+export async function loadFoundCompaniesForPlace(
+  store: Store,
+  query: { tradeId: string; postcode4?: string; gemeente?: string },
+): Promise<Company[]> {
+  const trust: Record<string, string> = { status: "gevonden", tradeId: query.tradeId };
+  if (query.postcode4) trust.postcode4 = query.postcode4;
+  else if (query.gemeente) trust.gemeente = query.gemeente;
+  else return loadTrustedCompanies(store);
+  if (!isPostgresStore(store)) return loadTrustedCompanies(store);
+  const { data, error } = await store.client
+    .from("entities")
+    .select("payload")
+    .eq("collection", "companies")
+    .contains("payload", { partnerTrust: trust })
+    .limit(80);
+  if (error || !data) return loadTrustedCompanies(store);
+  return data.flatMap((row) => {
+    const parsed = CompanySchema.safeParse((row as { payload?: unknown }).payload);
+    return parsed.success && parsed.data.partnerTrust ? [parsed.data] : [];
+  });
 }
 
 async function ensureMission(

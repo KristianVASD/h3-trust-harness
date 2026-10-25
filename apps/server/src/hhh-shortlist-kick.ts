@@ -28,6 +28,9 @@ function postInternal(path: string, body: unknown, label: string): void {
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
+      ...((process.env.VERCEL_AUTOMATION_BYPASS_SECRET ?? "").trim()
+        ? { "x-vercel-protection-bypass": (process.env.VERCEL_AUTOMATION_BYPASS_SECRET ?? "").trim() }
+        : {}),
     },
     body: JSON.stringify(body),
   })

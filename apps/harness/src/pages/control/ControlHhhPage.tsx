@@ -389,7 +389,7 @@ export function ControlHhhPage() {
                 {job.jobText ? <p style={{ margin: "0.45rem 0 0" }}>{job.jobText}</p> : null}
                 <p style={{ margin: "0.45rem 0 0" }}>
                   {drivingId === job.id
-                    ? "Updating…"
+                    ? "Updating… the live web search often takes half a minute."
                     : latest || (liveJob(job) ? "Waiting to start." : "No status notes yet.")}
                 </p>
                 <div className="place-stage-row" aria-label="Shortlist progress">

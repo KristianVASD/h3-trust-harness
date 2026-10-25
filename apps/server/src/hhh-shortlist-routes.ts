@@ -32,6 +32,55 @@ function engineUnavailable() {
   };
 }
 
+const LIVE_LOCK_MS = 90_000;
+const HANDOFF_AFTER_MS = 20_000;
+
+type ShortlistDeps = { store: Store; admin: SupabaseClient; cells: PlaceCellStore };
+
+function beginHhhShortlist(deps: ShortlistDeps, jobId: string, lock?: string): void {
+  deferHhhSlice(
+    runHhhChain(deps, jobId, lock).catch((err) => {
+      console.error("[hhh-shortlist] slice failed", err instanceof Error ? err.message : err);
+    }),
+  );
+}
+
+/** Run stages in this invocation, then hand the rest to a fresh one before the 60s limit. */
+async function runHhhChain(deps: ShortlistDeps, jobId: string, lock?: string): Promise<void> {
+  const started = Date.now();
+  let nextLock = lock;
+  for (let step = 0; step < 6; step += 1) {
+    if (step > 0 && Date.now() - started > HANDOFF_AFTER_MS) {
+      scheduleHhhShortlistStep(jobId, nextLock);
+      return;
+    }
+    const result = await runHhhShortlistSlice({
+      admin: deps.admin,
+      store: deps.store,
+      cells: deps.cells,
+      jobId,
+      lock: nextLock,
+    });
+    const latest = await getPartnerJob(deps.admin, jobId);
+    if (!latest || latest.status === "failed" || latest.status === "ready") return;
+    if (!result.continue || !result.lock) return;
+    nextLock = result.lock;
+  }
+  scheduleHhhShortlistStep(jobId, nextLock);
+}
+
+function nudgeIdleShortlist(
+  deps: ShortlistDeps,
+  job: { id: string; status: string; payload: Record<string, unknown> },
+): void {
+  if (job.status !== "queued" && job.status !== "running") return;
+  const lock = typeof job.payload.lock === "string" ? job.payload.lock : "";
+  const at = typeof job.payload.lockAt === "string" ? Date.parse(job.payload.lockAt) : Number.NaN;
+  const fresh = Boolean(lock) && Number.isFinite(at) && Date.now() - at < LIVE_LOCK_MS;
+  if (fresh) return;
+  beginHhhShortlist(deps, job.id);
+}
+
 export function registerHhhShortlistRoutes(
   app: Hono<{ Variables: AppVariables }>,
   deps: { store: Store; admin: SupabaseClient | null; cells: PlaceCellStore },
@@ -50,7 +99,7 @@ export function registerHhhShortlistRoutes(
     try {
       const existing = await findPartnerJobByRequest(deps.admin, input.requestId);
       if (existing) {
-        // Do not re-kick live jobs on every partner retry — that stacks worker threads.
+        nudgeIdleShortlist({ store: deps.store, admin: deps.admin, cells: deps.cells }, existing);
         return c.json({ jobId: existing.id, status: existing.status, requestId: input.requestId }, 202);
       }
       const query = input.postcode4 ?? input.gemeente ?? "";
@@ -75,6 +124,8 @@ export function registerHhhShortlistRoutes(
           jobText: input.jobText ?? "",
           route: "gemini-found",
           stage: "lookup",
+          lock: randomUUID(),
+          lockAt: new Date().toISOString(),
           candidates: [],
           found: [],
           drops: [],
@@ -82,7 +133,8 @@ export function registerHhhShortlistRoutes(
           progress: [],
         },
       });
-      scheduleHhhShortlistStep(job.id);
+      const bootLock = typeof job.payload.lock === "string" ? job.payload.lock : undefined;
+      beginHhhShortlist({ store: deps.store, admin: deps.admin, cells: deps.cells }, job.id, bootLock);
       return c.json({ jobId: job.id, status: job.status, requestId: input.requestId }, 202);
     } catch (err) {
       console.error("[hhh-shortlist] enqueue", err instanceof Error ? err.message : err);
@@ -97,6 +149,7 @@ export function registerHhhShortlistRoutes(
     if (!deps.admin) return c.json(engineUnavailable(), 503);
     const job = await getPartnerJob(deps.admin, c.req.param("jobId"));
     if (!job) return c.json({ error: "Shortlist job not found" }, 404);
+    nudgeIdleShortlist({ store: deps.store, admin: deps.admin, cells: deps.cells }, job);
     if (job.status === "ready" && job.public_result) {
       return c.json({ jobId: job.id, status: "ready", ...job.public_result });
     }
@@ -108,6 +161,17 @@ export function registerHhhShortlistRoutes(
     if (!isAdmin(c.get("auth"))) return c.json({ error: "Admin only" }, 403);
     if (!deps.admin) return c.json(engineUnavailable(), 503);
     try {
+      const { data: live } = await deps.admin
+        .from("partner_jobs")
+        .select("id,status,payload")
+        .in("status", ["queued", "running"])
+        .limit(5);
+      for (const row of live ?? []) {
+        nudgeIdleShortlist(
+          { store: deps.store, admin: deps.admin, cells: deps.cells },
+          row as { id: string; status: string; payload: Record<string, unknown> },
+        );
+      }
       const jobs = await listPartnerJobs(deps.admin);
       return c.json({ jobs });
     } catch (err) {
@@ -204,23 +268,7 @@ export function registerHhhShortlistRoutes(
     if (!existing || existing.status === "failed" || existing.status === "ready") {
       return c.json({ accepted: false, skipped: true, status: existing?.status ?? "missing" }, 200);
     }
-    deferHhhSlice(
-      runHhhShortlistSlice({
-        admin,
-        store: deps.store,
-        cells: deps.cells,
-        jobId,
-        lock,
-      })
-        .then(async (result) => {
-          const latest = await getPartnerJob(admin, jobId);
-          if (!latest || latest.status === "failed" || latest.status === "ready") return;
-          if (result.continue && result.lock) scheduleHhhShortlistStep(jobId, result.lock);
-        })
-        .catch((err) => {
-          console.error("[hhh-shortlist] slice failed", err instanceof Error ? err.message : err);
-        }),
-    );
+    beginHhhShortlist({ store: deps.store, admin, cells: deps.cells }, jobId, lock);
     return c.json({ accepted: true }, 202);
   });
 
