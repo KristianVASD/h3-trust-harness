@@ -427,6 +427,48 @@ export function ControlHhhPage() {
                     ) : (
                       <p className="muted">No updates yet. The first step looks up companies already on file.</p>
                     )}
+                    {(job.foundFirms ?? []).length > 0 || (job.findSkips ?? []).length > 0 || job.findRaw ? (
+                      <>
+                        <h3 style={{ margin: "0.9rem 0 0.3rem" }}>Step 1 · search</h3>
+                        {(job.foundFirms ?? []).length > 0 ? (
+                          <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+                            {(job.foundFirms ?? []).map((firm) => (
+                              <li key={`${firm.name}-${firm.website}`}>
+                                {firm.website ? (
+                                  <a href={firm.website} target="_blank" rel="noreferrer">
+                                    {firm.name}
+                                  </a>
+                                ) : (
+                                  firm.name
+                                )}
+                                <div className="muted">
+                                  {[firm.address, firm.phone, firm.website ? "" : "no website"].filter(Boolean).join(" · ")}
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="muted">The first search kept no company.</p>
+                        )}
+                        {(job.findSkips ?? []).length > 0 ? (
+                          <p className="muted">Set aside: {(job.findSkips ?? []).join("; ")}</p>
+                        ) : null}
+                        {job.findRaw ? <p className="muted">Unparsed reply: {job.findRaw}</p> : null}
+                      </>
+                    ) : null}
+                    {(job.checkedFirms ?? []).length > 0 ? (
+                      <>
+                        <h3 style={{ margin: "0.9rem 0 0.3rem" }}>Step 2 · local mention</h3>
+                        <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+                          {(job.checkedFirms ?? []).map((firm) => (
+                            <li key={`${firm.name}-check`}>
+                              {firm.name}
+                              <div className="muted">{firm.matchNote || "No club or association page."}</div>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    ) : null}
                     {job.companies.length > 0 ? (
                       <>
                         <h3 style={{ margin: "0.9rem 0 0.3rem" }}>Result</h3>

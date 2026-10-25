@@ -1,6 +1,6 @@
 import {
   GeminiCheckSchema,
-  selectFoundFirms,
+  reviewFoundFirms,
   type GeminiCandidate,
   type GeminiCheck,
 } from "@h3-trust/schema";
@@ -133,7 +133,7 @@ export async function findLocalCompanies(args: {
   tradeLabel: string;
   jobText: string;
   place: string;
-}): Promise<GeminiCandidate[]> {
+}): Promise<{ companies: GeminiCandidate[]; skipped: string[]; raw: string }> {
   const jobLine = args.jobText.trim() || `particulier onderhoud door een ${args.tradeLabel.toLowerCase()}`;
   const messages = [
     {
@@ -144,7 +144,8 @@ export async function findLocalCompanies(args: {
         "Geef hooguit 5 bedrijven voor particulier onderhoud. Een bedrijf in een buurdorp mag.",
         "Lokale verankering, zoals een familiebedrijf, een bedrijventerrein of een club, is een plus en geen eis.",
         "Geen tussenpersonen (geen Werkspot, Trustoo, Zoofy) en geen landelijke 085- of 088-nummers.",
-        "Gebruik de eigen website van het bedrijf. Verzin geen bedrijf en geen URL.",
+        "Gebruik de eigen website als je die vond. Verzin geen bedrijf en geen URL.",
+        "Een bedrijf zonder website geef je toch terug, met telefoonnummer en adres.",
         "Ontbreekt het e-mailadres, geef het lokale telefoonnummer. Zoek niet eindeloos naar een e-mailadres.",
         "Zijn er minder dan 5 echte bedrijven, geef er minder terug.",
       ].join("\n"),
@@ -161,12 +162,14 @@ export async function findLocalCompanies(args: {
   ];
   const { content } = await ask(messages);
   let proposed: GeminiCandidate[] = [];
+  let raw = "";
   try {
     proposed = proposedCandidates(parseJsonObject(content));
   } catch {
-    proposed = [];
+    raw = content.slice(0, 500);
   }
-  return selectFoundFirms(proposed);
+  const reviewed = reviewFoundFirms(proposed);
+  return { companies: reviewed.kept, skipped: reviewed.skipped, raw };
 }
 
 /** Second Gemini question: local mentions only. A missing company means no mention. */

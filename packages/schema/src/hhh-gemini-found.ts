@@ -93,26 +93,51 @@ export type GeminiCandidate = {
 
 const LEAD_HOST = /(?:^|\.)(?:werkspot|trustoo|zoofy|vergelijk)\.nl$/i;
 
-/** First-step firms. A lead site is dropped. A missing citation is not. */
-export function selectFoundFirms(proposed: readonly GeminiCandidate[]): GeminiCandidate[] {
-  const out: GeminiCandidate[] = [];
+/** First-step firms. A lead site is dropped. A missing website is not, when a phone or address is present. */
+export function reviewFoundFirms(proposed: readonly GeminiCandidate[]): {
+  kept: GeminiCandidate[];
+  skipped: string[];
+} {
+  const kept: GeminiCandidate[] = [];
+  const skipped: string[] = [];
   const seen = new Set<string>();
   for (const row of proposed) {
     const name = row.name.trim();
     const website = canonicalWebsite(row.website);
     const host = website ? websiteHost(website) : null;
-    if (!name || !website || !host || LEAD_HOST.test(host) || seen.has(host)) continue;
-    seen.add(host);
-    out.push({
+    const phone = row.phone.trim();
+    const address = row.address.trim();
+    if (!name) {
+      skipped.push("A row had no name.");
+      continue;
+    }
+    if (host && LEAD_HOST.test(host)) {
+      skipped.push(`${name}: lead site`);
+      continue;
+    }
+    if (host && seen.has(host)) {
+      skipped.push(`${name}: duplicate website`);
+      continue;
+    }
+    if (!host && !phone && !address) {
+      skipped.push(`${name}: no website, phone, or address`);
+      continue;
+    }
+    if (host) seen.add(host);
+    kept.push({
       name,
-      website,
-      address: row.address.trim(),
-      phone: row.phone.trim(),
+      website: website ?? "",
+      address,
+      phone,
       email: row.email.trim(),
     });
-    if (out.length >= FOUND_RETURN_COUNT) break;
+    if (kept.length >= FOUND_RETURN_COUNT) break;
   }
-  return out;
+  return { kept, skipped };
+}
+
+export function selectFoundFirms(proposed: readonly GeminiCandidate[]): GeminiCandidate[] {
+  return reviewFoundFirms(proposed).kept;
 }
 
 export type LocalHit = {
@@ -228,24 +253,26 @@ export function companiesFromSearch(
     }
     const website = canonicalSearchSite(candidate.website);
     const host = website ? websiteHost(website) : null;
-    if (!website || !host) continue;
     out.push({
       name: candidate.name,
-      website,
+      website: website ?? "",
       address: candidate.address,
       phone: candidate.phone,
       email: candidate.email,
       sourceCount: 1,
-      matchNote: "Gevonden in de eerste zoekstap.",
-      hits: [
-        {
-          kind: "search",
-          sourceName: candidate.name,
-          url: website,
-          relation: "Eigen website",
-          host,
-        },
-      ],
+      matchNote: website ? "Gevonden in de eerste zoekstap." : "Gevonden in de eerste zoekstap, zonder website.",
+      hits:
+        website && host
+          ? [
+              {
+                kind: "search",
+                sourceName: candidate.name,
+                url: website,
+                relation: "Eigen website",
+                host,
+              },
+            ]
+          : [],
     });
   }
   return rankFound(out);

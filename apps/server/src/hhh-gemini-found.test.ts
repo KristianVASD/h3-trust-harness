@@ -313,6 +313,20 @@ describe("first search firms", () => {
       ["Dakdekkersbedrijf Zundert"],
     );
   });
+
+  it("keeps a named firm that has a phone and no website", () => {
+    const kept = selectFoundFirms([
+      {
+        name: "Loodgietersbedrijf De Bollen",
+        website: "",
+        address: "Heereweg 12, Lisse",
+        phone: "0252 412 345",
+        email: "",
+      },
+    ]);
+    assert.equal(kept.length, 1);
+    assert.equal(kept[0]?.website, "");
+  });
 });
 
 describe("first search is enough", () => {

@@ -109,6 +109,10 @@ export type HhhDeskJob = {
     matchNote: string;
   }>;
   withheld: string[];
+  foundFirms: Array<{ name: string; website: string; phone: string; address: string }>;
+  checkedFirms: Array<{ name: string; website: string; matchNote: string }>;
+  findSkips: string[];
+  findRaw?: string;
   progress: string[];
   lastError?: string;
   checked: number;
@@ -132,6 +136,27 @@ export function toDeskJob(row: Record<string, unknown>): HhhDeskJob {
   const withheld = Array.isArray(payload.drops)
     ? payload.drops.filter((item): item is string => typeof item === "string")
     : [];
+  const firmOf = (value: unknown): { name: string; website: string; phone: string; address: string; matchNote: string } | null => {
+    if (!value || typeof value !== "object") return null;
+    const row = value as Record<string, unknown>;
+    const name = textOf(row.name);
+    if (!name) return null;
+    return {
+      name,
+      website: textOf(row.website),
+      phone: textOf(row.phone),
+      address: textOf(row.address),
+      matchNote: textOf(row.matchNote),
+    };
+  };
+  const foundFirms = (Array.isArray(payload.candidates) ? payload.candidates : []).flatMap((item) => {
+    const firm = firmOf(item);
+    return firm ? [{ name: firm.name, website: firm.website, phone: firm.phone, address: firm.address }] : [];
+  });
+  const checkedFirms = (Array.isArray(payload.found) ? payload.found : []).flatMap((item) => {
+    const firm = firmOf(item);
+    return firm ? [{ name: firm.name, website: firm.website, matchNote: firm.matchNote }] : [];
+  });
   return {
     id: job.id,
     requestId: job.request_id,
@@ -146,6 +171,12 @@ export function toDeskJob(row: Record<string, unknown>): HhhDeskJob {
     fromCache: payload.fromCache === true,
     companies,
     withheld,
+    foundFirms,
+    checkedFirms,
+    findSkips: Array.isArray(payload.findSkips)
+      ? payload.findSkips.filter((item): item is string => typeof item === "string")
+      : [],
+    findRaw: textOf(payload.findRaw) || undefined,
     progress: Array.isArray(payload.progress)
       ? payload.progress.filter((item): item is string => typeof item === "string")
       : [],

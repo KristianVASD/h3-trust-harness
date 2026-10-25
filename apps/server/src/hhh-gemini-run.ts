@@ -48,6 +48,8 @@ type GeminiPayload = {
   candidates: GeminiCandidate[];
   found: GeminiFoundCompany[];
   drops: string[];
+  findSkips: string[];
+  findRaw?: string;
   fromCache: boolean;
   progress: string[];
   lastError?: string;
@@ -64,12 +66,11 @@ function readCandidates(value: unknown): GeminiCandidate[] {
     if (!item || typeof item !== "object") return [];
     const row = item as Record<string, unknown>;
     const name = asString(row.name);
-    const website = asString(row.website);
-    if (!name || !website) return [];
+    if (!name) return [];
     return [
       {
         name,
-        website,
+        website: asString(row.website) ?? "",
         address: asString(row.address) ?? "",
         phone: asString(row.phone) ?? "",
         email: asString(row.email) ?? "",
@@ -104,6 +105,10 @@ export function readGeminiPayload(raw: Record<string, unknown>): GeminiPayload |
     candidates: readCandidates(raw.candidates),
     found: Array.isArray(raw.found) ? (raw.found as GeminiFoundCompany[]) : [],
     drops: Array.isArray(raw.drops) ? raw.drops.filter((item): item is string => typeof item === "string") : [],
+    findSkips: Array.isArray(raw.findSkips)
+      ? raw.findSkips.filter((item): item is string => typeof item === "string").slice(0, 12)
+      : [],
+    findRaw: asString(raw.findRaw)?.slice(0, 500),
     fromCache: raw.fromCache === true,
     progress: Array.isArray(raw.progress)
       ? raw.progress.filter((item): item is string => typeof item === "string").slice(-30)
@@ -156,13 +161,21 @@ async function lookup(
 }
 
 async function find(payload: GeminiPayload): Promise<HhhPublicShortlist | null> {
-  const candidates = await findLocalCompanies({
+  const found = await findLocalCompanies({
     tradeLabel: tradeLabel(payload.tradeId),
     jobText: payload.jobText,
     place: [payload.placeLabel, payload.postcode4].filter(Boolean).join(" "),
   });
+  const candidates = found.companies;
   payload.candidates = candidates;
-  note(payload, `Find step kept ${candidates.length} companies.`);
+  payload.findSkips = found.skipped;
+  payload.findRaw = found.raw || undefined;
+  note(
+    payload,
+    found.raw
+      ? "Find step reply was not usable JSON."
+      : `Find step kept ${candidates.length} companies${found.skipped.length ? `, skipped ${found.skipped.length}` : ""}.`,
+  );
   payload.stage = candidates.length > 0 ? "check" : "done";
   if (candidates.length === 0) {
     return HhhPublicShortlistSchema.parse({ fromCache: false, companies: [] });
