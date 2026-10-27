@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { foldTradeLabel, TradeIdSchema, type TradeId } from "./trades";
+import { foldTradeLabel, tradeLabel, TradeIdSchema, type TradeId } from "./trades";
 import {
   HhhShortlistCompanySchema,
   evidenceFresh,
@@ -15,8 +15,10 @@ import {
 
 /** How many fresh local finds skip a new Gemini pair. */
 export const FOUND_LOOKUP_COUNT = 3;
-/** Companies returned to HandyHouseHelp. */
-export const FOUND_RETURN_COUNT = 5;
+/** First-step firms considered by the local proof check. */
+export const FOUND_CANDIDATE_COUNT = 10;
+/** Locally proven companies returned to HandyHouseHelp. */
+export const FOUND_RETURN_COUNT = 3;
 /** Quality band. A fifth source stays in the evidence list and does not raise this. */
 export const FOUND_SOURCE_CAP = 4;
 
@@ -27,26 +29,19 @@ const LOCAL_KIND: Record<string, "ov" | "sport" | "festivity"> = {
   football_club: "sport",
   sponsor: "sport",
   festivity: "festivity",
-  press: "ov",
-  newspaper: "ov",
-  local_press: "ov",
 };
 
-const LOCAL_CATEGORY: Record<string, "local_business_association" | "sponsorship" | "municipal_initiative"> = {
+const LOCAL_CATEGORY: Record<string, "local_business_association" | "sponsorship" | "local_festivity"> = {
   local_business_association: "local_business_association",
   sponsorship: "sponsorship",
-  municipal_initiative: "municipal_initiative",
   sports_club: "sponsorship",
   football_club: "sponsorship",
-  festivity: "municipal_initiative",
-  local_press: "local_business_association",
-  newspaper: "local_business_association",
-  town_guide: "local_business_association",
+  festivity: "local_festivity",
 };
 
 /**
  * National phone books and SBI registers name every firm in a trade.
- * They are not a club, a local paper, or an ondernemersvereniging.
+ * They are not one of the accepted local organizations.
  */
 const DIRECTORY_HOSTS = [
   "telefoonboek.nl",
@@ -115,6 +110,7 @@ export const GeminiClaimSchema = z.object({
   about: z.string().default("company"),
   org_name: z.string().default(""),
   relation: z.string().default(""),
+  observed_name: z.string().optional(),
   source_ids: z.array(z.string()).default([]),
   pages_checked: z.array(z.string()).default([]),
   note: z.string().nullable().optional(),
@@ -146,6 +142,8 @@ export type GeminiCandidate = {
   address: string;
   phone: string;
   email: string;
+  candidateBasis?: string[];
+  riskFlags?: string[];
 };
 
 const LEAD_HOST = /(?:^|\.)(?:werkspot|trustoo|zoofy|vergelijk)\.nl$/i;
@@ -187,8 +185,10 @@ export function reviewFoundFirms(proposed: readonly GeminiCandidate[]): {
       address,
       phone,
       email: row.email.trim(),
+      candidateBasis: row.candidateBasis ?? [],
+      riskFlags: row.riskFlags ?? [],
     });
-    if (kept.length >= FOUND_RETURN_COUNT) break;
+    if (kept.length >= FOUND_CANDIDATE_COUNT) break;
   }
   return { kept, skipped };
 }
@@ -295,56 +295,32 @@ export function companiesWithLocalMention(
   return rankFound(found);
 }
 
-/**
- * The first search is enough to return a firm.
- * A local mention raises that firm. It does not delete the others.
- */
-export function companiesFromSearch(
-  candidates: readonly GeminiCandidate[],
-  check: GeminiCheck | null,
-): GeminiFoundCompany[] {
-  const mentioned = check ? companiesWithLocalMention(candidates, check) : [];
-  const out: GeminiFoundCompany[] = [];
-  for (const candidate of candidates) {
-    const rich = mentioned.find((row) => namesMatch(row.name, candidate.name));
-    if (rich) {
-      out.push(rich);
-      continue;
-    }
-    const website = canonicalSearchSite(candidate.website);
-    const host = website ? websiteHost(website) : null;
-    out.push({
-      name: candidate.name,
-      website: website ?? "",
-      address: candidate.address,
-      phone: candidate.phone,
-      email: candidate.email,
-      sourceCount: 1,
-      matchNote: website ? "Gevonden in de eerste zoekstap." : "Gevonden in de eerste zoekstap, zonder website.",
-      hits:
-        website && host
-          ? [
-              {
-                kind: "search",
-                sourceName: candidate.name,
-                url: website,
-                relation: "Eigen website",
-                host,
-              },
-            ]
-          : [],
-    });
-  }
-  return rankFound(out);
-}
-
-function canonicalSearchSite(raw: string): string | null {
-  return canonicalWebsite(raw);
-}
-
-export function rankFound<T extends { name: string; sourceCount: number }>(rows: readonly T[]): T[] {
+export function rankFound<
+  T extends {
+    name: string;
+    sourceCount: number;
+    website?: string;
+    address?: string;
+    phone?: string;
+    email?: string;
+    matchNote?: string;
+    hits?: readonly { kind: string }[];
+  },
+>(rows: readonly T[]): T[] {
+  const proved = (row: T) => (row.hits?.some((hit) => hit.kind !== "search") ? 1 : 0);
+  const specificity = (row: T) =>
+    /organis|bestuur|opricht|sponsor|lid van|member/i.test(row.matchNote ?? "") ? 1 : 0;
+  const completeness = (row: T) =>
+    [row.website, row.address, row.phone, row.email].filter((value) => Boolean(value?.trim())).length;
   return [...rows]
-    .sort((a, b) => b.sourceCount - a.sourceCount || a.name.localeCompare(b.name, "nl"))
+    .sort(
+      (a, b) =>
+        proved(b) - proved(a) ||
+        b.sourceCount - a.sourceCount ||
+        specificity(b) - specificity(a) ||
+        completeness(b) - completeness(a) ||
+        a.name.localeCompare(b.name, "nl"),
+    )
     .slice(0, FOUND_RETURN_COUNT);
 }
 
@@ -358,8 +334,25 @@ type FoundView = PartnerCompanyView & {
   localAuthenticity?: { verdict?: string } | null;
 };
 
+function directoryFact(fact: PartnerFact): boolean {
+  const host = websiteHost(fact.sourceUrl);
+  if (host && nationalDirectoryHost(host)) return true;
+  return DIRECTORY_WORD.test(`${fact.sourceName ?? ""}\n${fact.sourceUrl}`);
+}
+
+/** Club, festivity, and association pages. A phone book or an SBI sentence is not local proof. */
 function localFacts(trust: PartnerTrust | undefined): PartnerFact[] {
-  return (trust?.facts ?? []).filter((fact) => fact.kind === "ov" || fact.kind === "sport" || fact.kind === "festivity");
+  return (trust?.facts ?? []).filter(
+    (fact) =>
+      (fact.kind === "ov" || fact.kind === "sport" || fact.kind === "festivity") && !directoryFact(fact),
+  );
+}
+
+function storedMatchNote(trust: PartnerTrust, facts: readonly PartnerFact[]): string {
+  const note = trust.matchNote?.trim() ?? "";
+  if (note && !DIRECTORY_WORD.test(note)) return note;
+  const names = facts.map((fact) => fact.sourceName?.trim()).filter((name): name is string => Boolean(name));
+  return names.join(" · ") || "Gevonden via een lokale vermelding.";
 }
 
 export function selectFreshFound(
@@ -394,7 +387,11 @@ export function cardFromFound(args: {
     phone: args.row.phone || undefined,
     email: args.row.email || undefined,
     tradeId: args.tradeId,
+    tradeLabel: tradeLabel(args.tradeId),
     status: args.row.hits.some((hit) => hit.kind !== "search") ? "lokaal_verbonden" : "gevonden",
+    badges: args.row.hits.some((hit) => hit.kind !== "search")
+      ? ["gevonden", "lokaal_verbonden"]
+      : ["gevonden"],
     sourceCount: args.row.sourceCount,
     score: args.row.sourceCount,
     matchNote: args.row.matchNote,
@@ -415,7 +412,7 @@ export function cardFromStoredFound(company: FoundView, place: string): HhhShort
   if (!trade.success) return null;
   const facts = localFacts(trust);
   if (facts.length === 0) return null;
-  const sourceCount = Math.min(FOUND_SOURCE_CAP, Math.max(1, Math.round(trust.score)));
+  const sourceCount = Math.min(FOUND_SOURCE_CAP, facts.length);
   return HhhShortlistCompanySchema.parse({
     id: company.id,
     name: company.name,
@@ -424,10 +421,12 @@ export function cardFromStoredFound(company: FoundView, place: string): HhhShort
     phone: company.phone || undefined,
     email: company.email || undefined,
     tradeId: trade.data,
-    status: "gevonden",
+    tradeLabel: tradeLabel(trade.data),
+    status: "lokaal_verbonden",
+    badges: ["gevonden", "lokaal_verbonden"],
     sourceCount,
     score: sourceCount,
-    matchNote: trust.matchNote?.trim() || "Gevonden via een lokale vermelding.",
+    matchNote: storedMatchNote(trust, facts),
     evidence: facts.map((fact) => ({
       kind: fact.kind,
       sourceName: fact.sourceName,

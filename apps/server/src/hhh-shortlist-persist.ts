@@ -12,6 +12,7 @@ import {
   findCompanyMatchIndex,
   foundFacts,
   placeCellSector,
+  tradeLabel,
   type Company,
   type GeminiFoundCompany,
   type HhhShortlistCompany,
@@ -465,7 +466,12 @@ export function cardsFromStored(args: {
       place: args.place,
       website: row.website,
       tradeId: args.tradeId,
+      tradeLabel: tradeLabel(args.tradeId),
       status: row.assessment.status,
+      badges:
+        row.assessment.status === "lokaal_verbonden"
+          ? ["gevonden", "lokaal_verbonden"]
+          : ["gevonden"],
       score: row.assessment.score,
       matchNote: row.assessment.matchNote,
       evidence,

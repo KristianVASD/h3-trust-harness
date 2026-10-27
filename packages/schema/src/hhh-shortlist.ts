@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { matchPageToTrades } from "./address-search";
-import { foldTradeLabel, TradeIdSchema, type TradeId } from "./trades";
+import { foldTradeLabel, tradeLabel, TradeIdSchema, type TradeId } from "./trades";
 
 /** How long a stored check may be reused before the website is read again. */
 export const PARTNER_FACT_TTL_MS = 90 * 24 * 60 * 60 * 1000;
@@ -82,7 +82,12 @@ export const HhhShortlistCompanySchema = z.object({
   phone: z.string().optional(),
   email: z.string().optional(),
   tradeId: TradeIdSchema,
+  tradeLabel: z.string().min(1).optional(),
   status: z.enum(["gevonden", "geverifieerd", "lokaal_verbonden"]),
+  badges: z
+    .array(z.enum(["gevonden", "lokaal_verbonden"]))
+    .max(2)
+    .default([]),
   /** Gemini route: number of unique local sources, capped at 4. */
   sourceCount: z.number().int().min(1).max(4).optional(),
   score: z.number().min(0).max(100),
@@ -91,8 +96,8 @@ export const HhhShortlistCompanySchema = z.object({
 });
 export type HhhShortlistCompany = z.infer<typeof HhhShortlistCompanySchema>;
 
-/** Gemini answers may return five firms. The older website shortlist still stops at three. */
-export const PUBLIC_SHORTLIST_MAX = 5;
+/** HandyHouseHelp receives at most the three strongest companies. */
+export const PUBLIC_SHORTLIST_MAX = 3;
 
 export const HhhPublicShortlistSchema = z.object({
   fromCache: z.boolean(),
@@ -479,7 +484,12 @@ export function toPublicPartner(
     place: place || trust.woonplaats || trust.gemeente || trust.postcode4 || "NL",
     website,
     tradeId: trade.data,
+    tradeLabel: tradeLabel(trade.data),
     status: trust.status,
+    badges:
+      trust.status === "lokaal_verbonden"
+        ? ["gevonden", "lokaal_verbonden"]
+        : ["gevonden"],
     score: trust.score,
     matchNote: note,
     evidence: trust.facts.map((fact) => ({

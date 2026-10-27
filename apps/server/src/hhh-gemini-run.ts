@@ -5,12 +5,13 @@ import {
   cardFromFound,
   cardFromStoredFound,
   classifyLocalAuthenticity,
-  companiesFromSearch,
+  companiesWithLocalMention,
   directoryHostsIn,
   lookupFoundOutcome,
   selectFreshFound,
   tradeLabel,
   type GeminiCandidate,
+  type GeminiCheck,
   type GeminiFoundCompany,
   type HhhPublicShortlist,
   type TradeId,
@@ -18,7 +19,6 @@ import {
 import { fetchPage, pageBlocked } from "./address-search-fetch.js";
 import { checkLocalMentions, findLocalCompanies } from "./hhh-gemini-search.js";
 import { getPartnerJob, savePartnerJob } from "./hhh-shortlist-jobs.js";
-import { scheduleHhhFoundKnockout } from "./hhh-shortlist-kick.js";
 import {
   loadFoundCompaniesForPlace,
   markFoundKnockout,
@@ -75,6 +75,12 @@ function readCandidates(value: unknown): GeminiCandidate[] {
         address: asString(row.address) ?? "",
         phone: asString(row.phone) ?? "",
         email: asString(row.email) ?? "",
+        candidateBasis: Array.isArray(row.candidateBasis)
+          ? row.candidateBasis.filter((item): item is string => typeof item === "string")
+          : [],
+        riskFlags: Array.isArray(row.riskFlags)
+          ? row.riskFlags.filter((item): item is string => typeof item === "string")
+          : [],
       },
     ];
   });
@@ -153,11 +159,11 @@ async function lookup(
     payload.fromCache = true;
     payload.stage = "done";
     note(payload, `Found ${cards.length} fresh local companies for this place. Returning those.`);
-    setPublic(HhhPublicShortlistSchema.parse({ fromCache: true, companies: cards.slice(0, 5) }));
+    setPublic(HhhPublicShortlistSchema.parse({ fromCache: true, companies: cards.slice(0, 3) }));
     return "ready";
   }
   payload.stage = "find";
-  note(payload, "No stored local list yet. Asking Gemini to find companies.");
+  note(payload, "No complete local shortlist yet. Starting live candidate discovery.");
   return "continue";
 }
 
@@ -179,27 +185,10 @@ function cardsForPartner(
   return HhhPublicShortlistSchema.parse({ fromCache: false, companies: publishCards(cards) });
 }
 
-/** Partner cards before the local-mention check. Every firm is gevonden. */
-export function partnerCardsFromSearch(
-  candidates: readonly GeminiCandidate[],
-  place: string,
-  tradeId: TradeId,
-): HhhPublicShortlist {
-  return cardsForPartner(companiesFromSearch(candidates, null), place, tradeId);
-}
-
 function publishHeld(payload: GeminiPayload): HhhPublicShortlist {
-  const rows = payload.found.length > 0 ? payload.found : companiesFromSearch(payload.candidates, null);
-  payload.found = rows;
   payload.stage = "done";
-  const listed = cardsForPartner(rows, payload.placeLabel, payload.tradeId);
-  const known = listed.companies.filter((card) => card.status === "lokaal_verbonden").length;
-  note(
-    payload,
-    known > 0
-      ? `Returning ${listed.companies.length} companies. ${known} are locally known.`
-      : `No local mention. Returning ${listed.companies.length} companies as gevonden.`,
-  );
+  const listed = cardsForPartner(payload.found, payload.placeLabel, payload.tradeId);
+  note(payload, `Returning ${listed.companies.length} locally proven companies.`);
   return listed;
 }
 
@@ -216,7 +205,7 @@ async function find(payload: GeminiPayload): Promise<HhhPublicShortlist | null> 
   note(
     payload,
     found.parsed
-      ? `Find step kept ${candidates.length} companies${found.skipped.length ? `, skipped ${found.skipped.length}` : ""}.`
+      ? `Find step kept ${found.companies.length} companies${found.skipped.length ? `, skipped ${found.skipped.length}` : ""}.`
       : "Find step reply was not usable JSON.",
   );
   if (candidates.length === 0) {
@@ -228,18 +217,58 @@ async function find(payload: GeminiPayload): Promise<HhhPublicShortlist | null> 
   return null;
 }
 
-function locallyKnown(rows: readonly GeminiFoundCompany[]): number {
-  return rows.filter((row) => row.hits.some((hit) => hit.kind !== "search")).length;
+function mergeChecks(parts: readonly GeminiCheck[]): GeminiCheck {
+  const sources: GeminiCheck["sources"] = [];
+  const companies: GeminiCheck["companies"] = [];
+  parts.forEach((part, index) => {
+    const ids = new Map(part.sources.map((source) => [source.id, `p${index}-${source.id}`]));
+    for (const source of part.sources) {
+      sources.push({ ...source, id: ids.get(source.id) ?? source.id });
+    }
+    for (const company of part.companies) {
+      companies.push({
+        ...company,
+        claims: company.claims.map((claim) => ({
+          ...claim,
+          source_ids: claim.source_ids.map((id) => ids.get(id) ?? id),
+        })),
+      });
+    }
+  });
+  return { sources, companies };
+}
+
+/** At most two independent batches of five; both can run in one network round. */
+export function candidateBatches(
+  candidates: readonly GeminiCandidate[],
+): [GeminiCandidate[], GeminiCandidate[]] {
+  return [candidates.slice(0, 5), candidates.slice(5, 10)];
+}
+
+async function checkFirms(payload: GeminiPayload): Promise<GeminiCheck> {
+  const batches = candidateBatches(payload.candidates).filter((batch) => batch.length > 0);
+  const parts = await Promise.all(
+    batches.map(async (companies) => {
+      try {
+        return await checkLocalMentions({
+          place: payload.placeLabel,
+          tradeLabel: tradeLabel(payload.tradeId),
+          companies,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Local-mention check failed";
+        note(payload, `Local batch failed: ${message}`);
+        return { sources: [], companies: [] } satisfies GeminiCheck;
+      }
+    }),
+  );
+  return mergeChecks(parts);
 }
 
 async function check(payload: GeminiPayload): Promise<HhhPublicShortlist> {
-  let merged = companiesFromSearch(payload.candidates, null);
+  let found: GeminiFoundCompany[] = [];
   try {
-    let checked = await checkLocalMentions({
-      place: payload.placeLabel,
-      tradeLabel: tradeLabel(payload.tradeId),
-      companies: payload.candidates,
-    });
+    const checked = await checkFirms(payload);
     const directories = directoryHostsIn(checked);
     if (directories.length > 0) {
       note(
@@ -247,22 +276,12 @@ async function check(payload: GeminiPayload): Promise<HhhPublicShortlist> {
         `Ignored ${directories.join(" and ")}. A phone book or business register is not a local mention.`,
       );
     }
-    merged = companiesFromSearch(payload.candidates, checked);
-    if (locallyKnown(merged) === 0 && directories.length > 0) {
-      note(payload, "Check step only cited a directory. Asking again for a club, association, or local paper.");
-      checked = await checkLocalMentions({
-        place: payload.placeLabel,
-        tradeLabel: tradeLabel(payload.tradeId),
-        companies: payload.candidates,
-        steer: "clubs",
-      });
-      merged = companiesFromSearch(payload.candidates, checked);
-    }
+    found = companiesWithLocalMention(payload.candidates, checked);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Local-mention check failed";
-    note(payload, `${message} Returning the companies from the first search.`);
+    note(payload, message);
   }
-  payload.found = merged;
+  payload.found = found;
   payload.drops = [];
   return publishHeld(payload);
 }
@@ -282,12 +301,15 @@ function publishCards(cards: HhhPublicShortlist["companies"]): HhhPublicShortlis
     seen.add(card.id);
     return true;
   });
+  const proved = (card: (typeof unique)[number]) => (card.status === "lokaal_verbonden" ? 1 : 0);
   return unique
     .sort(
       (a, b) =>
-        (b.sourceCount ?? b.score) - (a.sourceCount ?? a.score) || a.name.localeCompare(b.name, "nl"),
+        proved(b) - proved(a) ||
+        (b.sourceCount ?? b.score) - (a.sourceCount ?? a.score) ||
+        a.name.localeCompare(b.name, "nl"),
     )
-    .slice(0, 5);
+    .slice(0, 3);
 }
 
 async function storeFound(
@@ -340,9 +362,8 @@ async function storeFound(
   });
   const companies = publishCards([...fresh, ...remembered]);
   payload.stage = "done";
-  payload.knockout = "pending";
   setPublic(HhhPublicShortlistSchema.parse({ fromCache: false, companies }));
-  note(payload, `Returning ${companies.length} companies as gevonden.`);
+  note(payload, `Returning ${companies.length} locally proven companies.`);
 }
 
 /** Save the partner list first. A failed database write must leave that list in place. */
@@ -360,7 +381,6 @@ async function commitSearchResult(
     payload: { ...payload },
     publicResult: sealed,
   });
-  if (payload.found.length === 0) return sealed;
   try {
     let stored = sealed;
     await storeFound({ store: args.store, cells: args.cells }, payload, (next) => {
@@ -374,7 +394,6 @@ async function commitSearchResult(
       payload: { ...payload },
       publicResult: stored,
     });
-    if (payload.knockout === "pending") scheduleHhhFoundKnockout(args.jobId);
     return stored;
   } catch (err) {
     const message = err instanceof Error ? err.message : "Storing the firms failed";
@@ -403,7 +422,7 @@ export async function releaseHeldSearch(args: {
   if (args.job.status !== "running" && args.job.status !== "queued") return null;
   const payload = readGeminiPayload(args.job.payload);
   if (!payload) return null;
-  if (payload.stage !== "check" && payload.stage !== "gate" && payload.stage !== "store") return null;
+  if (payload.stage !== "gate" && payload.stage !== "store") return null;
   if (!canRun(payload)) return null;
   if (payload.candidates.length === 0 && payload.found.length === 0) return null;
   const sealed = publishHeld(payload);

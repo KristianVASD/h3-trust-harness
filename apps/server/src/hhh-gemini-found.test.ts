@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import {
   GeminiCheckSchema,
   cardFromFound,
-  companiesFromSearch,
+  cardFromStoredFound,
   companiesWithLocalMention,
   directoryHostsIn,
   reviewFoundFirms,
@@ -11,8 +11,8 @@ import {
   selectFreshFound,
   type GeminiCandidate,
 } from "@h3-trust/schema";
-import { partnerCardsFromSearch } from "./hhh-gemini-run.js";
-import { proposedCandidates } from "./hhh-gemini-search.js";
+import { candidateBatches } from "./hhh-gemini-run.js";
+import { filterCheckToCitations, proposedCandidates } from "./hhh-gemini-search.js";
 
 const alkmaarCheck = GeminiCheckSchema.parse({
   place: "Alkmaar",
@@ -293,6 +293,52 @@ describe("gemini local mention gate", () => {
     assert.equal(found[0]!.sourceCount, 4);
     assert.equal(found[0]!.hits.length, 5);
   });
+
+  it("returns only locally mentioned firms and caps the result at three", () => {
+    const firms: GeminiCandidate[] = [1, 2, 3, 4].map((n) => ({
+      name: `Lokale Firma ${n}`,
+      website: `https://firma${n}.example`,
+      address: "Lisse",
+      phone: `06 1234000${n}`,
+      email: "",
+    }));
+    const check = GeminiCheckSchema.parse({
+      sources: [1, 2, 3, 4].map((n) => ({
+        id: `s${n}`,
+        name: `Club ${n}`,
+        url: `https://club${n}.example/sponsors`,
+        category: "sports_club",
+        scope: "local",
+      })),
+      companies: [1, 2, 3, 4].map((n) => ({
+        name: `Lokale Firma ${n}`,
+        claims: [
+          {
+            kind: "sport",
+            outcome: "sponsor",
+            about: "company",
+            org_name: `Club ${n}`,
+            relation: `Sponsor van Club ${n}`,
+            observed_name: `Lokale Firma ${n}`,
+            source_ids: [`s${n}`],
+          },
+        ],
+      })),
+    });
+    assert.deepEqual(
+      companiesWithLocalMention(firms, check).map((row) => row.name),
+      ["Lokale Firma 1", "Lokale Firma 2", "Lokale Firma 3"],
+    );
+    for (const count of [1, 2, 3]) {
+      const partial = GeminiCheckSchema.parse({
+        ...check,
+        sources: check.sources.slice(0, count),
+        companies: check.companies.slice(0, count),
+      });
+      assert.equal(companiesWithLocalMention(firms, partial).length, count);
+    }
+    assert.deepEqual(companiesWithLocalMention(firms, GeminiCheckSchema.parse({})), []);
+  });
 });
 
 describe("first search firms", () => {
@@ -339,7 +385,7 @@ describe("first search firms", () => {
   });
 
   it("sends a firm with a local mention as locally known and keeps phone and email", () => {
-    const [known] = companiesFromSearch([candidates[0]!], alkmaarCheck);
+    const [known] = companiesWithLocalMention([candidates[0]!], alkmaarCheck);
     const card = cardFromFound({
       id: "11111111-1111-4111-8111-111111111111",
       row: known!,
@@ -353,31 +399,6 @@ describe("first search firms", () => {
     assert.ok(card.evidence.some((item) => item.kind === "ov"));
   });
 
-  it("sends phone and email as gevonden when there is no local mention", () => {
-    const listed = partnerCardsFromSearch(
-      [
-        {
-          name: "Dakenonderhoud",
-          website: "http://dakenenonderhoud.nl",
-          address: "Vennestraat 56c, Lisse",
-          phone: "06 29086861",
-          email: "info@dakenenonderhoud.nl",
-        },
-      ],
-      "Lisse",
-      "roof",
-    );
-    assert.equal(listed.companies.length, 1);
-    assert.equal(listed.companies[0]?.status, "gevonden");
-    assert.equal(listed.companies[0]?.phone, "06 29086861");
-    assert.equal(listed.companies[0]?.email, "info@dakenenonderhoud.nl");
-    assert.equal(listed.companies[0]?.sourceCount, 1);
-    assert.deepEqual(
-      listed.companies[0]?.evidence.map((item) => item.kind),
-      ["search"],
-    );
-  });
-
   it("reads a Dutch naam and telefoon", () => {
     const read = proposedCandidates({
       companies: [{ naam: "Loodgietersbedrijf De Bollen", telefoon: "0252 412 345", adres: "Heereweg 12, Lisse" }],
@@ -388,27 +409,23 @@ describe("first search firms", () => {
     assert.equal(kept[0]?.phone, "0252 412 345");
     assert.equal(kept[0]?.address, "Heereweg 12, Lisse");
   });
-});
 
-describe("first search is enough", () => {
-  it("keeps a firm the search found when no club page names it", () => {
-    const found = companiesFromSearch(
-      [
-        candidates[0]!,
-        {
-          name: "Facilitair Totaal Zundert",
-          website: "https://facilitairtotaalzundert.nl/klus-onderhoud",
-          address: "Achtmaalseweg 80, 4881 VM Zundert",
-          phone: "06-29005196",
-          email: "info@facilitairtotaalzundert.nl",
-        },
-      ],
-      alkmaarCheck,
-    );
-    const local = found.find((row) => row.name === "Facilitair Totaal Zundert");
-    assert.ok(local);
-    assert.equal(local.hits[0]?.kind, "search");
-    assert.equal(found.some((row) => row.name === "Coppens Alkmaar" && row.sourceCount === 2), true);
+  it("keeps up to ten candidates and records 085 as a warning", () => {
+    const read = proposedCandidates({
+      companies: Array.from({ length: 11 }, (_, index) => ({
+        name: `Firma ${index + 1}`,
+        website: `https://firma-${index + 1}.example`,
+        address: `Straat ${index + 1}, Lisse`,
+        phone: index === 0 ? "085 123 4567" : `06 123400${String(index).padStart(2, "0")}`,
+        candidate_basis: ["Eigen website en vestigingsadres"],
+        risk_flags: index === 0 ? ["Alleen een 085-nummer gevonden"] : [],
+      })),
+    });
+    const kept = reviewFoundFirms(read).kept;
+    assert.equal(kept.length, 10);
+    assert.equal(kept[0]?.phone, "085 123 4567");
+    assert.deepEqual(kept[0]?.riskFlags, ["Alleen een 085-nummer gevonden"]);
+    assert.deepEqual(kept[0]?.candidateBasis, ["Eigen website en vestigingsadres"]);
   });
 });
 
@@ -490,10 +507,88 @@ describe("model words for a football sponsor", () => {
     assert.deepEqual(
       found.map((row) => [row.name, row.sourceCount, row.hits[0]?.kind]),
       [
-        ["Coppens Alkmaar", 1, "ov"],
         ["Installatiebedrijf Kusch", 1, "sport"],
+        ["Coppens Alkmaar", 1, "ov"],
       ],
     );
+  });
+});
+
+describe("fast local check batches", () => {
+  it("splits ten candidates into two batches of five", () => {
+    const rows: GeminiCandidate[] = Array.from({ length: 10 }, (_, index) => ({
+      name: `Firma ${index + 1}`,
+      website: `https://firma-${index + 1}.example`,
+      address: "Lisse",
+      phone: "",
+      email: "",
+    }));
+    const [first, second] = candidateBatches(rows);
+    assert.deepEqual(first.map((row) => row.name), [
+      "Firma 1",
+      "Firma 2",
+      "Firma 3",
+      "Firma 4",
+      "Firma 5",
+    ]);
+    assert.deepEqual(second.map((row) => row.name), [
+      "Firma 6",
+      "Firma 7",
+      "Firma 8",
+      "Firma 9",
+      "Firma 10",
+    ]);
+  });
+
+  it("keeps only cited sources with the observed company name", () => {
+    const check = GeminiCheckSchema.parse({
+      sources: [
+        {
+          id: "club",
+          name: "FC Lisse",
+          url: "https://fclisse.nl/sponsors",
+          category: "football_club",
+          scope: "local",
+        },
+        {
+          id: "invented",
+          name: "Verzonnen Club",
+          url: "https://verzonnen.example/sponsors",
+          category: "sports_club",
+          scope: "local",
+        },
+      ],
+      companies: [
+        {
+          name: "Van der Zaal",
+          claims: [
+            {
+              kind: "sport",
+              outcome: "sponsor",
+              about: "company",
+              org_name: "FC Lisse",
+              relation: "Balsponsor van FC Lisse",
+              observed_name: "Schildersbedrijf Van der Zaal",
+              source_ids: ["club", "invented"],
+            },
+            {
+              kind: "sport",
+              outcome: "sponsor",
+              about: "company",
+              org_name: "FC Lisse",
+              relation: "Sponsor",
+              observed_name: "Een ander bedrijf",
+              source_ids: ["club"],
+            },
+          ],
+        },
+      ],
+    });
+    const filtered = filterCheckToCitations(check, ["https://fclisse.nl/sponsors"]);
+    assert.deepEqual(filtered.sources.map((source) => source.id), ["club"]);
+    assert.equal(filtered.companies.length, 1);
+    assert.equal(filtered.companies[0]?.claims.length, 1);
+    assert.deepEqual(filtered.companies[0]?.claims[0]?.source_ids, ["club"]);
   });
 });
 
@@ -660,24 +755,20 @@ describe("a phone book is not local presence", () => {
     ],
   });
 
-  it("keeps the club and the local paper, and drops the shared directory lines", () => {
+  it("keeps club proof and drops directories and local press", () => {
     assert.deepEqual(directoryHostsIn(lisseCheck), ["bedrijvenregister.nl", "telefoonboek.nl"]);
-    const found = companiesFromSearch(painters, lisseCheck);
+    const found = companiesWithLocalMention(painters, lisseCheck);
     const zaal = found.find((row) => row.name === "Schildersbedrijf Van der Zaal");
     const marseille = found.find((row) => row.name === "Marseille Schilders BV");
-    const daudeij = found.find((row) => row.name === "Daudeij Schilderwerken");
-    const beek = found.find((row) => row.name === "Schildersbedrijf Van Beek");
-    const tkn = found.find((row) => row.name === "TKN-Schildersbedrijf");
     assert.equal(zaal?.matchNote, "Balsponsor van FC Lisse bij thuiswedstrijden");
     assert.equal(zaal?.hits[0]?.kind, "sport");
     assert.equal(zaal?.hits.some((hit) => hit.host === "telefoonboek.nl" || hit.host === "bedrijvenregister.nl"), false);
     assert.equal(marseille?.matchNote, "Opgenomen in het SponsorPortaal van FC Lisse");
     assert.equal(marseille?.sourceCount, 1);
-    assert.match(daudeij?.matchNote ?? "", /eerste zoekstap/);
-    assert.deepEqual(daudeij?.hits.map((hit) => hit.kind), ["search"]);
-    assert.equal(beek?.matchNote, "Vermeld in de bedrijvengids van de Lisse Krant");
-    assert.equal(beek?.hits[0]?.kind, "ov");
-    assert.match(tkn?.matchNote ?? "", /eerste zoekstap/);
+    assert.deepEqual(
+      found.map((row) => row.name).sort(),
+      ["Marseille Schilders BV", "Schildersbedrijf Van der Zaal"].sort(),
+    );
     const card = cardFromFound({
       id: "11111111-1111-4111-8111-111111111111",
       row: zaal!,
@@ -686,14 +777,8 @@ describe("a phone book is not local presence", () => {
       observedAt: "2026-10-27T07:29:23.815Z",
     });
     assert.equal(card.status, "lokaal_verbonden");
-    const plain = cardFromFound({
-      id: "22222222-2222-4222-8222-222222222222",
-      row: daudeij!,
-      place: "Lisse",
-      tradeId: "paint",
-      observedAt: "2026-10-27T07:29:23.815Z",
-    });
-    assert.equal(plain.status, "gevonden");
+    assert.deepEqual(card.badges, ["gevonden", "lokaal_verbonden"]);
+    assert.equal(card.tradeLabel, "Schilders");
   });
 
   it("drops an SBI sentence even when the host is not a known directory", () => {
@@ -817,6 +902,80 @@ describe("stored gevonden lookup", () => {
     assert.deepEqual(
       companies.map((company) => company.name),
       ["Kusch"],
+    );
+  });
+
+  it("does not treat a stored phone book or SBI line as local proof", () => {
+    const phoneBook = {
+      id: "44444444-4444-4444-8444-444444444444",
+      name: "Daudeij Schilderwerken",
+      website_url: "https://daudeijschilderwerken.nl",
+      partnerTrust: {
+        status: "gevonden" as const,
+        tradeId: "paint",
+        postcode4: "2161",
+        score: 2,
+        elementCodes: [],
+        matchNote: "Vermeld in het bedrijvenregister met SBI-code 4334 in Lisse.",
+        facts: [
+          {
+            kind: "ov" as const,
+            sourceUrl: "https://www.telefoonboek.nl/zoeken/schilders/lisse/",
+            sourceName: "Telefoonboek.nl – Schilders Lisse",
+            observedAt: "2026-10-27T07:29:23.815Z",
+            expiresAt: fresh,
+          },
+          {
+            kind: "ov" as const,
+            sourceUrl: "https://www.bedrijvenregister.nl/schilderen-en-glaszetten/lisse",
+            sourceName: "Bedrijvenregister.nl",
+            observedAt: "2026-10-27T07:29:23.815Z",
+            expiresAt: fresh,
+          },
+        ],
+      },
+    };
+    const club = {
+      id: "55555555-5555-4555-8555-555555555555",
+      name: "Schildersbedrijf Van der Zaal",
+      website_url: "https://schildersbedrijfvanderzaal.nl",
+      partnerTrust: {
+        status: "gevonden" as const,
+        tradeId: "paint",
+        postcode4: "2161",
+        score: 2,
+        elementCodes: [],
+        matchNote:
+          "Vermeld in het bedrijvenregister met SBI-code 4334 in Lisse. · Balsponsor van FC Lisse",
+        facts: [
+          {
+            kind: "ov" as const,
+            sourceUrl: "https://www.telefoonboek.nl/zoeken/schilders/lisse/",
+            sourceName: "Telefoonboek.nl",
+            observedAt: "2026-10-27T07:29:23.815Z",
+            expiresAt: fresh,
+          },
+          {
+            kind: "sport" as const,
+            sourceUrl: "https://fclisse.nl/sponsors",
+            sourceName: "FC Lisse",
+            observedAt: "2026-10-27T07:29:23.815Z",
+            expiresAt: fresh,
+          },
+        ],
+      },
+    };
+    const freshFirms = selectFreshFound([phoneBook, club], { tradeId: "paint", postcode4: "2161" }, now);
+    assert.deepEqual(
+      freshFirms.map((company) => company.name),
+      ["Schildersbedrijf Van der Zaal"],
+    );
+    assert.equal(cardFromStoredFound(phoneBook, "Lisse"), null);
+    const card = cardFromStoredFound(club, "Lisse");
+    assert.equal(card?.matchNote, "FC Lisse");
+    assert.deepEqual(
+      card?.evidence.map((item) => item.url),
+      ["https://fclisse.nl/sponsors"],
     );
   });
 });

@@ -1,6 +1,8 @@
 import {
+  foldTradeLabel,
   GeminiCheckSchema,
   reviewFoundFirms,
+  websiteHost,
   type GeminiCandidate,
   type GeminiCheck,
 } from "@h3-trust/schema";
@@ -103,16 +105,17 @@ async function ask(
   }
 }
 
-function localPhone(raw: string): string {
-  const digits = raw.replace(/\D/g, "");
-  if (digits.startsWith("085") || digits.startsWith("088") || digits.startsWith("3185") || digits.startsWith("3188")) {
-    return "";
-  }
-  return raw.trim();
-}
-
 function asText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function textList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 6);
 }
 
 function firstText(row: Record<string, unknown>, keys: readonly string[]): string {
@@ -136,16 +139,17 @@ export function proposedCandidates(raw: Record<string, unknown>): GeminiCandidat
       name,
       website: firstText(row, ["website", "url", "site"]),
       address: firstText(row, ["address", "adres"]),
-      phone: localPhone(firstText(row, ["phone", "telefoon"])),
+      phone: firstText(row, ["phone", "telefoon"]),
       email: firstText(row, ["email", "e-mail"]),
+      candidateBasis: textList(row.candidate_basis ?? row.candidateBasis),
+      riskFlags: textList(row.risk_flags ?? row.riskFlags),
     });
   }
   return out;
 }
 
 /**
- * First question: up to five local firms.
- * Lead sites and national 085/088 numbers are dropped. A missing citation is not.
+ * First question: up to ten plausible local firms. This is discovery, not proof.
  */
 export async function findLocalCompanies(args: {
   tradeLabel: string;
@@ -157,15 +161,14 @@ export async function findLocalCompanies(args: {
     {
       role: "system",
       content: [
-        "Zoek naar vakbedrijven die fysiek in de plaats gevestigd zijn, of het lokale netnummer hebben.",
-        'Antwoord alleen met JSON: {"companies":[{"name":"","address":"","website":"","phone":"","email":""}]}',
-        "Geef hooguit 5 bedrijven voor particulier onderhoud. Een bedrijf in een buurdorp mag.",
-        "Lokale verankering, zoals een familiebedrijf, een bedrijventerrein of een club, is een plus en geen eis.",
-        "Geen tussenpersonen (geen Werkspot, Trustoo, Zoofy) en geen landelijke 085- of 088-nummers.",
-        "Gebruik de eigen website als je die vond. Verzin geen bedrijf en geen URL.",
-        "Een bedrijf zonder website geef je toch terug, met telefoonnummer en adres.",
-        "Ontbreekt het e-mailadres, geef het lokale telefoonnummer. Zoek niet eindeloos naar een e-mailadres.",
-        "Zijn er minder dan 5 echte bedrijven, geef er minder terug.",
+        "Maak een kandidatenlijst, geen betrouwbaarheidsoordeel.",
+        "Vind maximaal 10 echte vakbedrijven die fysiek gevestigd zijn in of nabij de gevraagde plaats en de klus voor particulieren uitvoeren.",
+        "Geef voorkeur aan een unieke bedrijfsnaam, eigen website, volledig vestigingsadres, lokaal of direct 06-nummer, zichtbare eigenaar/team/historie en diensten die bij de klus passen.",
+        "Noteer als risk_flags: een generieke vak-plus-plaatsnaam, veel plaats-landingspagina's, vage bedrijfsidentiteit, virtueel of postadres, landelijke doorschakeling en een 085/088-nummer.",
+        "Een 085/088-nummer is alleen een waarschuwing en nooit op zichzelf een reden om het bedrijf weg te laten.",
+        "Geen tussenpersonen, vergelijkers of offerteplatforms. Gebruik de eigen website als je die vond en verzin geen bedrijf of URL.",
+        "Een bedrijf zonder website mag terug met telefoonnummer en adres. Geef minder dan 10 als er onvoldoende aannemelijke kandidaten zijn.",
+        'Antwoord alleen met JSON: {"companies":[{"name":"","address":"","website":"","phone":"","email":"","candidate_basis":[""],"risk_flags":[""]}]}',
       ].join("\n"),
     },
     {
@@ -178,7 +181,7 @@ export async function findLocalCompanies(args: {
       ].join("\n"),
     },
   ];
-  const { content } = await ask(messages);
+  const { content } = await ask(messages, 10);
   if (!content) {
     throw new Error("Find step returned no company list. The model used the whole reply before the JSON.");
   }
@@ -196,13 +199,52 @@ export async function findLocalCompanies(args: {
   return { companies: reviewed.kept, skipped: reviewed.skipped, raw, parsed };
 }
 
-/** Second Gemini question: a club, association, or local paper. A missing company means no mention. */
+function citationKey(raw: string): string | null {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    const path = url.pathname.replace(/\/+$/, "") || "/";
+    return `${url.hostname.replace(/^www\./i, "").toLowerCase()}${path}`;
+  } catch {
+    return null;
+  }
+}
+
+/** Keep only source URLs returned by the web-search citation layer. */
+export function filterCheckToCitations(check: GeminiCheck, citations: readonly string[]): GeminiCheck {
+  const cited = new Set(citations.map(citationKey).filter((key): key is string => Boolean(key)));
+  const sources = check.sources.filter((source) => {
+    const key = citationKey(source.url);
+    return Boolean(key && cited.has(key) && websiteHost(source.url));
+  });
+  const sourceIds = new Set(sources.map((source) => source.id));
+  const companies = check.companies.flatMap((company) => {
+    const companyName = foldTradeLabel(company.name);
+    const claims = company.claims
+      .map((claim) => ({
+        ...claim,
+        source_ids: claim.source_ids.filter((id) => sourceIds.has(id)),
+      }))
+      .filter((claim) => {
+        const observed = foldTradeLabel(claim.observed_name ?? "");
+        if (!observed || !companyName) return false;
+        const sameName =
+          observed === companyName ||
+          (observed.length >= 8 &&
+            companyName.length >= 8 &&
+            (observed.includes(companyName) || companyName.includes(observed)));
+        return claim.source_ids.length > 0 && sameName;
+      });
+    return claims.length > 0 ? [{ ...company, claims }] : [];
+  });
+  return { ...check, sources, companies };
+}
+
+/** Second question: accepted local structures only. A missing company means no mention. */
 export async function checkLocalMentions(args: {
   place: string;
   tradeLabel: string;
   companies: readonly GeminiCandidate[];
-  /** Set when the previous answer only cited a phone book or SBI register. */
-  steer?: "clubs";
 }): Promise<GeminiCheck> {
   const names = args.companies.map((company) => ({
     name: company.name,
@@ -214,22 +256,14 @@ export async function checkLocalMentions(args: {
     {
       role: "system",
       content: [
-        "Zoek per bedrijf een pagina waarop dat bedrijf bij naam staat: de sponsorlijst of het sponsorportaal van de plaatselijke voetbalclub of sportvereniging, een jaarfeest, een ondernemersvereniging, een koop-lokaal actie, of de bedrijvengids van de plaatselijke krant.",
-        "De relation noemt de organisatie en de rol van dit ene bedrijf, zoals \"Balsponsor van de voetbalclub\" of \"Vermeld in de bedrijvengids van de plaatselijke krant\". Neem die voorbeeldzin niet letterlijk over.",
-        "Geen telefoonboek, geen bedrijvenregister.nl, geen KvK, geen SBI-code, geen Google en geen eigen website. Dat is geen lokale aanwezigheid. Gebruik die URL niet.",
-        "Geef alleen JSON terug. Een bedrijf zonder zo'n pagina laat je weg.",
-        "Verzin geen URL. Elke bron heeft een volledige https-URL van de pagina waarop het bedrijf staat.",
-        "about is company of person. Een familielid is person en telt niet als het bedrijf.",
-        "kind is ov, sport, festivity of press. outcome is member, sponsor of mentioned.",
-        "category is local_business_association, sponsorship, municipal_initiative, football_club of local_press. scope is local.",
-        "Een landelijk certificaat (Techniek Nederland, NVKL, KvK) telt niet.",
-        "Geen score.",
-        args.steer === "clubs"
-          ? "Het vorige antwoord gebruikte een telefoongids of een bedrijvenregister. Die tellen niet. Zoek opnieuw, alleen een club, een feest, een vereniging of de lokale krant."
-          : "",
-        'Vorm: {"place":"","trade":"","checked_on":"","sources":[{"id":"s1","name":"","url":"","category":"football_club","scope":"local","place":"","description":"","list_public":true}],"companies":[{"name":"","place":"","phone":"","email":"","website":"","claims":[{"kind":"sport","outcome":"sponsor","about":"company","org_name":"","relation":"","source_ids":["s1"],"pages_checked":[],"note":null}]}]}',
+        "Controleer de bedrijven uitsluitend op officiële openbare pagina's van lokale ondernemersverenigingen of coöperaties, plaatselijke sportclubs en plaatselijke jaarfeesten, braderieën, kermissen of feestcommissies.",
+        "Geef een bedrijf alleen terug als zijn bedrijfsnaam daadwerkelijk op zo'n pagina staat als lid, sponsor, deelnemer of organisator.",
+        "Leid een relatie niet af uit alleen een adres of vestigingsplaats. Gebruik uitsluitend de drie genoemde soorten lokale organisaties.",
+        "Geef alleen positieve treffers en verzin geen URL of relatie. Een bedrijf zonder treffer laat je weg.",
+        "kind is ov, sport of festivity. outcome is member, sponsor of mentioned. about is company.",
+        "category is local_business_association, sports_club, football_club, sponsorship of festivity. scope is local.",
+        'Antwoord alleen met JSON: {"place":"","trade":"","checked_on":"","sources":[{"id":"s1","name":"","url":"","category":"sports_club","scope":"local","place":"","description":"","list_public":true}],"companies":[{"name":"","place":"","phone":"","email":"","website":"","claims":[{"kind":"sport","outcome":"sponsor","about":"company","org_name":"","relation":"","observed_name":"","source_ids":["s1"],"pages_checked":[],"note":null}]}]}',
       ]
-        .filter(Boolean)
         .join("\n"),
     },
     {
@@ -238,15 +272,14 @@ export async function checkLocalMentions(args: {
         `Plaats: ${args.place}`,
         `Vak: ${args.tradeLabel}`,
         `Bedrijven: ${JSON.stringify(names)}`,
-        `Zoekopdrachten: "voetbalclub ${args.place} sponsoren", "bedrijvengids ${args.place}", "ondernemersvereniging ${args.place} leden".`,
-        "Geef alleen een bedrijf terug als zijn naam op zo'n pagina staat.",
+        "Geef alleen bedrijven terug waarvan de naam op een toegestane lokale organisatiepagina staat.",
       ].join("\n"),
     },
   ];
-  const { content } = await ask(messages, 10);
+  const { content, urls } = await ask(messages, 10);
   const parsed = GeminiCheckSchema.safeParse(parseJsonObject(content));
   if (!parsed.success) {
     throw new Error(parsed.error.issues[0]?.message ?? "Gemini check JSON was not usable");
   }
-  return parsed.data;
+  return filterCheckToCitations(parsed.data, urls);
 }
