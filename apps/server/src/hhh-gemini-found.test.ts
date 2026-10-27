@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   GeminiCheckSchema,
+  cardFromFound,
   companiesFromSearch,
   companiesWithLocalMention,
   reviewFoundFirms,
@@ -9,6 +10,7 @@ import {
   selectFreshFound,
   type GeminiCandidate,
 } from "@h3-trust/schema";
+import { partnerCardsFromSearch } from "./hhh-gemini-run.js";
 import { proposedCandidates } from "./hhh-gemini-search.js";
 
 const alkmaarCheck = GeminiCheckSchema.parse({
@@ -333,6 +335,46 @@ describe("first search firms", () => {
     assert.equal(kept[0]?.name, "Loodgietersbedrijf De Bollen");
     assert.equal(kept[0]?.website, "");
     assert.equal(kept[0]?.phone, "0252 412 345");
+  });
+
+  it("sends a firm with a local mention as locally known and keeps phone and email", () => {
+    const [known] = companiesFromSearch([candidates[0]!], alkmaarCheck);
+    const card = cardFromFound({
+      id: "11111111-1111-4111-8111-111111111111",
+      row: known!,
+      place: "Alkmaar",
+      tradeId: "hvac",
+      observedAt: "2026-10-26T00:00:00.000Z",
+    });
+    assert.equal(card.status, "lokaal_verbonden");
+    assert.equal(card.phone, "072 - 511 42 30");
+    assert.equal(card.email, "info@coppensalkmaar.nl");
+    assert.ok(card.evidence.some((item) => item.kind === "ov"));
+  });
+
+  it("sends phone and email as gevonden when there is no local mention", () => {
+    const listed = partnerCardsFromSearch(
+      [
+        {
+          name: "Dakenonderhoud",
+          website: "http://dakenenonderhoud.nl",
+          address: "Vennestraat 56c, Lisse",
+          phone: "06 29086861",
+          email: "info@dakenenonderhoud.nl",
+        },
+      ],
+      "Lisse",
+      "roof",
+    );
+    assert.equal(listed.companies.length, 1);
+    assert.equal(listed.companies[0]?.status, "gevonden");
+    assert.equal(listed.companies[0]?.phone, "06 29086861");
+    assert.equal(listed.companies[0]?.email, "info@dakenenonderhoud.nl");
+    assert.equal(listed.companies[0]?.sourceCount, 1);
+    assert.deepEqual(
+      listed.companies[0]?.evidence.map((item) => item.kind),
+      ["search"],
+    );
   });
 
   it("reads a Dutch naam and telefoon", () => {

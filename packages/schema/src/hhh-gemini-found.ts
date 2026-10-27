@@ -334,7 +334,7 @@ export function cardFromFound(args: {
     phone: args.row.phone || undefined,
     email: args.row.email || undefined,
     tradeId: args.tradeId,
-    status: "gevonden",
+    status: args.row.hits.some((hit) => hit.kind !== "search") ? "lokaal_verbonden" : "gevonden",
     sourceCount: args.row.sourceCount,
     score: args.row.sourceCount,
     matchNote: args.row.matchNote,

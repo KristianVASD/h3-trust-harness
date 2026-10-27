@@ -160,6 +160,48 @@ async function lookup(
   return "continue";
 }
 
+function cardsForPartner(
+  rows: readonly GeminiFoundCompany[],
+  place: string,
+  tradeId: TradeId,
+): HhhPublicShortlist {
+  const observedAt = new Date().toISOString();
+  const cards = rows.map((row) =>
+    cardFromFound({
+      id: randomUUID(),
+      row,
+      place,
+      tradeId,
+      observedAt,
+    }),
+  );
+  return HhhPublicShortlistSchema.parse({ fromCache: false, companies: publishCards(cards) });
+}
+
+/** Partner cards before the local-mention check. Every firm is gevonden. */
+export function partnerCardsFromSearch(
+  candidates: readonly GeminiCandidate[],
+  place: string,
+  tradeId: TradeId,
+): HhhPublicShortlist {
+  return cardsForPartner(companiesFromSearch(candidates, null), place, tradeId);
+}
+
+function publishHeld(payload: GeminiPayload): HhhPublicShortlist {
+  const rows = payload.found.length > 0 ? payload.found : companiesFromSearch(payload.candidates, null);
+  payload.found = rows;
+  payload.stage = "done";
+  const listed = cardsForPartner(rows, payload.placeLabel, payload.tradeId);
+  const known = listed.companies.filter((card) => card.status === "lokaal_verbonden").length;
+  note(
+    payload,
+    known > 0
+      ? `Returning ${listed.companies.length} companies. ${known} are locally known.`
+      : `No local mention. Returning ${listed.companies.length} companies as gevonden.`,
+  );
+  return listed;
+}
+
 async function find(payload: GeminiPayload): Promise<HhhPublicShortlist | null> {
   const found = await findLocalCompanies({
     tradeLabel: tradeLabel(payload.tradeId),
@@ -176,38 +218,31 @@ async function find(payload: GeminiPayload): Promise<HhhPublicShortlist | null> 
       ? `Find step kept ${candidates.length} companies${found.skipped.length ? `, skipped ${found.skipped.length}` : ""}.`
       : "Find step reply was not usable JSON.",
   );
-  payload.stage = candidates.length > 0 ? "check" : "done";
   if (candidates.length === 0) {
+    payload.found = [];
+    payload.stage = "done";
     return HhhPublicShortlistSchema.parse({ fromCache: false, companies: [] });
   }
+  payload.stage = "check";
   return null;
 }
 
-async function check(payload: GeminiPayload): Promise<void> {
-  let found = companiesFromSearch(payload.candidates, null);
+async function check(payload: GeminiPayload): Promise<HhhPublicShortlist> {
+  let merged = companiesFromSearch(payload.candidates, null);
   try {
     const checked = await checkLocalMentions({
       place: payload.placeLabel,
       tradeLabel: tradeLabel(payload.tradeId),
       companies: payload.candidates,
     });
-    found = companiesFromSearch(payload.candidates, checked);
+    merged = companiesFromSearch(payload.candidates, checked);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Local-mention check failed";
     note(payload, `${message} Returning the companies from the first search.`);
   }
-  const mentioned = found.filter((row) => row.hits.some((hit) => hit.kind !== "search")).length;
-  payload.found = found;
+  payload.found = merged;
   payload.drops = [];
-  note(
-    payload,
-    found.length === 0
-      ? "The first search returned no company."
-      : mentioned > 0
-        ? `Returning ${found.length} companies. ${mentioned} also have a local mention.`
-        : `No club or association page. Returning ${found.length} companies from the search.`,
-  );
-  payload.stage = "store";
+  return publishHeld(payload);
 }
 
 async function rememberedCards(store: Store, payload: GeminiPayload): Promise<HhhPublicShortlist["companies"]> {
@@ -288,6 +323,71 @@ async function storeFound(
   note(payload, `Returning ${companies.length} companies as gevonden.`);
 }
 
+/** Save the partner list first. A failed database write must leave that list in place. */
+async function commitSearchResult(
+  args: { admin: SupabaseClient; store: Store; cells: PlaceCellStore; jobId: string },
+  payload: GeminiPayload,
+  sealed: HhhPublicShortlist,
+): Promise<HhhPublicShortlist> {
+  payload.stage = "done";
+  payload.lock = undefined;
+  payload.lockAt = undefined;
+  await savePartnerJob(args.admin, {
+    id: args.jobId,
+    status: "ready",
+    payload: { ...payload },
+    publicResult: sealed,
+  });
+  if (payload.found.length === 0) return sealed;
+  try {
+    let stored = sealed;
+    await storeFound({ store: args.store, cells: args.cells }, payload, (next) => {
+      stored = next;
+    });
+    payload.lock = undefined;
+    payload.lockAt = undefined;
+    await savePartnerJob(args.admin, {
+      id: args.jobId,
+      status: "ready",
+      payload: { ...payload },
+      publicResult: stored,
+    });
+    if (payload.knockout === "pending") scheduleHhhFoundKnockout(args.jobId);
+    return stored;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Storing the firms failed";
+    note(payload, `The company list is saved for HandyHouseHelp. ${message}`);
+    payload.stage = "done";
+    payload.knockout = undefined;
+    payload.lock = undefined;
+    payload.lockAt = undefined;
+    await savePartnerJob(args.admin, {
+      id: args.jobId,
+      status: "ready",
+      payload: { ...payload },
+      publicResult: sealed,
+    });
+    return sealed;
+  }
+}
+
+/** A poll of a job that already has firms publishes them. It does not start another web search. */
+export async function releaseHeldSearch(args: {
+  admin: SupabaseClient;
+  store: Store;
+  cells: PlaceCellStore;
+  job: { id: string; status: string; payload: Record<string, unknown> };
+}): Promise<HhhPublicShortlist | null> {
+  if (args.job.status !== "running" && args.job.status !== "queued") return null;
+  const payload = readGeminiPayload(args.job.payload);
+  if (!payload) return null;
+  if (payload.stage !== "check" && payload.stage !== "gate" && payload.stage !== "store") return null;
+  if (!canRun(payload)) return null;
+  if (payload.candidates.length === 0 && payload.found.length === 0) return null;
+  const sealed = publishHeld(payload);
+  return commitSearchResult({ ...args, jobId: args.job.id }, payload, sealed);
+}
+
 export async function runGeminiFoundSlice(args: {
   admin: SupabaseClient;
   store: Store;
@@ -328,26 +428,21 @@ export async function runGeminiFoundSlice(args: {
           payload: { ...payload },
           publicResult,
         });
-        const empty = await find(payload);
-        if (empty) publicResult = empty;
+        const listed = await find(payload);
+        if (listed) publicResult = listed;
       }
-    } else if (payload.stage === "check") await check(payload);
-    else if (payload.stage === "gate") payload.stage = "store";
-    else if (payload.stage === "store") {
-      await storeFound(args, payload, (next) => (publicResult = next));
-      outcome = "ready";
+    } else if (payload.stage === "check") {
+      publicResult = await check(payload);
+    } else if (payload.stage === "gate" || payload.stage === "store") {
+      publicResult = publishHeld(payload);
     } else outcome = "ready";
     if (payload.stage === "done") outcome = "ready";
     if (outcome === "ready") {
-      payload.lock = undefined;
-      payload.lockAt = undefined;
-      await savePartnerJob(args.admin, {
-        id: job.id,
-        status: "ready",
-        payload: { ...payload },
-        publicResult,
-      });
-      if (payload.knockout === "pending") scheduleHhhFoundKnockout(args.jobId);
+      await commitSearchResult(
+        args,
+        payload,
+        publicResult ?? HhhPublicShortlistSchema.parse({ fromCache: false, companies: [] }),
+      );
       return { continue: false };
     }
     await savePartnerJob(args.admin, {

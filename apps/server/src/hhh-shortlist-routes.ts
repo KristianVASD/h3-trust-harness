@@ -5,7 +5,7 @@ import { HhhShortlistRequestSchema } from "@h3-trust/schema";
 import type { Store } from "@h3-trust/store";
 import { geocodeCached } from "./address-search-job.js";
 import { isAdmin, type AppVariables } from "./auth.js";
-import { runFoundKnockout } from "./hhh-gemini-run.js";
+import { releaseHeldSearch, runFoundKnockout } from "./hhh-gemini-run.js";
 import { deferHhhSlice, scheduleHhhShortlistStep, scheduleLocalSourceGeocode } from "./hhh-shortlist-kick.js";
 import {
   abortLivePartnerJobs,
@@ -149,6 +149,13 @@ export function registerHhhShortlistRoutes(
     if (!deps.admin) return c.json(engineUnavailable(), 503);
     const job = await getPartnerJob(deps.admin, c.req.param("jobId"));
     if (!job) return c.json({ error: "Shortlist job not found" }, 404);
+    const released = await releaseHeldSearch({
+      admin: deps.admin,
+      store: deps.store,
+      cells: deps.cells,
+      job,
+    });
+    if (released) return c.json({ jobId: job.id, status: "ready", ...released });
     nudgeIdleShortlist({ store: deps.store, admin: deps.admin, cells: deps.cells }, job);
     if (job.status === "ready" && job.public_result) {
       return c.json({ jobId: job.id, status: "ready", ...job.public_result });
