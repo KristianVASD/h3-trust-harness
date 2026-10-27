@@ -5,6 +5,7 @@ import {
   cardFromFound,
   companiesFromSearch,
   companiesWithLocalMention,
+  directoryHostsIn,
   reviewFoundFirms,
   selectFoundFirms,
   selectFreshFound,
@@ -493,6 +494,249 @@ describe("model words for a football sponsor", () => {
         ["Installatiebedrijf Kusch", 1, "sport"],
       ],
     );
+  });
+});
+
+describe("a phone book is not local presence", () => {
+  const painters: GeminiCandidate[] = [
+    {
+      name: "Schildersbedrijf Van der Zaal",
+      website: "https://schildersbedrijfvanderzaal.nl",
+      address: "Meer en Duin 8a, Lisse",
+      phone: "0252 414150",
+      email: "",
+    },
+    {
+      name: "Marseille Schilders BV",
+      website: "https://marseille-schilders.nl",
+      address: "Vennestraat 52k, Lisse",
+      phone: "0252 422629",
+      email: "",
+    },
+    {
+      name: "Daudeij Schilderwerken",
+      website: "https://daudeijschilderwerken.nl",
+      address: "Meer en Duin 80, Lisse",
+      phone: "0252 506924",
+      email: "",
+    },
+    {
+      name: "Schildersbedrijf Van Beek",
+      website: "https://schildersbedrijfvanbeek.nl",
+      address: "Nassaupark 67, Lisse",
+      phone: "06 53264413",
+      email: "",
+    },
+    {
+      name: "TKN-Schildersbedrijf",
+      website: "https://tkn-schildersbedrijf.nl",
+      address: "Rosa Spierstraat 7, Lisse",
+      phone: "06 14629884",
+      email: "",
+    },
+  ];
+
+  const lisseCheck = GeminiCheckSchema.parse({
+    place: "Lisse",
+    trade: "schilder",
+    sources: [
+      {
+        id: "reg",
+        name: "Bedrijvenregister.nl – Schilderen en glaszetten in Lisse",
+        url: "https://www.bedrijvenregister.nl/schilderen-en-glaszetten/lisse",
+        category: "local_business_association",
+        scope: "local",
+      },
+      {
+        id: "tel",
+        name: "Telefoonboek.nl – Schilders Lisse",
+        url: "https://www.telefoonboek.nl/zoeken/schilders/lisse/",
+        category: "local_business_association",
+        scope: "local",
+      },
+      {
+        id: "fc",
+        name: "FC Lisse",
+        url: "https://fclisse.nl/sponsors",
+        category: "football_club",
+        scope: "local",
+        place: "Lisse",
+      },
+      {
+        id: "portaal",
+        name: "FC Lisse SponsorPortaal",
+        url: "https://fclisse.nl/sponsorportaal",
+        category: "sponsorship",
+        scope: "local",
+        place: "Lisse",
+      },
+      {
+        id: "krant",
+        name: "Lisse Krant",
+        url: "https://www.lissekrant.nl/bedrijvengids",
+        category: "local_press",
+        scope: "local",
+        place: "Lisse",
+      },
+    ],
+    companies: [
+      {
+        name: "Schildersbedrijf Van der Zaal",
+        website: "https://schildersbedrijfvanderzaal.nl",
+        claims: [
+          {
+            kind: "ov",
+            outcome: "mentioned",
+            about: "company",
+            org_name: "Bedrijvenregister",
+            relation: "Vermeld in het bedrijvenregister met SBI-code 4334 in Lisse.",
+            source_ids: ["reg", "tel"],
+          },
+          {
+            kind: "sport",
+            outcome: "sponsor",
+            about: "company",
+            org_name: "FC Lisse",
+            relation: "Balsponsor van FC Lisse bij thuiswedstrijden",
+            source_ids: ["fc"],
+          },
+        ],
+      },
+      {
+        name: "Marseille Schilders BV",
+        website: "https://marseille-schilders.nl",
+        claims: [
+          {
+            kind: "sponsor",
+            outcome: "sponsor",
+            about: "company",
+            org_name: "FC Lisse",
+            relation: "Opgenomen in het SponsorPortaal van FC Lisse",
+            source_ids: ["portaal", "tel"],
+          },
+        ],
+      },
+      {
+        name: "Daudeij Schilderwerken",
+        website: "https://daudeijschilderwerken.nl",
+        claims: [
+          {
+            kind: "ov",
+            outcome: "mentioned",
+            about: "company",
+            relation: "Vermeld in de telefoongids voor schilders in Lisse.",
+            source_ids: ["tel", "reg"],
+          },
+        ],
+      },
+      {
+        name: "Schildersbedrijf Van Beek",
+        website: "https://schildersbedrijfvanbeek.nl",
+        claims: [
+          {
+            kind: "press",
+            outcome: "mentioned",
+            about: "company",
+            org_name: "Lisse Krant",
+            relation: "Vermeld in de bedrijvengids van de Lisse Krant",
+            source_ids: ["krant"],
+          },
+        ],
+      },
+      {
+        name: "TKN-Schildersbedrijf",
+        website: "https://tkn-schildersbedrijf.nl",
+        claims: [
+          {
+            kind: "ov",
+            outcome: "mentioned",
+            about: "company",
+            org_name: "Lijst",
+            relation: "Vermeld in het bedrijvenregister met SBI-code 4334 in Lisse.",
+            source_ids: ["reg"],
+          },
+        ],
+      },
+    ],
+  });
+
+  it("keeps the club and the local paper, and drops the shared directory lines", () => {
+    assert.deepEqual(directoryHostsIn(lisseCheck), ["bedrijvenregister.nl", "telefoonboek.nl"]);
+    const found = companiesFromSearch(painters, lisseCheck);
+    const zaal = found.find((row) => row.name === "Schildersbedrijf Van der Zaal");
+    const marseille = found.find((row) => row.name === "Marseille Schilders BV");
+    const daudeij = found.find((row) => row.name === "Daudeij Schilderwerken");
+    const beek = found.find((row) => row.name === "Schildersbedrijf Van Beek");
+    const tkn = found.find((row) => row.name === "TKN-Schildersbedrijf");
+    assert.equal(zaal?.matchNote, "Balsponsor van FC Lisse bij thuiswedstrijden");
+    assert.equal(zaal?.hits[0]?.kind, "sport");
+    assert.equal(zaal?.hits.some((hit) => hit.host === "telefoonboek.nl" || hit.host === "bedrijvenregister.nl"), false);
+    assert.equal(marseille?.matchNote, "Opgenomen in het SponsorPortaal van FC Lisse");
+    assert.equal(marseille?.sourceCount, 1);
+    assert.match(daudeij?.matchNote ?? "", /eerste zoekstap/);
+    assert.deepEqual(daudeij?.hits.map((hit) => hit.kind), ["search"]);
+    assert.equal(beek?.matchNote, "Vermeld in de bedrijvengids van de Lisse Krant");
+    assert.equal(beek?.hits[0]?.kind, "ov");
+    assert.match(tkn?.matchNote ?? "", /eerste zoekstap/);
+    const card = cardFromFound({
+      id: "11111111-1111-4111-8111-111111111111",
+      row: zaal!,
+      place: "Lisse",
+      tradeId: "paint",
+      observedAt: "2026-10-27T07:29:23.815Z",
+    });
+    assert.equal(card.status, "lokaal_verbonden");
+    const plain = cardFromFound({
+      id: "22222222-2222-4222-8222-222222222222",
+      row: daudeij!,
+      place: "Lisse",
+      tradeId: "paint",
+      observedAt: "2026-10-27T07:29:23.815Z",
+    });
+    assert.equal(plain.status, "gevonden");
+  });
+
+  it("drops an SBI sentence even when the host is not a known directory", () => {
+    const check = GeminiCheckSchema.parse({
+      sources: [
+        {
+          id: "s1",
+          name: "Lijst",
+          url: "https://ergens-lokaal.nl/schilders",
+          category: "local_business_association",
+          scope: "local",
+        },
+      ],
+      companies: [
+        {
+          name: "Daudeij Schilderwerken",
+          website: "https://daudeijschilderwerken.nl",
+          claims: [
+            {
+              kind: "ov",
+              outcome: "mentioned",
+              about: "company",
+              org_name: "Bedrijvenregister",
+              relation: "Vermeld in het bedrijvenregister met SBI-code 4334 in Lisse.",
+              source_ids: ["s1"],
+            },
+          ],
+        },
+      ],
+    });
+    const found = companiesWithLocalMention(
+      [
+        {
+          name: "Daudeij Schilderwerken",
+          website: "https://daudeijschilderwerken.nl",
+          address: "",
+          phone: "",
+          email: "",
+        },
+      ],
+      check,
+    );
+    assert.equal(found.length, 0);
   });
 });
 

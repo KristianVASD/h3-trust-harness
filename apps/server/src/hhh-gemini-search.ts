@@ -73,12 +73,15 @@ async function complete(body: Record<string, unknown>): Promise<{ content: strin
   return { content, urls };
 }
 
-async function ask(messages: { role: string; content: string }[]): Promise<{ content: string; urls: string[] }> {
+async function ask(
+  messages: { role: string; content: string }[],
+  maxResults = 5,
+): Promise<{ content: string; urls: string[] }> {
   const model = geminiModel();
   const withWeb = {
     model,
     messages,
-    plugins: [{ id: "web", max_results: 5 }],
+    plugins: [{ id: "web", max_results: maxResults }],
     provider: { sort: "price" },
     temperature: 0.1,
     max_tokens: 4000,
@@ -193,31 +196,41 @@ export async function findLocalCompanies(args: {
   return { companies: reviewed.kept, skipped: reviewed.skipped, raw, parsed };
 }
 
-/** Second Gemini question: local mentions only. A missing company means no mention. */
+/** Second Gemini question: a club, association, or local paper. A missing company means no mention. */
 export async function checkLocalMentions(args: {
   place: string;
   tradeLabel: string;
   companies: readonly GeminiCandidate[];
+  /** Set when the previous answer only cited a phone book or SBI register. */
+  steer?: "clubs";
 }): Promise<GeminiCheck> {
   const names = args.companies.map((company) => ({
     name: company.name,
     website: company.website,
+    address: company.address,
     place: args.place,
   }));
   const messages = [
     {
       role: "system",
       content: [
-        "Controleer of deze bedrijven voorkomen op pagina's van ondernemersverenigingen, jaarfeesten of voetbalclubs, als lid of sponsor.",
-        "Geef alleen JSON terug. Een bedrijf zonder lokale vermelding laat je weg.",
+        "Zoek per bedrijf een pagina waarop dat bedrijf bij naam staat: de sponsorlijst of het sponsorportaal van de plaatselijke voetbalclub of sportvereniging, een jaarfeest, een ondernemersvereniging, een koop-lokaal actie, of de bedrijvengids van de plaatselijke krant.",
+        "De relation noemt de organisatie en de rol van dit ene bedrijf, zoals \"Balsponsor van de voetbalclub\" of \"Vermeld in de bedrijvengids van de plaatselijke krant\". Neem die voorbeeldzin niet letterlijk over.",
+        "Geen telefoonboek, geen bedrijvenregister.nl, geen KvK, geen SBI-code, geen Google en geen eigen website. Dat is geen lokale aanwezigheid. Gebruik die URL niet.",
+        "Geef alleen JSON terug. Een bedrijf zonder zo'n pagina laat je weg.",
         "Verzin geen URL. Elke bron heeft een volledige https-URL van de pagina waarop het bedrijf staat.",
         "about is company of person. Een familielid is person en telt niet als het bedrijf.",
-        "kind is ov, sport of festivity. outcome is member, sponsor of mentioned.",
-        "category is local_business_association, sponsorship of municipal_initiative. scope is local.",
-        "Een landelijk certificaat (Techniek Nederland, NVKL, KvK) en de eigen website van het bedrijf zijn geen lokale vermelding.",
+        "kind is ov, sport, festivity of press. outcome is member, sponsor of mentioned.",
+        "category is local_business_association, sponsorship, municipal_initiative, football_club of local_press. scope is local.",
+        "Een landelijk certificaat (Techniek Nederland, NVKL, KvK) telt niet.",
         "Geen score.",
-        'Vorm: {"place":"","trade":"","checked_on":"","sources":[{"id":"s1","name":"","url":"","category":"","scope":"local","place":"","description":"","list_public":true}],"companies":[{"name":"","place":"","phone":"","email":"","website":"","claims":[{"kind":"ov","outcome":"member","about":"company","org_name":"","relation":"","source_ids":["s1"],"pages_checked":[],"note":null}]}]}',
-      ].join("\n"),
+        args.steer === "clubs"
+          ? "Het vorige antwoord gebruikte een telefoongids of een bedrijvenregister. Die tellen niet. Zoek opnieuw, alleen een club, een feest, een vereniging of de lokale krant."
+          : "",
+        'Vorm: {"place":"","trade":"","checked_on":"","sources":[{"id":"s1","name":"","url":"","category":"football_club","scope":"local","place":"","description":"","list_public":true}],"companies":[{"name":"","place":"","phone":"","email":"","website":"","claims":[{"kind":"sport","outcome":"sponsor","about":"company","org_name":"","relation":"","source_ids":["s1"],"pages_checked":[],"note":null}]}]}',
+      ]
+        .filter(Boolean)
+        .join("\n"),
     },
     {
       role: "user",
@@ -225,11 +238,12 @@ export async function checkLocalMentions(args: {
         `Plaats: ${args.place}`,
         `Vak: ${args.tradeLabel}`,
         `Bedrijven: ${JSON.stringify(names)}`,
-        "Geef alleen de bedrijven terug die op een lokale pagina genoemd worden.",
+        `Zoekopdrachten: "voetbalclub ${args.place} sponsoren", "bedrijvengids ${args.place}", "ondernemersvereniging ${args.place} leden".`,
+        "Geef alleen een bedrijf terug als zijn naam op zo'n pagina staat.",
       ].join("\n"),
     },
   ];
-  const { content } = await ask(messages);
+  const { content } = await ask(messages, 10);
   const parsed = GeminiCheckSchema.safeParse(parseJsonObject(content));
   if (!parsed.success) {
     throw new Error(parsed.error.issues[0]?.message ?? "Gemini check JSON was not usable");

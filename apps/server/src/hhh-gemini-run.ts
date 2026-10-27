@@ -6,6 +6,7 @@ import {
   cardFromStoredFound,
   classifyLocalAuthenticity,
   companiesFromSearch,
+  directoryHostsIn,
   lookupFoundOutcome,
   selectFreshFound,
   tradeLabel,
@@ -227,15 +228,36 @@ async function find(payload: GeminiPayload): Promise<HhhPublicShortlist | null> 
   return null;
 }
 
+function locallyKnown(rows: readonly GeminiFoundCompany[]): number {
+  return rows.filter((row) => row.hits.some((hit) => hit.kind !== "search")).length;
+}
+
 async function check(payload: GeminiPayload): Promise<HhhPublicShortlist> {
   let merged = companiesFromSearch(payload.candidates, null);
   try {
-    const checked = await checkLocalMentions({
+    let checked = await checkLocalMentions({
       place: payload.placeLabel,
       tradeLabel: tradeLabel(payload.tradeId),
       companies: payload.candidates,
     });
+    const directories = directoryHostsIn(checked);
+    if (directories.length > 0) {
+      note(
+        payload,
+        `Ignored ${directories.join(" and ")}. A phone book or business register is not a local mention.`,
+      );
+    }
     merged = companiesFromSearch(payload.candidates, checked);
+    if (locallyKnown(merged) === 0 && directories.length > 0) {
+      note(payload, "Check step only cited a directory. Asking again for a club, association, or local paper.");
+      checked = await checkLocalMentions({
+        place: payload.placeLabel,
+        tradeLabel: tradeLabel(payload.tradeId),
+        companies: payload.candidates,
+        steer: "clubs",
+      });
+      merged = companiesFromSearch(payload.candidates, checked);
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Local-mention check failed";
     note(payload, `${message} Returning the companies from the first search.`);

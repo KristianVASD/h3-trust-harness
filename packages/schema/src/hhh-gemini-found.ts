@@ -27,6 +27,9 @@ const LOCAL_KIND: Record<string, "ov" | "sport" | "festivity"> = {
   football_club: "sport",
   sponsor: "sport",
   festivity: "festivity",
+  press: "ov",
+  newspaper: "ov",
+  local_press: "ov",
 };
 
 const LOCAL_CATEGORY: Record<string, "local_business_association" | "sponsorship" | "municipal_initiative"> = {
@@ -36,7 +39,61 @@ const LOCAL_CATEGORY: Record<string, "local_business_association" | "sponsorship
   sports_club: "sponsorship",
   football_club: "sponsorship",
   festivity: "municipal_initiative",
+  local_press: "local_business_association",
+  newspaper: "local_business_association",
+  town_guide: "local_business_association",
 };
+
+/**
+ * National phone books and SBI registers name every firm in a trade.
+ * They are not a club, a local paper, or an ondernemersvereniging.
+ */
+const DIRECTORY_HOSTS = [
+  "telefoonboek.nl",
+  "detelefoongids.nl",
+  "telefoongids.nl",
+  "goudengids.nl",
+  "bedrijvenregister.nl",
+  "kvk.nl",
+  "openkvk.nl",
+  "openingstijden.nl",
+  "openingstijden.com",
+  "drimble.nl",
+  "companyinfo.nl",
+  "webwiki.nl",
+  "cylex.nl",
+  "cylex.com",
+  "hotfrog.nl",
+  "kompass.com",
+  "infobel.com",
+  "yelp.com",
+  "yelp.nl",
+  "trustpilot.com",
+  "google.com",
+  "google.nl",
+  "facebook.com",
+  "instagram.com",
+  "linkedin.com",
+  "wikipedia.org",
+];
+
+const DIRECTORY_CATEGORY = new Set(["directory", "phone_book", "phonebook", "business_register", "national_directory", "sbi"]);
+
+const DIRECTORY_WORD = /sbi[-\s]?code|telefoongids|telefoonboek|gouden gids|bedrijvenregister\.nl|kvk\.nl/i;
+
+export function nationalDirectoryHost(host: string): boolean {
+  const name = host.replace(/^www\./i, "").toLowerCase();
+  return DIRECTORY_HOSTS.some((item) => name === item || name.endsWith(`.${item}`));
+}
+
+export function directoryHostsIn(check: GeminiCheck): string[] {
+  const hosts = new Set<string>();
+  for (const source of check.sources) {
+    const host = websiteHost(source.url);
+    if (host && nationalDirectoryHost(host)) hosts.add(host);
+  }
+  return [...hosts];
+}
 
 const PASS_OUTCOME = new Set(["member", "sponsor", "mentioned"]);
 
@@ -190,12 +247,15 @@ function localHits(companyWebsite: string, claims: readonly GeminiClaim[], sourc
       const source = byId.get(sourceId);
       if (!source) continue;
       if (source.scope.trim().toLowerCase() !== "local") continue;
+      if (DIRECTORY_CATEGORY.has(source.category.trim().toLowerCase())) continue;
       const category = LOCAL_CATEGORY[source.category.trim().toLowerCase()];
       if (!category) continue;
       const url = httpsUrl(source.url);
       const host = url ? websiteHost(url) : null;
       if (!url || !host || (ownHost && host === ownHost) || seen.has(host)) continue;
-      const relation = text(claim.relation) || text(claim.org_name) || source.name;
+      const orgName = text(claim.org_name);
+      const relation = text(claim.relation) || orgName || source.name;
+      if (nationalDirectoryHost(host) || DIRECTORY_WORD.test(`${relation}\n${source.name}\n${orgName}`)) continue;
       seen.set(host, {
         kind,
         sourceName: source.name,
