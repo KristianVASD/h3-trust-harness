@@ -1,10 +1,18 @@
 import {
   foldTradeLabel,
   GeminiCheckSchema,
+  GeminiEvidenceResultSchema,
+  GeminiLandscapeSchema,
+  GeminiReviewSchema,
+  GeminiSourceCandidatesSchema,
   reviewFoundFirms,
   websiteHost,
   type GeminiCandidate,
   type GeminiCheck,
+  type GeminiEvidenceResult,
+  type GeminiLandscape,
+  type GeminiReview,
+  type GeminiUsage,
 } from "@h3-trust/schema";
 import { parseJsonObject } from "./address-search-llm.js";
 
@@ -42,7 +50,22 @@ function collectUrls(payload: unknown): string[] {
   return [...urls];
 }
 
-async function complete(body: Record<string, unknown>): Promise<{ content: string; urls: string[] }> {
+type Completion = { content: string; urls: string[]; usage: GeminiUsage };
+
+function readUsage(value: unknown): GeminiUsage {
+  const row =
+    value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const promptTokens = typeof row.prompt_tokens === "number" ? row.prompt_tokens : 0;
+  const completionTokens =
+    typeof row.completion_tokens === "number" ? row.completion_tokens : 0;
+  const totalTokens =
+    typeof row.total_tokens === "number"
+      ? row.total_tokens
+      : promptTokens + completionTokens;
+  return { promptTokens, completionTokens, totalTokens };
+}
+
+async function complete(body: Record<string, unknown>): Promise<Completion> {
   const key = (process.env.OPENROUTER_API_KEY ?? "").trim();
   if (!key) throw new Error("OPENROUTER_API_KEY is not set");
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -61,6 +84,7 @@ async function complete(body: Record<string, unknown>): Promise<{ content: strin
   }
   const payload = (await res.json()) as {
     choices?: Array<{ message?: { content?: string; annotations?: Annotation[] } }>;
+    usage?: unknown;
   };
   const message = payload.choices?.[0]?.message;
   const content = message?.content?.trim() ?? "";
@@ -72,21 +96,21 @@ async function complete(body: Record<string, unknown>): Promise<{ content: strin
     const url = annotation.url_citation?.url;
     if (url) urls.push(url);
   }
-  return { content, urls };
+  return { content, urls: [...new Set(urls)], usage: readUsage(payload.usage) };
 }
 
 async function ask(
   messages: { role: string; content: string }[],
-  maxResults = 5,
-): Promise<{ content: string; urls: string[] }> {
+  options: { maxResults?: number; maxTokens?: number } = {},
+): Promise<Completion> {
   const model = geminiModel();
   const withWeb = {
     model,
     messages,
-    plugins: [{ id: "web", max_results: maxResults }],
+    plugins: [{ id: "web", max_results: options.maxResults ?? 5 }],
     provider: { sort: "price" },
     temperature: 0.1,
-    max_tokens: 4000,
+    max_tokens: options.maxTokens ?? 1600,
     reasoning: { enabled: false },
   };
   try {
@@ -99,7 +123,7 @@ async function ask(
       model: online,
       messages,
       temperature: 0.1,
-      max_tokens: 4000,
+      max_tokens: options.maxTokens ?? 1600,
       reasoning: { enabled: false },
     });
   }
@@ -155,8 +179,16 @@ export async function findLocalCompanies(args: {
   tradeLabel: string;
   jobText: string;
   place: string;
-}): Promise<{ companies: GeminiCandidate[]; skipped: string[]; raw: string; parsed: boolean }> {
-  const jobLine = args.jobText.trim() || `particulier onderhoud door een ${args.tradeLabel.toLowerCase()}`;
+}): Promise<{
+  companies: GeminiCandidate[];
+  skipped: string[];
+  raw: string;
+  parsed: boolean;
+  usage: GeminiUsage;
+}> {
+  const jobLine =
+    args.jobText.trim() ||
+    `particulier onderhoud door een ${args.tradeLabel.toLowerCase()}`;
   const messages = [
     {
       role: "system",
@@ -181,9 +213,11 @@ export async function findLocalCompanies(args: {
       ].join("\n"),
     },
   ];
-  const { content } = await ask(messages, 10);
+  const { content, usage } = await ask(messages, { maxResults: 10, maxTokens: 1600 });
   if (!content) {
-    throw new Error("Find step returned no company list. The model used the whole reply before the JSON.");
+    throw new Error(
+      "Find step returned no company list. The model used the whole reply before the JSON.",
+    );
   }
   let proposed: GeminiCandidate[] = [];
   let raw = "";
@@ -196,7 +230,7 @@ export async function findLocalCompanies(args: {
   }
   const reviewed = reviewFoundFirms(proposed);
   if (reviewed.kept.length === 0 && !raw) raw = content.slice(0, 500);
-  return { companies: reviewed.kept, skipped: reviewed.skipped, raw, parsed };
+  return { companies: reviewed.kept, skipped: reviewed.skipped, raw, parsed, usage };
 }
 
 function citationKey(raw: string): string | null {
@@ -211,8 +245,13 @@ function citationKey(raw: string): string | null {
 }
 
 /** Keep only source URLs returned by the web-search citation layer. */
-export function filterCheckToCitations(check: GeminiCheck, citations: readonly string[]): GeminiCheck {
-  const cited = new Set(citations.map(citationKey).filter((key): key is string => Boolean(key)));
+export function filterCheckToCitations(
+  check: GeminiCheck,
+  citations: readonly string[],
+): GeminiCheck {
+  const cited = new Set(
+    citations.map(citationKey).filter((key): key is string => Boolean(key)),
+  );
   const sources = check.sources.filter((source) => {
     const key = citationKey(source.url);
     return Boolean(key && cited.has(key) && websiteHost(source.url));
@@ -240,6 +279,258 @@ export function filterCheckToCitations(check: GeminiCheck, citations: readonly s
   return { ...check, sources, companies };
 }
 
+function citationSet(citations: readonly string[]): Set<string> {
+  return new Set(citations.map(citationKey).filter((key): key is string => Boolean(key)));
+}
+
+function isCited(url: string, citations: Set<string>): boolean {
+  const key = citationKey(url);
+  return Boolean(key && citations.has(key));
+}
+
+export function filterLandscapeToCitations(
+  landscape: GeminiLandscape,
+  citations: readonly string[],
+): GeminiLandscape {
+  const cited = citationSet(citations);
+  return {
+    sources: landscape.sources.filter(
+      (source) => isCited(source.url, cited) && !nationalDirectoryHostSafe(source.url),
+    ),
+  };
+}
+
+export function filterEvidenceToCitations(
+  evidence: GeminiEvidenceResult,
+  citations: readonly string[],
+): GeminiEvidenceResult {
+  const cited = citationSet(citations);
+  return {
+    companies: evidence.companies
+      .map((company) => ({
+        ...company,
+        claims: company.claims.filter((claim) => isCited(claim.source_url, cited)),
+      }))
+      .filter((company) => company.claims.length > 0),
+  };
+}
+
+export async function findGeminiLandscape(args: {
+  place: string;
+  tradeLabel: string;
+  jobText: string;
+}): Promise<{ landscape: GeminiLandscape; usage: GeminiUsage }> {
+  const messages = [
+    {
+      role: "system",
+      content: [
+        "Breng uitsluitend het openbare bronnenlandschap in kaart; beoordeel nog geen specifieke bedrijven.",
+        "Zoek concrete officiële leden-, sponsor-, partner-, zoek- of registerpagina's die bedrijven kunnen bevatten.",
+        "Zoek lokale ondernemers- en bedrijvenverenigingen, bedrijventerreinen, coöperaties, sportclubs, lokale evenementen en relevante officiële branche-, vak-, erkennings- en certificeringsregisters.",
+        "Een branche- of vakregister is national of regional en is professioneel bewijs, nooit automatisch lokale verankering.",
+        "Gebruik alleen werkelijk gevonden URL's. Geen telefoongidsen, vergelijkers, offerteplatforms, sociale media of algemene zoekresultaatpagina's.",
+        'Antwoord alleen met JSON: {"sources":[{"id":"s1","name":"","url":"https://","kind":"local_business_association","scope":"local","place":"","listing_type":"members","why_relevant":"","observed_on":"YYYY-MM-DD"}]}',
+      ].join("\n"),
+    },
+    {
+      role: "user",
+      content: `Plaats: ${args.place}\nVak: ${args.tradeLabel}\nKlus: ${args.jobText}\nVind maximaal 12 bruikbare openbare bronnen.`,
+    },
+  ];
+  const { content, urls, usage } = await ask(messages, {
+    maxResults: 12,
+    maxTokens: 1300,
+  });
+  const parsed = GeminiLandscapeSchema.parse(parseJsonObject(content));
+  return {
+    landscape: filterLandscapeToCitations(parsed, urls),
+    usage,
+  };
+}
+
+function nationalDirectoryHostSafe(url: string): boolean {
+  const host = websiteHost(url);
+  return Boolean(
+    host &&
+    /(?:telefoonboek|telefoongids|goudengids|bedrijvenregister|trustpilot|werkspot|trustoo|zoofy)\./i.test(
+      host,
+    ),
+  );
+}
+
+export async function checkGeminiCandidateEvidence(args: {
+  place: string;
+  tradeLabel: string;
+  jobText: string;
+  candidates: readonly GeminiCandidate[];
+  landscape: GeminiLandscape;
+}): Promise<{ evidence: GeminiEvidenceResult; usage: GeminiUsage }> {
+  const messages = [
+    {
+      role: "system",
+      content: [
+        "Onderzoek iedere opgegeven kandidaat gericht met websearch en de meegegeven bronnenkaart.",
+        "Controleer lokale vermeldingen, officiële professionele aansluiting, identiteit/vestiging, klusmatch en concrete tegenstrijdigheden.",
+        "Een landelijke branchevereniging is professional_connection en nooit local_connection.",
+        "Geef alleen positieve bevestigingen of concrete conflicten. Niets gevonden is onbekend en geen negatieve conclusie.",
+        "Elke claim moet een werkelijk gevonden bron-URL en de letterlijk waargenomen bedrijfsnaam bevatten. Verzin niets.",
+        'Antwoord alleen met JSON: {"companies":[{"name":"","claims":[{"observed_name":"","claim_type":"local_connection|professional_connection|identity|job_fit|conflict","outcome":"confirmed|conflict","source_url":"https://","source_name":"","note":""}]}]}',
+      ].join("\n"),
+    },
+    {
+      role: "user",
+      content: [
+        `Plaats: ${args.place}`,
+        `Vak: ${args.tradeLabel}`,
+        `Klus: ${args.jobText}`,
+        `Kandidaten: ${JSON.stringify(args.candidates)}`,
+        `Bronnenkaart: ${JSON.stringify(args.landscape.sources)}`,
+      ].join("\n"),
+    },
+  ];
+  const { content, urls, usage } = await ask(messages, {
+    maxResults: 12,
+    maxTokens: 1900,
+  });
+  const parsed = GeminiEvidenceResultSchema.parse(parseJsonObject(content));
+  return {
+    evidence: filterEvidenceToCitations(parsed, urls),
+    usage,
+  };
+}
+
+export async function findGeminiSourceCandidates(args: {
+  place: string;
+  tradeLabel: string;
+  jobText: string;
+  landscape: GeminiLandscape;
+}): Promise<{
+  candidates: GeminiCandidate[];
+  evidence: GeminiEvidenceResult;
+  usage: GeminiUsage;
+}> {
+  const messages = [
+    {
+      role: "system",
+      content: [
+        "Zoek via de meegegeven bronnen maximaal vijf aanvullende echte bedrijven voor de gevraagde particuliere klus.",
+        "Gebruik AI-websearch; geef alleen bedrijven terug die aantoonbaar in of via een opgegeven bron voorkomen.",
+        "Vermeld de eigen bedrijfswebsite als die gevonden is. Geen vergelijkers, offerteplatforms of landelijke bemiddelaars.",
+        "Een extra bedrijf moet een bron-URL, letterlijk waargenomen naam en voldoende identiteit hebben. Verzin niets.",
+        'Antwoord alleen met JSON: {"companies":[{"name":"","website":"","address":"","phone":"","email":"","candidate_basis":[""],"risk_flags":[],"observed_name":"","source_url":"https://","source_name":"","source_scope":"local|regional|national","source_kind":""}]}',
+      ].join("\n"),
+    },
+    {
+      role: "user",
+      content: [
+        `Plaats: ${args.place}`,
+        `Vak: ${args.tradeLabel}`,
+        `Klus: ${args.jobText}`,
+        `Bronnenkaart: ${JSON.stringify(args.landscape.sources)}`,
+      ].join("\n"),
+    },
+  ];
+  const { content, urls, usage } = await ask(messages, {
+    maxResults: 10,
+    maxTokens: 1500,
+  });
+  const parsed = GeminiSourceCandidatesSchema.parse(parseJsonObject(content));
+  const cited = citationSet(urls);
+  const accepted = parsed.companies.filter(
+    (company) =>
+      isCited(company.source_url, cited) &&
+      Boolean(company.website || company.phone || company.address),
+  );
+  const candidates = reviewFoundFirms(
+    accepted.map((company) => ({
+      name: company.name,
+      website: company.website,
+      address: company.address,
+      phone: company.phone,
+      email: company.email,
+      candidateBasis: company.candidate_basis,
+      riskFlags: company.risk_flags,
+    })),
+  ).kept;
+  return {
+    candidates,
+    evidence: {
+      companies: accepted.map((company) => ({
+        name: company.name,
+        claims: [
+          {
+            observed_name: company.observed_name,
+            claim_type:
+              company.source_scope === "local"
+                ? ("local_connection" as const)
+                : ("professional_connection" as const),
+            outcome: "confirmed" as const,
+            source_url: company.source_url,
+            source_name: company.source_name,
+            note: company.candidate_basis.join("; "),
+          },
+        ],
+      })),
+    },
+    usage,
+  };
+}
+
+export async function reviewGeminiCompanies(args: {
+  place: string;
+  tradeLabel: string;
+  jobText: string;
+  candidates: readonly GeminiCandidate[];
+  evidence: GeminiEvidenceResult;
+}): Promise<{ review: GeminiReview; usage: GeminiUsage }> {
+  const messages = [
+    {
+      role: "system",
+      content: [
+        "Voer vóór publicatie een echtheids- en risicoscreening uit, geen fraudevaststelling.",
+        "Controleer met websearch per bedrijf: bedrijfsidentiteit, vestigingsplaats/regio, gevraagde vakactiviteit, werk voor particulieren en consistente contactgegevens.",
+        "Let op generieke vak-plus-plaatsnamen, vele plaatslandingspagina's, offerteplatforms, landelijke doorschakeling en gekopieerde of tegenstrijdige identiteit.",
+        "Een 085/088-nummer, jonge website of ontbrekende sponsorvermelding mag nooit zelfstandig uitsluiten.",
+        "keep=false alleen bij platform/tussenpersoon, duidelijke vakmismatch, aantoonbare identiteitsmismatch of sterk nep-lokaal patroon.",
+        "Zonder onafhankelijke lokale/professionele bron is evidence_level limited, niet automatisch afwijzen.",
+        "Noem alleen URLs die je werkelijk hebt gevonden en gebruikt.",
+        'Antwoord alleen met JSON: {"companies":[{"name":"","job_fit":true,"location_checked":true,"serves_private":true,"keep":true,"evidence_level":"strong|moderate|limited","risk_flags":[],"hard_reject_reason":null,"summary":"","source_urls":["https://"]}]}',
+      ].join("\n"),
+    },
+    {
+      role: "user",
+      content: [
+        `Plaats: ${args.place}`,
+        `Vak: ${args.tradeLabel}`,
+        `Klus: ${args.jobText}`,
+        `Bedrijven: ${JSON.stringify(args.candidates)}`,
+        `Reeds gevonden bewijs: ${JSON.stringify(args.evidence.companies)}`,
+      ].join("\n"),
+    },
+  ];
+  const { content, urls, usage } = await ask(messages, {
+    maxResults: 12,
+    maxTokens: 1700,
+  });
+  const parsed = GeminiReviewSchema.parse(parseJsonObject(content));
+  const cited = citationSet(urls);
+  return {
+    review: {
+      companies: parsed.companies.map((company) => {
+        const source_urls = company.source_urls.filter((url) => isCited(url, cited));
+        if (source_urls.length > 0) return { ...company, source_urls };
+        return {
+          ...company,
+          keep: false,
+          source_urls,
+          hard_reject_reason: company.hard_reject_reason ?? "review_without_citation",
+        };
+      }),
+    },
+    usage,
+  };
+}
+
 /** Second question: accepted local structures only. A missing company means no mention. */
 export async function checkLocalMentions(args: {
   place: string;
@@ -263,8 +554,7 @@ export async function checkLocalMentions(args: {
         "kind is ov, sport of festivity. outcome is member, sponsor of mentioned. about is company.",
         "category is local_business_association, sports_club, football_club, sponsorship of festivity. scope is local.",
         'Antwoord alleen met JSON: {"place":"","trade":"","checked_on":"","sources":[{"id":"s1","name":"","url":"","category":"sports_club","scope":"local","place":"","description":"","list_public":true}],"companies":[{"name":"","place":"","phone":"","email":"","website":"","claims":[{"kind":"sport","outcome":"sponsor","about":"company","org_name":"","relation":"","observed_name":"","source_ids":["s1"],"pages_checked":[],"note":null}]}]}',
-      ]
-        .join("\n"),
+      ].join("\n"),
     },
     {
       role: "user",
@@ -276,10 +566,12 @@ export async function checkLocalMentions(args: {
       ].join("\n"),
     },
   ];
-  const { content, urls } = await ask(messages, 10);
+  const { content, urls } = await ask(messages, { maxResults: 10, maxTokens: 1900 });
   const parsed = GeminiCheckSchema.safeParse(parseJsonObject(content));
   if (!parsed.success) {
-    throw new Error(parsed.error.issues[0]?.message ?? "Gemini check JSON was not usable");
+    throw new Error(
+      parsed.error.issues[0]?.message ?? "Gemini check JSON was not usable",
+    );
   }
   return filterCheckToCitations(parsed.data, urls);
 }

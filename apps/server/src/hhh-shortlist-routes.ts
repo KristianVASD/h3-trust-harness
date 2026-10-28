@@ -5,8 +5,12 @@ import { HhhShortlistRequestSchema } from "@h3-trust/schema";
 import type { Store } from "@h3-trust/store";
 import { geocodeCached } from "./address-search-job.js";
 import { isAdmin, type AppVariables } from "./auth.js";
-import { releaseHeldSearch, runFoundKnockout } from "./hhh-gemini-run.js";
-import { deferHhhSlice, scheduleHhhShortlistStep, scheduleLocalSourceGeocode } from "./hhh-shortlist-kick.js";
+import { releaseHeldSearch } from "./hhh-gemini-run.js";
+import {
+  deferHhhSlice,
+  scheduleHhhShortlistStep,
+  scheduleLocalSourceGeocode,
+} from "./hhh-shortlist-kick.js";
 import {
   abortLivePartnerJobs,
   deleteRecentPartnerJobs,
@@ -40,13 +44,20 @@ type ShortlistDeps = { store: Store; admin: SupabaseClient; cells: PlaceCellStor
 function beginHhhShortlist(deps: ShortlistDeps, jobId: string, lock?: string): void {
   deferHhhSlice(
     runHhhChain(deps, jobId, lock).catch((err) => {
-      console.error("[hhh-shortlist] slice failed", err instanceof Error ? err.message : err);
+      console.error(
+        "[hhh-shortlist] slice failed",
+        err instanceof Error ? err.message : err,
+      );
     }),
   );
 }
 
 /** Run stages in this invocation, then hand the rest to a fresh one before the 60s limit. */
-async function runHhhChain(deps: ShortlistDeps, jobId: string, lock?: string): Promise<void> {
+async function runHhhChain(
+  deps: ShortlistDeps,
+  jobId: string,
+  lock?: string,
+): Promise<void> {
   const started = Date.now();
   let nextLock = lock;
   for (let step = 0; step < 6; step += 1) {
@@ -75,7 +86,8 @@ function nudgeIdleShortlist(
 ): void {
   if (job.status !== "queued" && job.status !== "running") return;
   const lock = typeof job.payload.lock === "string" ? job.payload.lock : "";
-  const at = typeof job.payload.lockAt === "string" ? Date.parse(job.payload.lockAt) : Number.NaN;
+  const at =
+    typeof job.payload.lockAt === "string" ? Date.parse(job.payload.lockAt) : Number.NaN;
   const fresh = Boolean(lock) && Number.isFinite(at) && Date.now() - at < LIVE_LOCK_MS;
   if (fresh) return;
   beginHhhShortlist(deps, job.id);
@@ -93,21 +105,34 @@ export function registerHhhShortlistRoutes(
     const body = await c.req.json().catch(() => null);
     const parsed = HhhShortlistRequestSchema.safeParse(body);
     if (!parsed.success) {
-      return c.json({ error: parsed.error.issues[0]?.message ?? "Invalid shortlist request" }, 400);
+      return c.json(
+        { error: parsed.error.issues[0]?.message ?? "Invalid shortlist request" },
+        400,
+      );
     }
     const input = parsed.data;
     try {
       const existing = await findPartnerJobByRequest(deps.admin, input.requestId);
       if (existing) {
-        nudgeIdleShortlist({ store: deps.store, admin: deps.admin, cells: deps.cells }, existing);
-        return c.json({ jobId: existing.id, status: existing.status, requestId: input.requestId }, 202);
+        nudgeIdleShortlist(
+          { store: deps.store, admin: deps.admin, cells: deps.cells },
+          existing,
+        );
+        return c.json(
+          { jobId: existing.id, status: existing.status, requestId: input.requestId },
+          202,
+        );
       }
       const query = input.postcode4 ?? input.gemeente ?? "";
       const geo =
-        (await geocodeCached(deps.cells, query, input.postcode4 ? "adres" : "woonplaats")) ??
-        (await geocodeCached(deps.cells, query, "woonplaats"));
+        (await geocodeCached(
+          deps.cells,
+          query,
+          input.postcode4 ? "adres" : "woonplaats",
+        )) ?? (await geocodeCached(deps.cells, query, "woonplaats"));
       if (!geo) return c.json({ error: `No PDOK hit for “${query}”` }, 400);
-      const placeLabel = geo.woonplaats || geo.gemeente || input.gemeente || input.postcode4 || geo.label;
+      const placeLabel =
+        geo.woonplaats || geo.gemeente || input.gemeente || input.postcode4 || geo.label;
       const job = await insertPartnerJob(deps.admin, {
         id: randomUUID(),
         requestId: input.requestId,
@@ -127,15 +152,27 @@ export function registerHhhShortlistRoutes(
           lock: randomUUID(),
           lockAt: new Date().toISOString(),
           candidates: [],
+          landscape: { sources: [] },
+          evidence: { companies: [] },
+          review: { companies: [] },
+          tokenUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
           found: [],
           drops: [],
           fromCache: false,
           progress: [],
         },
       });
-      const bootLock = typeof job.payload.lock === "string" ? job.payload.lock : undefined;
-      beginHhhShortlist({ store: deps.store, admin: deps.admin, cells: deps.cells }, job.id, bootLock);
-      return c.json({ jobId: job.id, status: job.status, requestId: input.requestId }, 202);
+      const bootLock =
+        typeof job.payload.lock === "string" ? job.payload.lock : undefined;
+      beginHhhShortlist(
+        { store: deps.store, admin: deps.admin, cells: deps.cells },
+        job.id,
+        bootLock,
+      );
+      return c.json(
+        { jobId: job.id, status: job.status, requestId: input.requestId },
+        202,
+      );
     } catch (err) {
       console.error("[hhh-shortlist] enqueue", err instanceof Error ? err.message : err);
       return c.json({ error: "Could not start the shortlist" }, 500);
@@ -182,7 +219,10 @@ export function registerHhhShortlistRoutes(
       const jobs = await listPartnerJobs(deps.admin);
       return c.json({ jobs });
     } catch (err) {
-      return c.json({ error: err instanceof Error ? err.message : "Could not list shortlist jobs" }, 500);
+      return c.json(
+        { error: err instanceof Error ? err.message : "Could not list shortlist jobs" },
+        500,
+      );
     }
   });
 
@@ -213,7 +253,12 @@ export function registerHhhShortlistRoutes(
         }),
       });
     } catch (err) {
-      return c.json({ error: err instanceof Error ? err.message : "Could not run the shortlist step" }, 500);
+      return c.json(
+        {
+          error: err instanceof Error ? err.message : "Could not run the shortlist step",
+        },
+        500,
+      );
     }
   });
 
@@ -236,9 +281,7 @@ export function registerHhhShortlistRoutes(
     if (!deps.admin) return c.json(engineUnavailable(), 503);
     const body = (await c.req.json().catch(() => null)) as { limit?: unknown } | null;
     const limit =
-      typeof body?.limit === "number" && Number.isFinite(body.limit)
-        ? body.limit
-        : 40;
+      typeof body?.limit === "number" && Number.isFinite(body.limit) ? body.limit : 40;
     try {
       await abortLivePartnerJobs(deps.admin);
       const deleted = await deleteRecentPartnerJobs(deps.admin, limit);
@@ -257,7 +300,10 @@ export function registerHhhShortlistRoutes(
     try {
       return c.json(await summarizeLocalSources(deps.admin));
     } catch (err) {
-      return c.json({ error: err instanceof Error ? err.message : "Could not read local lists" }, 500);
+      return c.json(
+        { error: err instanceof Error ? err.message : "Could not read local lists" },
+        500,
+      );
     }
   });
 
@@ -273,26 +319,12 @@ export function registerHhhShortlistRoutes(
     const admin = deps.admin;
     const existing = await getPartnerJob(admin, jobId);
     if (!existing || existing.status === "failed" || existing.status === "ready") {
-      return c.json({ accepted: false, skipped: true, status: existing?.status ?? "missing" }, 200);
+      return c.json(
+        { accepted: false, skipped: true, status: existing?.status ?? "missing" },
+        200,
+      );
     }
     beginHhhShortlist({ store: deps.store, admin, cells: deps.cells }, jobId, lock);
-    return c.json({ accepted: true }, 202);
-  });
-
-  app.post("/api/internal/hhh-found/knockout", async (c) => {
-    if (!c.get("isWorker") && !isAdmin(c.get("auth"))) {
-      return c.json({ error: "Worker or admin only" }, 403);
-    }
-    if (!deps.admin) return c.json(engineUnavailable(), 503);
-    const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
-    const jobId = typeof body?.jobId === "string" ? body.jobId.trim() : "";
-    if (!jobId) return c.json({ error: "jobId is required" }, 400);
-    const admin = deps.admin;
-    deferHhhSlice(
-      runFoundKnockout({ admin, store: deps.store, jobId }).catch((err) => {
-        console.error("[hhh-found] knockout failed", err instanceof Error ? err.message : err);
-      }),
-    );
     return c.json({ accepted: true }, 202);
   });
 
@@ -325,7 +357,10 @@ export function registerHhhShortlistRoutes(
           if (result.remaining) scheduleLocalSourceGeocode();
         })
         .catch((err) => {
-          console.error("[local-sources] geocode failed", err instanceof Error ? err.message : err);
+          console.error(
+            "[local-sources] geocode failed",
+            err instanceof Error ? err.message : err,
+          );
         }),
     );
     return c.json({ accepted: true }, 202);

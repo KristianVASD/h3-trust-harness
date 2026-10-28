@@ -6,13 +6,22 @@ import {
   cardFromStoredFound,
   companiesWithLocalMention,
   directoryHostsIn,
+  mergeGeminiCandidates,
   reviewFoundFirms,
+  reviewedGeminiCompanies,
   selectFoundFirms,
   selectFreshFound,
   type GeminiCandidate,
+  type GeminiEvidenceResult,
+  type GeminiReview,
 } from "@h3-trust/schema";
-import { candidateBatches } from "./hhh-gemini-run.js";
-import { filterCheckToCitations, proposedCandidates } from "./hhh-gemini-search.js";
+import { candidateBatches, readGeminiPayload } from "./hhh-gemini-run.js";
+import {
+  filterCheckToCitations,
+  filterEvidenceToCitations,
+  filterLandscapeToCitations,
+  proposedCandidates,
+} from "./hhh-gemini-search.js";
 
 const alkmaarCheck = GeminiCheckSchema.parse({
   place: "Alkmaar",
@@ -286,7 +295,15 @@ describe("gemini local mention gate", () => {
       ],
     });
     const found = companiesWithLocalMention(
-      [{ name: "Vijf Bronnen", website: "https://vijf.example", address: "", phone: "", email: "" }],
+      [
+        {
+          name: "Vijf Bronnen",
+          website: "https://vijf.example",
+          address: "",
+          phone: "",
+          email: "",
+        },
+      ],
       check,
     );
     assert.equal(found.length, 1);
@@ -401,7 +418,13 @@ describe("first search firms", () => {
 
   it("reads a Dutch naam and telefoon", () => {
     const read = proposedCandidates({
-      companies: [{ naam: "Loodgietersbedrijf De Bollen", telefoon: "0252 412 345", adres: "Heereweg 12, Lisse" }],
+      companies: [
+        {
+          naam: "Loodgietersbedrijf De Bollen",
+          telefoon: "0252 412 345",
+          adres: "Heereweg 12, Lisse",
+        },
+      ],
     });
     const kept = reviewFoundFirms(read).kept;
     assert.equal(kept.length, 1);
@@ -416,7 +439,8 @@ describe("first search firms", () => {
         name: `Firma ${index + 1}`,
         website: `https://firma-${index + 1}.example`,
         address: `Straat ${index + 1}, Lisse`,
-        phone: index === 0 ? "085 123 4567" : `06 123400${String(index).padStart(2, "0")}`,
+        phone:
+          index === 0 ? "085 123 4567" : `06 123400${String(index).padStart(2, "0")}`,
         candidate_basis: ["Eigen website en vestigingsadres"],
         risk_flags: index === 0 ? ["Alleen een 085-nummer gevonden"] : [],
       })),
@@ -524,20 +548,14 @@ describe("fast local check batches", () => {
       email: "",
     }));
     const [first, second] = candidateBatches(rows);
-    assert.deepEqual(first.map((row) => row.name), [
-      "Firma 1",
-      "Firma 2",
-      "Firma 3",
-      "Firma 4",
-      "Firma 5",
-    ]);
-    assert.deepEqual(second.map((row) => row.name), [
-      "Firma 6",
-      "Firma 7",
-      "Firma 8",
-      "Firma 9",
-      "Firma 10",
-    ]);
+    assert.deepEqual(
+      first.map((row) => row.name),
+      ["Firma 1", "Firma 2", "Firma 3", "Firma 4", "Firma 5"],
+    );
+    assert.deepEqual(
+      second.map((row) => row.name),
+      ["Firma 6", "Firma 7", "Firma 8", "Firma 9", "Firma 10"],
+    );
   });
 
   it("keeps only cited sources with the observed company name", () => {
@@ -585,7 +603,10 @@ describe("fast local check batches", () => {
       ],
     });
     const filtered = filterCheckToCitations(check, ["https://fclisse.nl/sponsors"]);
-    assert.deepEqual(filtered.sources.map((source) => source.id), ["club"]);
+    assert.deepEqual(
+      filtered.sources.map((source) => source.id),
+      ["club"],
+    );
     assert.equal(filtered.companies.length, 1);
     assert.equal(filtered.companies[0]?.claims.length, 1);
     assert.deepEqual(filtered.companies[0]?.claims[0]?.source_ids, ["club"]);
@@ -756,13 +777,21 @@ describe("a phone book is not local presence", () => {
   });
 
   it("keeps club proof and drops directories and local press", () => {
-    assert.deepEqual(directoryHostsIn(lisseCheck), ["bedrijvenregister.nl", "telefoonboek.nl"]);
+    assert.deepEqual(directoryHostsIn(lisseCheck), [
+      "bedrijvenregister.nl",
+      "telefoonboek.nl",
+    ]);
     const found = companiesWithLocalMention(painters, lisseCheck);
     const zaal = found.find((row) => row.name === "Schildersbedrijf Van der Zaal");
     const marseille = found.find((row) => row.name === "Marseille Schilders BV");
     assert.equal(zaal?.matchNote, "Balsponsor van FC Lisse bij thuiswedstrijden");
     assert.equal(zaal?.hits[0]?.kind, "sport");
-    assert.equal(zaal?.hits.some((hit) => hit.host === "telefoonboek.nl" || hit.host === "bedrijvenregister.nl"), false);
+    assert.equal(
+      zaal?.hits.some(
+        (hit) => hit.host === "telefoonboek.nl" || hit.host === "bedrijvenregister.nl",
+      ),
+      false,
+    );
     assert.equal(marseille?.matchNote, "Opgenomen in het SponsorPortaal van FC Lisse");
     assert.equal(marseille?.sourceCount, 1);
     assert.deepEqual(
@@ -965,7 +994,11 @@ describe("stored gevonden lookup", () => {
         ],
       },
     };
-    const freshFirms = selectFreshFound([phoneBook, club], { tradeId: "paint", postcode4: "2161" }, now);
+    const freshFirms = selectFreshFound(
+      [phoneBook, club],
+      { tradeId: "paint", postcode4: "2161" },
+      now,
+    );
     assert.deepEqual(
       freshFirms.map((company) => company.name),
       ["Schildersbedrijf Van der Zaal"],
@@ -977,5 +1010,232 @@ describe("stored gevonden lookup", () => {
       card?.evidence.map((item) => item.url),
       ["https://fclisse.nl/sponsors"],
     );
+  });
+});
+
+describe("four-step Gemini review", () => {
+  const candidates: GeminiCandidate[] = [
+    {
+      name: "Lokale Loodgieter",
+      website: "https://lokale-loodgieter.example",
+      address: "Dorpsstraat 1, Lisse",
+      phone: "0252 123456",
+      email: "",
+    },
+    {
+      name: "Vakbedrijf Zonder Club",
+      website: "https://vakbedrijf.example",
+      address: "Lisse",
+      phone: "085 1234567",
+      email: "",
+      riskFlags: ["085-nummer"],
+    },
+    {
+      name: "Tussenpersoon",
+      website: "https://tussenpersoon.example",
+      address: "",
+      phone: "",
+      email: "",
+    },
+  ];
+
+  const evidence: GeminiEvidenceResult = {
+    companies: [
+      {
+        name: "Lokale Loodgieter",
+        claims: [
+          {
+            observed_name: "Lokale Loodgieter",
+            claim_type: "local_connection",
+            outcome: "confirmed",
+            source_url: "https://club.example/sponsors",
+            source_name: "FC Lisse",
+            note: "Sponsor van FC Lisse",
+          },
+          {
+            observed_name: "Lokale Loodgieter",
+            claim_type: "professional_connection",
+            outcome: "confirmed",
+            source_url: "https://vakregister.example/leden",
+            source_name: "Vakregister",
+            note: "Opgenomen in het officiële vakregister",
+          },
+        ],
+      },
+    ],
+  };
+
+  const review: GeminiReview = {
+    companies: [
+      {
+        name: "Lokale Loodgieter",
+        job_fit: true,
+        location_checked: true,
+        serves_private: true,
+        keep: true,
+        evidence_level: "strong",
+        risk_flags: [],
+        hard_reject_reason: null,
+        summary: "Past bij de klus en is lokaal aangetroffen.",
+        source_urls: ["https://lokale-loodgieter.example"],
+      },
+      {
+        name: "Vakbedrijf Zonder Club",
+        job_fit: true,
+        location_checked: true,
+        serves_private: true,
+        keep: true,
+        evidence_level: "limited",
+        risk_flags: ["085-nummer"],
+        hard_reject_reason: null,
+        summary:
+          "Klus en vestiging gecontroleerd; geen onafhankelijk lokaal verband gevonden.",
+        source_urls: ["https://vakbedrijf.example"],
+      },
+      {
+        name: "Tussenpersoon",
+        job_fit: false,
+        location_checked: false,
+        serves_private: true,
+        keep: false,
+        evidence_level: "limited",
+        risk_flags: ["offerteplatform"],
+        hard_reject_reason: "tussenpersoon",
+        summary: "Dit is een bemiddelaar.",
+        source_urls: ["https://tussenpersoon.example"],
+      },
+    ],
+  };
+
+  it("accepts only cited landscape sources and rejects directories", () => {
+    const filtered = filterLandscapeToCitations(
+      {
+        sources: [
+          {
+            id: "club",
+            name: "FC Lisse",
+            url: "https://club.example/sponsors",
+            kind: "sports_club",
+            scope: "local",
+            place: "Lisse",
+            listing_type: "sponsors",
+            why_relevant: "Lokale sponsorlijst",
+            observed_on: "2026-10-28",
+          },
+          {
+            id: "directory",
+            name: "Telefoonboek",
+            url: "https://telefoonboek.nl/lisse",
+            kind: "directory",
+            scope: "local",
+            place: "Lisse",
+            listing_type: "search",
+            why_relevant: "",
+            observed_on: "2026-10-28",
+          },
+        ],
+      },
+      ["https://club.example/sponsors", "https://telefoonboek.nl/lisse"],
+    );
+    assert.deepEqual(
+      filtered.sources.map((source) => source.id),
+      ["club"],
+    );
+  });
+
+  it("removes evidence claims that were not web-cited", () => {
+    const filtered = filterEvidenceToCitations(evidence, [
+      "https://club.example/sponsors",
+    ]);
+    assert.equal(filtered.companies.length, 1);
+    assert.deepEqual(
+      filtered.companies[0]?.claims.map((claim) => claim.claim_type),
+      ["local_connection"],
+    );
+  });
+
+  it("keeps a checked firm without a local mention and treats 085 as a soft flag", () => {
+    const found = reviewedGeminiCompanies(candidates, evidence, review);
+    assert.deepEqual(
+      found.map((company) => company.name),
+      ["Lokale Loodgieter", "Vakbedrijf Zonder Club"],
+    );
+    const limited = found[1]!;
+    assert.equal(limited.evidenceLevel, "limited");
+    assert.deepEqual(limited.riskFlags, ["085-nummer"]);
+    const card = cardFromFound({
+      id: "66666666-6666-4666-8666-666666666666",
+      row: limited,
+      place: "Lisse",
+      tradeId: "bath",
+      observedAt: "2026-10-28T00:00:00.000Z",
+    });
+    assert.equal(card.status, "geverifieerd");
+    assert.ok(card.badges.includes("klus_passend"));
+    assert.ok(card.badges.includes("vestiging_gecontroleerd"));
+    assert.ok(card.badges.includes("beperkt_bewijs"));
+    assert.ok(card.badges.includes("risicosignaal"));
+  });
+
+  it("keeps professional and local evidence separate and rejects a hard risk", () => {
+    const found = reviewedGeminiCompanies(candidates, evidence, review);
+    const local = found[0]!;
+    const card = cardFromFound({
+      id: "77777777-7777-4777-8777-777777777777",
+      row: local,
+      place: "Lisse",
+      tradeId: "bath",
+      observedAt: "2026-10-28T00:00:00.000Z",
+    });
+    assert.ok(card.badges.includes("lokaal_verbonden"));
+    assert.ok(card.badges.includes("professioneel_aangesloten"));
+    assert.equal(
+      found.some((company) => company.name === "Tussenpersoon"),
+      false,
+    );
+  });
+
+  it("merges source candidates by host or folded name", () => {
+    const merged = mergeGeminiCandidates(
+      [candidates[0]!],
+      [
+        { ...candidates[0]!, name: "Lokale Loodgieter B.V." },
+        {
+          name: "Nieuw Bronbedrijf",
+          website: "https://nieuw.example",
+          address: "Lisse",
+          phone: "",
+          email: "",
+        },
+      ],
+    );
+    assert.deepEqual(
+      merged.map((company) => company.name),
+      ["Lokale Loodgieter", "Nieuw Bronbedrijf"],
+    );
+  });
+
+  it("restores the staged payload and accumulated token usage", () => {
+    const payload = readGeminiPayload({
+      route: "gemini-found",
+      requestId: "r1",
+      placeLabel: "Lisse",
+      tradeId: "bath",
+      elementCodes: [],
+      jobText: "buitenkraan",
+      stage: "sourceCandidates",
+      candidates,
+      landscape: { sources: [] },
+      evidence,
+      review,
+      tokenUsage: { promptTokens: 3000, completionTokens: 4000, totalTokens: 7000 },
+      found: [],
+      drops: [],
+      findSkips: [],
+      fromCache: false,
+      progress: [],
+    });
+    assert.equal(payload?.stage, "sourceCandidates");
+    assert.equal(payload?.tokenUsage.totalTokens, 7000);
   });
 });

@@ -134,7 +134,11 @@ export async function ensureShortlistCell(
   const existing = (await cells.list()).find((cell) => {
     if (cell.countrySlug !== slug) return false;
     if (place.postcode4 && cell.postcode4 === place.postcode4) return true;
-    if (!place.postcode4 && place.gemeente && cell.gemeente?.toLowerCase() === place.gemeente.toLowerCase()) {
+    if (
+      !place.postcode4 &&
+      place.gemeente &&
+      cell.gemeente?.toLowerCase() === place.gemeente.toLowerCase()
+    ) {
       return true;
     }
     return false;
@@ -239,7 +243,9 @@ export async function storeShortlistCompanies(args: {
     );
     if (matchAt == null) {
       const needle = row.name.trim().toLowerCase();
-      const byName = companies.findIndex((company) => company.name.trim().toLowerCase() === needle);
+      const byName = companies.findIndex(
+        (company) => company.name.trim().toLowerCase() === needle,
+      );
       if (byName >= 0) matchAt = byName;
     }
     const assessed = row.assessment;
@@ -252,7 +258,9 @@ export async function storeShortlistCompanies(args: {
         category: args.place.tradeId,
         website_url: row.website,
         specialism: assessed.specialism || prev.specialism,
-        capabilities: assessed.capabilities.length ? assessed.capabilities : prev.capabilities,
+        capabilities: assessed.capabilities.length
+          ? assessed.capabilities
+          : prev.capabilities,
         serviceContexts: contexts.length ? contexts : prev.serviceContexts,
         audienceMode: assessed.audienceMode ?? prev.audienceMode,
         servicedElementCodes: assessed.elementCodes.length
@@ -341,12 +349,19 @@ export async function storeFoundCompanies(args: {
   for (const row of args.rows) {
     const indexes = buildCompanyIndexes(companies);
     let matchAt = findCompanyMatchIndex(
-      { name: row.name, website_url: row.website, region: args.place.placeLabel, email: row.email },
+      {
+        name: row.name,
+        website_url: row.website,
+        region: args.place.placeLabel,
+        email: row.email,
+      },
       indexes,
     );
     if (matchAt == null) {
       const needle = row.name.trim().toLowerCase();
-      const byName = companies.findIndex((company) => company.name.trim().toLowerCase() === needle);
+      const byName = companies.findIndex(
+        (company) => company.name.trim().toLowerCase() === needle,
+      );
       if (byName >= 0) matchAt = byName;
     }
     const prev = matchAt != null ? companies[matchAt] : undefined;
@@ -360,13 +375,30 @@ export async function storeFoundCompanies(args: {
       postcode4: args.place.postcode4,
       gemeente: args.place.gemeente,
       woonplaats: args.place.woonplaats,
-      score: row.sourceCount,
+      score: Math.max(1, row.sourceCount),
       matchNote: row.matchNote,
       elementCodes: prev?.partnerTrust?.elementCodes ?? [],
-      categorySignal: "in_category",
+      categorySignal: row.hits.some(
+        (hit) => hit.kind === "ov" || hit.kind === "sport" || hit.kind === "festivity",
+      )
+        ? "in_category"
+        : "not_listed",
       facts: foundFacts(row, args.observedAt),
     });
-    const membership = [...new Set(row.hits.map((hit) => hit.sourceName).filter(Boolean))];
+    const membership = [
+      ...new Set(
+        row.hits
+          .filter(
+            (hit) =>
+              hit.kind === "ov" ||
+              hit.kind === "sport" ||
+              hit.kind === "festivity" ||
+              hit.kind === "professional",
+          )
+          .map((hit) => hit.sourceName)
+          .filter(Boolean),
+      ),
+    ];
     if (prev && matchAt != null) {
       const next = CompanySchema.parse({
         ...prev,
@@ -444,7 +476,10 @@ export function cardsFromStored(args: {
   const cards: HhhShortlistCompany[] = [];
   for (const row of args.rows) {
     if (!row.assessment.pass) continue;
-    if (row.assessment.status !== "geverifieerd" && row.assessment.status !== "lokaal_verbonden") {
+    if (
+      row.assessment.status !== "geverifieerd" &&
+      row.assessment.status !== "lokaal_verbonden"
+    ) {
       continue;
     }
     const id = args.ids.get(row.website);

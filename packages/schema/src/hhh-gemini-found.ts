@@ -31,7 +31,10 @@ const LOCAL_KIND: Record<string, "ov" | "sport" | "festivity"> = {
   festivity: "festivity",
 };
 
-const LOCAL_CATEGORY: Record<string, "local_business_association" | "sponsorship" | "local_festivity"> = {
+const LOCAL_CATEGORY: Record<
+  string,
+  "local_business_association" | "sponsorship" | "local_festivity"
+> = {
   local_business_association: "local_business_association",
   sponsorship: "sponsorship",
   sports_club: "sponsorship",
@@ -72,9 +75,17 @@ const DIRECTORY_HOSTS = [
   "wikipedia.org",
 ];
 
-const DIRECTORY_CATEGORY = new Set(["directory", "phone_book", "phonebook", "business_register", "national_directory", "sbi"]);
+const DIRECTORY_CATEGORY = new Set([
+  "directory",
+  "phone_book",
+  "phonebook",
+  "business_register",
+  "national_directory",
+  "sbi",
+]);
 
-const DIRECTORY_WORD = /sbi[-\s]?code|telefoongids|telefoonboek|gouden gids|bedrijvenregister\.nl|kvk\.nl/i;
+const DIRECTORY_WORD =
+  /sbi[-\s]?code|telefoongids|telefoonboek|gouden gids|bedrijvenregister\.nl|kvk\.nl/i;
 
 export function nationalDirectoryHost(host: string): boolean {
   const name = host.replace(/^www\./i, "").toLowerCase();
@@ -146,6 +157,100 @@ export type GeminiCandidate = {
   riskFlags?: string[];
 };
 
+export const GeminiLandscapeSourceSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  url: z.string().url(),
+  kind: z.string().min(1),
+  scope: z.enum(["local", "regional", "national"]),
+  place: z.string().default(""),
+  listing_type: z.enum(["members", "sponsors", "partners", "register", "search"]),
+  why_relevant: z.string().default(""),
+  observed_on: z.string().default(""),
+});
+export type GeminiLandscapeSource = z.infer<typeof GeminiLandscapeSourceSchema>;
+
+export const GeminiLandscapeSchema = z.object({
+  sources: z.array(GeminiLandscapeSourceSchema).max(20).default([]),
+});
+export type GeminiLandscape = z.infer<typeof GeminiLandscapeSchema>;
+
+export const GeminiEvidenceClaimSchema = z.object({
+  observed_name: z.string().min(1),
+  claim_type: z.enum([
+    "local_connection",
+    "professional_connection",
+    "identity",
+    "job_fit",
+    "conflict",
+  ]),
+  outcome: z.enum(["confirmed", "conflict"]),
+  source_url: z.string().url(),
+  source_name: z.string().min(1),
+  note: z.string().default(""),
+});
+export type GeminiEvidenceClaim = z.infer<typeof GeminiEvidenceClaimSchema>;
+
+export const GeminiEvidenceCompanySchema = z.object({
+  name: z.string().min(1),
+  claims: z.array(GeminiEvidenceClaimSchema).max(12).default([]),
+});
+
+export const GeminiEvidenceResultSchema = z.object({
+  companies: z.array(GeminiEvidenceCompanySchema).max(15).default([]),
+});
+export type GeminiEvidenceResult = z.infer<typeof GeminiEvidenceResultSchema>;
+
+export const GeminiSourceCandidatesSchema = z.object({
+  companies: z
+    .array(
+      z.object({
+        name: z.string().min(1),
+        website: z.string().default(""),
+        address: z.string().default(""),
+        phone: z.string().default(""),
+        email: z.string().default(""),
+        candidate_basis: z.array(z.string()).max(4).default([]),
+        risk_flags: z.array(z.string()).max(4).default([]),
+        observed_name: z.string().min(1),
+        source_url: z.string().url(),
+        source_name: z.string().min(1),
+        source_scope: z.enum(["local", "regional", "national"]),
+        source_kind: z.string().min(1),
+      }),
+    )
+    .max(5)
+    .default([]),
+});
+export type GeminiSourceCandidates = z.infer<typeof GeminiSourceCandidatesSchema>;
+
+export const GeminiReviewSchema = z.object({
+  companies: z
+    .array(
+      z.object({
+        name: z.string().min(1),
+        job_fit: z.boolean(),
+        location_checked: z.boolean(),
+        serves_private: z.boolean(),
+        keep: z.boolean(),
+        evidence_level: z.enum(["strong", "moderate", "limited"]),
+        risk_flags: z.array(z.string()).max(6).default([]),
+        hard_reject_reason: z.string().nullable().default(null),
+        summary: z.string().min(1),
+        source_urls: z.array(z.string().url()).max(6).default([]),
+      }),
+    )
+    .max(12)
+    .default([]),
+});
+export type GeminiReview = z.infer<typeof GeminiReviewSchema>;
+
+export type GeminiUsage = {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+};
+
 const LEAD_HOST = /(?:^|\.)(?:werkspot|trustoo|zoofy|vergelijk)\.nl$/i;
 
 /** First-step firms. A lead site is dropped. A missing website is not, when a phone or address is present. */
@@ -193,12 +298,14 @@ export function reviewFoundFirms(proposed: readonly GeminiCandidate[]): {
   return { kept, skipped };
 }
 
-export function selectFoundFirms(proposed: readonly GeminiCandidate[]): GeminiCandidate[] {
+export function selectFoundFirms(
+  proposed: readonly GeminiCandidate[],
+): GeminiCandidate[] {
   return reviewFoundFirms(proposed).kept;
 }
 
 export type LocalHit = {
-  kind: "ov" | "sport" | "festivity" | "search";
+  kind: "ov" | "sport" | "festivity" | "professional" | "website" | "search";
   sourceName: string;
   url: string;
   relation: string;
@@ -209,6 +316,11 @@ export type GeminiFoundCompany = GeminiCandidate & {
   sourceCount: number;
   matchNote: string;
   hits: LocalHit[];
+  jobFit?: boolean;
+  locationChecked?: boolean;
+  professionalConnection?: boolean;
+  evidenceLevel?: "strong" | "moderate" | "limited";
+  hardRejectReason?: string;
 };
 
 function text(value: string | null | undefined): string {
@@ -234,7 +346,122 @@ function namesMatch(left: string, right: string): boolean {
   return false;
 }
 
-function localHits(companyWebsite: string, claims: readonly GeminiClaim[], sources: readonly GeminiSource[]): LocalHit[] {
+/** Combine both AI candidate streams without letting aliases create duplicate firms. */
+export function mergeGeminiCandidates(
+  primary: readonly GeminiCandidate[],
+  extra: readonly GeminiCandidate[],
+  limit = 12,
+): GeminiCandidate[] {
+  const out: GeminiCandidate[] = [];
+  const hosts = new Set<string>();
+  for (const row of [...primary, ...extra]) {
+    const host = websiteHost(row.website);
+    const duplicate = out.some((current) => namesMatch(current.name, row.name));
+    if (duplicate || (host && hosts.has(host))) continue;
+    if (host) hosts.add(host);
+    out.push(row);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function evidenceFor(
+  candidate: GeminiCandidate,
+  evidence: GeminiEvidenceResult,
+): GeminiEvidenceClaim[] {
+  return evidence.companies
+    .filter((company) => namesMatch(company.name, candidate.name))
+    .flatMap((company) => company.claims)
+    .filter((claim) => namesMatch(claim.observed_name, candidate.name));
+}
+
+function reviewFor(candidate: GeminiCandidate, review: GeminiReview) {
+  return review.companies.find((company) => namesMatch(company.name, candidate.name));
+}
+
+/** Convert the separate evidence dimensions into publishable, ranked firms. */
+export function reviewedGeminiCompanies(
+  candidates: readonly GeminiCandidate[],
+  evidence: GeminiEvidenceResult,
+  review: GeminiReview,
+): GeminiFoundCompany[] {
+  const rows: GeminiFoundCompany[] = [];
+  for (const candidate of candidates) {
+    const verdict = reviewFor(candidate, review);
+    if (
+      !verdict ||
+      !verdict.keep ||
+      !verdict.job_fit ||
+      !verdict.location_checked ||
+      !verdict.serves_private ||
+      verdict.hard_reject_reason
+    ) {
+      continue;
+    }
+    const claims = evidenceFor(candidate, evidence).filter(
+      (claim) => claim.outcome === "confirmed",
+    );
+    const hitsByUrl = new Map<string, LocalHit>();
+    for (const claim of claims) {
+      const url = httpsUrl(claim.source_url);
+      const host = url ? websiteHost(url) : null;
+      if (!url || !host || hitsByUrl.has(url)) continue;
+      const kind: LocalHit["kind"] =
+        claim.claim_type === "local_connection"
+          ? "ov"
+          : claim.claim_type === "professional_connection"
+            ? "professional"
+            : "website";
+      hitsByUrl.set(url, {
+        kind,
+        sourceName: claim.source_name,
+        url,
+        relation: claim.note || claim.source_name,
+        host,
+      });
+    }
+    for (const sourceUrl of verdict.source_urls) {
+      const url = httpsUrl(sourceUrl);
+      const host = url ? websiteHost(url) : null;
+      if (!url || !host || hitsByUrl.has(url)) continue;
+      hitsByUrl.set(url, {
+        kind: "website",
+        sourceName: host,
+        url,
+        relation: "Gebruikt voor de bedrijfs- en kluscontrole.",
+        host,
+      });
+    }
+    const hits = [...hitsByUrl.values()];
+    const localConnection = hits.some(
+      (hit) => hit.kind === "ov" || hit.kind === "sport" || hit.kind === "festivity",
+    );
+    const professionalConnection = hits.some((hit) => hit.kind === "professional");
+    const sourceCount = Math.min(
+      FOUND_SOURCE_CAP,
+      new Set(hits.map((hit) => hit.host)).size,
+    );
+    rows.push({
+      ...candidate,
+      riskFlags: [...new Set([...(candidate.riskFlags ?? []), ...verdict.risk_flags])],
+      sourceCount,
+      matchNote: verdict.summary.slice(0, 400),
+      hits,
+      jobFit: true,
+      locationChecked: true,
+      professionalConnection,
+      evidenceLevel:
+        localConnection || professionalConnection ? verdict.evidence_level : "limited",
+    });
+  }
+  return rankFound(rows);
+}
+
+function localHits(
+  companyWebsite: string,
+  claims: readonly GeminiClaim[],
+  sources: readonly GeminiSource[],
+): LocalHit[] {
   const byId = new Map(sources.map((source) => [source.id, source]));
   const ownHost = websiteHost(companyWebsite);
   const seen = new Map<string, LocalHit>();
@@ -255,7 +482,11 @@ function localHits(companyWebsite: string, claims: readonly GeminiClaim[], sourc
       if (!url || !host || (ownHost && host === ownHost) || seen.has(host)) continue;
       const orgName = text(claim.org_name);
       const relation = text(claim.relation) || orgName || source.name;
-      if (nationalDirectoryHost(host) || DIRECTORY_WORD.test(`${relation}\n${source.name}\n${orgName}`)) continue;
+      if (
+        nationalDirectoryHost(host) ||
+        DIRECTORY_WORD.test(`${relation}\n${source.name}\n${orgName}`)
+      )
+        continue;
       seen.set(host, {
         kind,
         sourceName: source.name,
@@ -275,7 +506,9 @@ export function companiesWithLocalMention(
 ): GeminiFoundCompany[] {
   const found: GeminiFoundCompany[] = [];
   for (const candidate of candidates) {
-    const checked = check.companies.find((company) => namesMatch(company.name, candidate.name));
+    const checked = check.companies.find((company) =>
+      namesMatch(company.name, candidate.name),
+    );
     if (!checked) continue;
     const website = candidate.website || text(checked.website);
     const hits = localHits(website, checked.claims, check.sources);
@@ -288,7 +521,10 @@ export function companiesWithLocalMention(
       phone: text(checked.phone) || candidate.phone,
       email: text(checked.email) || candidate.email,
       sourceCount: Math.min(FOUND_SOURCE_CAP, hits.length),
-      matchNote: (relations.join(" · ") || "Gevonden via een lokale vermelding.").slice(0, 400),
+      matchNote: (relations.join(" · ") || "Gevonden via een lokale vermelding.").slice(
+        0,
+        400,
+      ),
       hits,
     });
   }
@@ -307,15 +543,25 @@ export function rankFound<
     hits?: readonly { kind: string }[];
   },
 >(rows: readonly T[]): T[] {
-  const proved = (row: T) => (row.hits?.some((hit) => hit.kind !== "search") ? 1 : 0);
+  const local = (row: T) =>
+    row.hits?.some(
+      (hit) => hit.kind === "ov" || hit.kind === "sport" || hit.kind === "festivity",
+    )
+      ? 1
+      : 0;
+  const professional = (row: T) =>
+    row.hits?.some((hit) => hit.kind === "professional") ? 1 : 0;
   const specificity = (row: T) =>
     /organis|bestuur|opricht|sponsor|lid van|member/i.test(row.matchNote ?? "") ? 1 : 0;
   const completeness = (row: T) =>
-    [row.website, row.address, row.phone, row.email].filter((value) => Boolean(value?.trim())).length;
+    [row.website, row.address, row.phone, row.email].filter((value) =>
+      Boolean(value?.trim()),
+    ).length;
   return [...rows]
     .sort(
       (a, b) =>
-        proved(b) - proved(a) ||
+        local(b) - local(a) ||
+        professional(b) - professional(a) ||
         b.sourceCount - a.sourceCount ||
         specificity(b) - specificity(a) ||
         completeness(b) - completeness(a) ||
@@ -344,14 +590,27 @@ function directoryFact(fact: PartnerFact): boolean {
 function localFacts(trust: PartnerTrust | undefined): PartnerFact[] {
   return (trust?.facts ?? []).filter(
     (fact) =>
-      (fact.kind === "ov" || fact.kind === "sport" || fact.kind === "festivity") && !directoryFact(fact),
+      (fact.kind === "ov" || fact.kind === "sport" || fact.kind === "festivity") &&
+      !directoryFact(fact),
+  );
+}
+
+function reviewedFacts(trust: PartnerTrust | undefined): PartnerFact[] {
+  const acceptedLocal = new Set(localFacts(trust));
+  return (trust?.facts ?? []).filter(
+    (fact) =>
+      fact.kind === "website" ||
+      (fact.kind === "professional" && !directoryFact(fact)) ||
+      acceptedLocal.has(fact),
   );
 }
 
 function storedMatchNote(trust: PartnerTrust, facts: readonly PartnerFact[]): string {
   const note = trust.matchNote?.trim() ?? "";
   if (note && !DIRECTORY_WORD.test(note)) return note;
-  const names = facts.map((fact) => fact.sourceName?.trim()).filter((name): name is string => Boolean(name));
+  const names = facts
+    .map((fact) => fact.sourceName?.trim())
+    .filter((name): name is string => Boolean(name));
   return names.join(" · ") || "Gevonden via een lokale vermelding.";
 }
 
@@ -363,13 +622,18 @@ export function selectFreshFound(
   return companies
     .filter((company) => {
       const trust = company.partnerTrust;
-      if (!trust || trust.status !== "gevonden" || trust.tradeId !== query.tradeId) return false;
+      if (!trust || trust.status !== "gevonden" || trust.tradeId !== query.tradeId)
+        return false;
       if (trust.score < 1) return false;
       if (company.localAuthenticity?.verdict === "fake_local") return false;
       if (!placeMatchesTrust(trust, query)) return false;
-      return evidenceFresh(localFacts(trust), now);
+      return evidenceFresh(reviewedFacts(trust), now);
     })
-    .sort((a, b) => (b.partnerTrust?.score ?? 0) - (a.partnerTrust?.score ?? 0) || a.name.localeCompare(b.name, "nl"));
+    .sort(
+      (a, b) =>
+        (b.partnerTrust?.score ?? 0) - (a.partnerTrust?.score ?? 0) ||
+        a.name.localeCompare(b.name, "nl"),
+    );
 }
 
 export function cardFromFound(args: {
@@ -379,6 +643,17 @@ export function cardFromFound(args: {
   tradeId: TradeId;
   observedAt: string;
 }): HhhShortlistCompany {
+  const localConnection = args.row.hits.some(
+    (hit) => hit.kind === "ov" || hit.kind === "sport" || hit.kind === "festivity",
+  );
+  const professionalConnection = args.row.hits.some((hit) => hit.kind === "professional");
+  const badges: HhhShortlistCompany["badges"] = ["gevonden"];
+  if (args.row.jobFit) badges.push("klus_passend");
+  if (args.row.locationChecked) badges.push("vestiging_gecontroleerd");
+  if (localConnection) badges.push("lokaal_verbonden");
+  if (professionalConnection) badges.push("professioneel_aangesloten");
+  if (args.row.evidenceLevel === "limited") badges.push("beperkt_bewijs");
+  if ((args.row.riskFlags?.length ?? 0) > 0) badges.push("risicosignaal");
   return HhhShortlistCompanySchema.parse({
     id: args.id,
     name: args.row.name,
@@ -388,12 +663,10 @@ export function cardFromFound(args: {
     email: args.row.email || undefined,
     tradeId: args.tradeId,
     tradeLabel: tradeLabel(args.tradeId),
-    status: args.row.hits.some((hit) => hit.kind !== "search") ? "lokaal_verbonden" : "gevonden",
-    badges: args.row.hits.some((hit) => hit.kind !== "search")
-      ? ["gevonden", "lokaal_verbonden"]
-      : ["gevonden"],
-    sourceCount: args.row.sourceCount,
-    score: args.row.sourceCount,
+    status: localConnection ? "lokaal_verbonden" : "geverifieerd",
+    badges,
+    sourceCount: args.row.sourceCount > 0 ? args.row.sourceCount : undefined,
+    score: Math.max(1, args.row.sourceCount),
     matchNote: args.row.matchNote,
     evidence: args.row.hits.map((hit) => ({
       kind: hit.kind,
@@ -404,15 +677,28 @@ export function cardFromFound(args: {
   });
 }
 
-export function cardFromStoredFound(company: FoundView, place: string): HhhShortlistCompany | null {
+export function cardFromStoredFound(
+  company: FoundView,
+  place: string,
+): HhhShortlistCompany | null {
   const trust = company.partnerTrust;
   if (!trust || trust.status !== "gevonden") return null;
   if (company.localAuthenticity?.verdict === "fake_local") return null;
   const trade = TradeIdSchema.safeParse(trust.tradeId);
   if (!trade.success) return null;
-  const facts = localFacts(trust);
+  const facts = reviewedFacts(trust);
   if (facts.length === 0) return null;
+  const local = localFacts(trust);
+  const professional = facts.filter((fact) => fact.kind === "professional");
   const sourceCount = Math.min(FOUND_SOURCE_CAP, facts.length);
+  const badges: HhhShortlistCompany["badges"] = [
+    "gevonden",
+    "klus_passend",
+    "vestiging_gecontroleerd",
+  ];
+  if (local.length > 0) badges.push("lokaal_verbonden");
+  if (professional.length > 0) badges.push("professioneel_aangesloten");
+  if (local.length === 0 && professional.length === 0) badges.push("beperkt_bewijs");
   return HhhShortlistCompanySchema.parse({
     id: company.id,
     name: company.name,
@@ -422,8 +708,8 @@ export function cardFromStoredFound(company: FoundView, place: string): HhhShort
     email: company.email || undefined,
     tradeId: trade.data,
     tradeLabel: tradeLabel(trade.data),
-    status: "lokaal_verbonden",
-    badges: ["gevonden", "lokaal_verbonden"],
+    status: local.length > 0 ? "lokaal_verbonden" : "geverifieerd",
+    badges,
     sourceCount,
     score: sourceCount,
     matchNote: storedMatchNote(trust, facts),
@@ -438,7 +724,7 @@ export function cardFromStoredFound(company: FoundView, place: string): HhhShort
 
 export function foundFacts(row: GeminiFoundCompany, observedAt: string): PartnerFact[] {
   return row.hits.map((hit) => ({
-    kind: hit.kind,
+    kind: hit.kind === "search" ? "search" : hit.kind,
     sourceUrl: hit.url,
     sourceName: hit.sourceName,
     observedAt,

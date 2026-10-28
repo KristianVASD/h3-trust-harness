@@ -27,7 +27,15 @@ export const CategorySignalSchema = z.enum([
 export type CategorySignal = z.infer<typeof CategorySignalSchema>;
 
 export const PartnerFactSchema = z.object({
-  kind: z.enum(["website", "list_mention", "search", "ov", "sport", "festivity"]),
+  kind: z.enum([
+    "website",
+    "list_mention",
+    "search",
+    "ov",
+    "sport",
+    "festivity",
+    "professional",
+  ]),
   sourceUrl: z.string().min(1),
   observedAt: z.string().min(1),
   expiresAt: z.string().min(1),
@@ -85,8 +93,18 @@ export const HhhShortlistCompanySchema = z.object({
   tradeLabel: z.string().min(1).optional(),
   status: z.enum(["gevonden", "geverifieerd", "lokaal_verbonden"]),
   badges: z
-    .array(z.enum(["gevonden", "lokaal_verbonden"]))
-    .max(2)
+    .array(
+      z.enum([
+        "gevonden",
+        "klus_passend",
+        "vestiging_gecontroleerd",
+        "lokaal_verbonden",
+        "professioneel_aangesloten",
+        "beperkt_bewijs",
+        "risicosignaal",
+      ]),
+    )
+    .max(7)
     .default([]),
   /** Gemini route: number of unique local sources, capped at 4. */
   sourceCount: z.number().int().min(1).max(4).optional(),
@@ -136,7 +154,9 @@ export function canonicalWebsite(raw: string): string | null {
   const host = websiteHost(raw);
   if (!host || BLOCKED_HOST.test(host)) return null;
   try {
-    const url = new URL(raw.trim().includes("://") ? raw.trim() : `https://${raw.trim()}`);
+    const url = new URL(
+      raw.trim().includes("://") ? raw.trim() : `https://${raw.trim()}`,
+    );
     url.hash = "";
     const path = url.pathname.replace(/\/$/, "");
     return `${url.protocol}//${url.hostname.replace(/^www\./i, "").toLowerCase()}${path}${url.search}`;
@@ -209,7 +229,9 @@ export function pickLocalExtras<T extends { name: string; website: string }>(
   already: readonly { name: string; website: string }[],
 ): T[] {
   const hosts = new Set(
-    already.map((row) => websiteHost(row.website)).filter((host): host is string => Boolean(host)),
+    already
+      .map((row) => websiteHost(row.website))
+      .filter((host): host is string => Boolean(host)),
   );
   const names = new Set(
     already.map((row) => foldTradeLabel(row.name)).filter((name) => name.length >= 4),
@@ -260,7 +282,8 @@ export function buildVisitList(
     const host = websiteHost(hit.website);
     const name = foldTradeLabel(hit.name);
     const doubled =
-      (host ? byHost.get(host) : undefined) ?? (name.length >= 4 ? byName.get(name) : undefined);
+      (host ? byHost.get(host) : undefined) ??
+      (name.length >= 4 ? byName.get(name) : undefined);
     const gold = hit.signal === "in_category" || Boolean(doubled);
     return {
       name: hit.name,
@@ -280,7 +303,10 @@ export function buildVisitList(
   return [...ai, ...extras].slice(0, SHORTLIST_POOL_COUNT);
 }
 
-export function elementOverlap(wanted: readonly string[], found: readonly string[]): number {
+export function elementOverlap(
+  wanted: readonly string[],
+  found: readonly string[],
+): number {
   const have = new Set(found.map((code) => code.trim().toUpperCase()).filter(Boolean));
   return wanted.filter((code) => have.has(code.trim().toUpperCase())).length;
 }
@@ -290,7 +316,11 @@ export function jobTermHits(jobText: string, focusText: string): number {
   const focus = foldTradeLabel(focusText);
   if (!focus) return 0;
   const terms = [
-    ...new Set(foldTradeLabel(jobText).split(" ").filter((term) => term.length >= 4)),
+    ...new Set(
+      foldTradeLabel(jobText)
+        .split(" ")
+        .filter((term) => term.length >= 4),
+    ),
   ];
   return terms.filter((term) => focus.includes(term)).length;
 }
@@ -331,8 +361,16 @@ export function orderPassers<
 >(rows: readonly T[]): T[] {
   return [...rows].sort((a, b) => {
     const byScore =
-      jobFitScore({ signal: b.signal, elementOverlap: b.elementOverlap, jobTermHits: b.jobTermHits }) -
-      jobFitScore({ signal: a.signal, elementOverlap: a.elementOverlap, jobTermHits: a.jobTermHits });
+      jobFitScore({
+        signal: b.signal,
+        elementOverlap: b.elementOverlap,
+        jobTermHits: b.jobTermHits,
+      }) -
+      jobFitScore({
+        signal: a.signal,
+        elementOverlap: a.elementOverlap,
+        jobTermHits: a.jobTermHits,
+      });
     if (byScore !== 0) return byScore;
     const byName = a.name.localeCompare(b.name);
     if (byName !== 0) return byName;
@@ -353,7 +391,11 @@ export function choosePublicPassers<
   return orderPassers(rows.filter((row) => row.pass)).slice(0, SHORTLIST_RETURN_COUNT);
 }
 
-export function matchNote(name: string, tradeLabelText: string, focus: readonly string[]): string {
+export function matchNote(
+  name: string,
+  tradeLabelText: string,
+  focus: readonly string[],
+): string {
   const labels = focus.map((item) => item.trim()).filter(Boolean);
   if (labels.length > 0) {
     return `${name} focuses on ${labels.join(", ")} for this ${tradeLabelText} job.`;
@@ -402,11 +444,14 @@ export function placeMatchesTrust(
   return false;
 }
 
-function qualifies(trust: PartnerTrust | undefined, tradeId: string): trust is PartnerTrust {
+function qualifies(
+  trust: PartnerTrust | undefined,
+  tradeId: string,
+): trust is PartnerTrust {
   return Boolean(
     trust &&
-      trust.tradeId === tradeId &&
-      (trust.status === "geverifieerd" || trust.status === "lokaal_verbonden"),
+    trust.tradeId === tradeId &&
+    (trust.status === "geverifieerd" || trust.status === "lokaal_verbonden"),
   );
 }
 
@@ -434,7 +479,9 @@ export function selectStalePartners(
   query: { tradeId: string; postcode4?: string; gemeente?: string },
   now = Date.now(),
 ): PartnerCompanyView[] {
-  const freshIds = new Set(selectFreshPartners(companies, query, now).map((company) => company.id));
+  const freshIds = new Set(
+    selectFreshPartners(companies, query, now).map((company) => company.id),
+  );
   return companies
     .filter((company) => {
       const trust = company.partnerTrust;
@@ -442,7 +489,11 @@ export function selectStalePartners(
       if (!placeMatchesTrust(trust, query)) return false;
       return Boolean(company.website_url);
     })
-    .sort((a, b) => (b.partnerTrust?.score ?? 0) - (a.partnerTrust?.score ?? 0) || a.name.localeCompare(b.name))
+    .sort(
+      (a, b) =>
+        (b.partnerTrust?.score ?? 0) - (a.partnerTrust?.score ?? 0) ||
+        a.name.localeCompare(b.name),
+    )
     .slice(0, SHORTLIST_SEARCH_COUNT);
 }
 
@@ -476,8 +527,7 @@ export function toPublicPartner(
   const trade = TradeIdSchema.safeParse(trust.tradeId);
   if (!trade.success) return null;
   const note =
-    trust.matchNote?.trim() ||
-    matchNote(company.name, trade.data, trust.elementCodes);
+    trust.matchNote?.trim() || matchNote(company.name, trade.data, trust.elementCodes);
   return {
     id: company.id,
     name: company.name,
