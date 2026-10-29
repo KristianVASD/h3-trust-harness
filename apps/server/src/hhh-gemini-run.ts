@@ -37,6 +37,8 @@ import type { PlaceCellStore } from "./place-cell-store.js";
 import type { Store } from "@h3-trust/store";
 
 const STALE_MS = 90_000;
+/** Start another model wave only while the 60s function still has room to finish it. */
+const WAVE_BUDGET_MS = 30_000;
 
 type GeminiStage =
   | "lookup"
@@ -261,30 +263,66 @@ function publishHeld(payload: GeminiPayload): HhhPublicShortlist {
   return listed;
 }
 
-async function find(payload: GeminiPayload): Promise<HhhPublicShortlist | null> {
-  const found = await findLocalCompanies({
-    tradeLabel: tradeLabel(payload.tradeId),
-    jobText: payload.jobText,
-    place: [payload.placeLabel, payload.postcode4].filter(Boolean).join(" "),
-  });
-  addUsage(payload, found.usage);
-  const candidates = found.companies;
-  payload.candidates = candidates;
-  payload.findSkips = found.skipped;
-  payload.findRaw = found.raw || undefined;
-  note(
-    payload,
-    found.parsed
-      ? `Find step kept ${found.companies.length} companies${found.skipped.length ? `, skipped ${found.skipped.length}` : ""}.`
-      : "Find step reply was not usable JSON.",
-  );
-  if (candidates.length === 0) {
-    payload.found = [];
-    payload.stage = "done";
-    return HhhPublicShortlistSchema.parse({ fromCache: false, companies: [] });
+function noteCutOff(payload: GeminiPayload, label: string, cutOff: boolean): void {
+  if (cutOff) note(payload, `${label} reply was incomplete.`);
+}
+
+function searchPlace(payload: GeminiPayload): string {
+  return [payload.placeLabel, payload.postcode4].filter(Boolean).join(" ");
+}
+
+/** Candidate discovery and the source map do not need each other's answers. */
+async function discoverWave(payload: GeminiPayload): Promise<void> {
+  const runFind = payload.stage === "find";
+  const trade = tradeLabel(payload.tradeId);
+  const [foundResult, landscapeResult] = await Promise.allSettled([
+    runFind
+      ? findLocalCompanies({
+          tradeLabel: trade,
+          jobText: payload.jobText,
+          place: searchPlace(payload),
+        })
+      : Promise.resolve(null),
+    findGeminiLandscape({
+      place: payload.placeLabel,
+      tradeLabel: trade,
+      jobText: payload.jobText,
+    }),
+  ]);
+  if (foundResult.status === "fulfilled" && foundResult.value) {
+    const found = foundResult.value;
+    addUsage(payload, found.usage);
+    payload.candidates = found.companies;
+    payload.findSkips = found.skipped;
+    payload.findRaw = found.raw || undefined;
+    note(
+      payload,
+      found.parsed
+        ? `Find step kept ${found.companies.length} companies${found.skipped.length ? `, skipped ${found.skipped.length}` : ""}.`
+        : "Find step reply was not usable JSON.",
+    );
+    noteCutOff(payload, "Find", found.cutOff);
+  } else if (foundResult.status === "rejected") {
+    note(
+      payload,
+      `Find step unavailable: ${foundResult.reason instanceof Error ? foundResult.reason.message : String(foundResult.reason)}`,
+    );
   }
-  payload.stage = "sources";
-  return null;
+  if (landscapeResult.status === "fulfilled") {
+    payload.landscape = landscapeResult.value.landscape;
+    addUsage(payload, landscapeResult.value.usage);
+    note(
+      payload,
+      `Found ${landscapeResult.value.landscape.sources.length} cited local or professional sources.`,
+    );
+    noteCutOff(payload, "Source", landscapeResult.value.cutOff);
+  } else {
+    note(
+      payload,
+      `Source landscape unavailable: ${landscapeResult.reason instanceof Error ? landscapeResult.reason.message : String(landscapeResult.reason)}`,
+    );
+  }
+  payload.stage = "candidateEvidence";
 }
 
 export function candidateBatches(
@@ -293,52 +331,73 @@ export function candidateBatches(
   return [candidates.slice(0, 5), candidates.slice(5, 10)];
 }
 
-async function discoverSources(payload: GeminiPayload): Promise<void> {
-  try {
-    const result = await findGeminiLandscape({
-      place: payload.placeLabel,
-      tradeLabel: tradeLabel(payload.tradeId),
-      jobText: payload.jobText,
-    });
-    payload.landscape = result.landscape;
-    addUsage(payload, result.usage);
+async function investigateWave(
+  payload: GeminiPayload,
+): Promise<HhhPublicShortlist | null> {
+  const trade = tradeLabel(payload.tradeId);
+  const runEvidence =
+    payload.stage === "candidateEvidence" && payload.candidates.length > 0;
+  const runExtra = payload.landscape.sources.length > 0;
+  const [evidenceResult, extraResult] = await Promise.allSettled([
+    runEvidence
+      ? checkGeminiCandidateEvidence({
+          place: payload.placeLabel,
+          tradeLabel: trade,
+          jobText: payload.jobText,
+          candidates: payload.candidates,
+          landscape: payload.landscape,
+        })
+      : Promise.resolve(null),
+    runExtra
+      ? findGeminiSourceCandidates({
+          place: payload.placeLabel,
+          tradeLabel: trade,
+          jobText: payload.jobText,
+          landscape: payload.landscape,
+        })
+      : Promise.resolve(null),
+  ]);
+  if (evidenceResult.status === "fulfilled" && evidenceResult.value) {
+    payload.evidence = evidenceResult.value.evidence;
+    addUsage(payload, evidenceResult.value.usage);
     note(
       payload,
-      `Found ${result.landscape.sources.length} cited local or professional sources.`,
+      `Recorded cited evidence for ${evidenceResult.value.evidence.companies.length} candidates.`,
     );
-  } catch (err) {
-    note(
-      payload,
-      `Source landscape unavailable: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    payload.landscape = { sources: [] };
-  }
-  payload.stage = "candidateEvidence";
-}
-
-async function investigateCandidates(payload: GeminiPayload): Promise<void> {
-  try {
-    const result = await checkGeminiCandidateEvidence({
-      place: payload.placeLabel,
-      tradeLabel: tradeLabel(payload.tradeId),
-      jobText: payload.jobText,
-      candidates: payload.candidates,
-      landscape: payload.landscape,
-    });
-    payload.evidence = result.evidence;
-    addUsage(payload, result.usage);
-    note(
-      payload,
-      `Recorded cited evidence for ${result.evidence.companies.length} candidates.`,
-    );
-  } catch (err) {
-    note(
-      payload,
-      `Candidate evidence unavailable: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    noteCutOff(payload, "Evidence", evidenceResult.value.cutOff);
+  } else if (evidenceResult.status === "rejected") {
     payload.evidence = { companies: [] };
+    note(
+      payload,
+      `Candidate evidence unavailable: ${evidenceResult.reason instanceof Error ? evidenceResult.reason.message : String(evidenceResult.reason)}`,
+    );
   }
-  payload.stage = "sourceCandidates";
+  if (extraResult.status === "fulfilled" && extraResult.value) {
+    payload.candidates = mergeGeminiCandidates(
+      payload.candidates,
+      extraResult.value.candidates,
+      12,
+    );
+    payload.evidence = mergeEvidence(payload.evidence, extraResult.value.evidence);
+    addUsage(payload, extraResult.value.usage);
+    note(
+      payload,
+      `Added ${extraResult.value.candidates.length} cited source candidates; ${payload.candidates.length} to review.`,
+    );
+    noteCutOff(payload, "Source candidates", extraResult.value.cutOff);
+  } else if (extraResult.status === "rejected") {
+    note(
+      payload,
+      `Source candidates unavailable: ${extraResult.reason instanceof Error ? extraResult.reason.message : String(extraResult.reason)}`,
+    );
+  }
+  if (payload.candidates.length === 0) {
+    payload.found = [];
+    payload.stage = "done";
+    return HhhPublicShortlistSchema.parse({ fromCache: false, companies: [] });
+  }
+  payload.stage = "review";
+  return null;
 }
 
 function mergeEvidence(
@@ -346,30 +405,6 @@ function mergeEvidence(
   right: GeminiEvidenceResult,
 ): GeminiEvidenceResult {
   return { companies: [...left.companies, ...right.companies] };
-}
-
-async function discoverSourceCandidates(payload: GeminiPayload): Promise<void> {
-  try {
-    const result = await findGeminiSourceCandidates({
-      place: payload.placeLabel,
-      tradeLabel: tradeLabel(payload.tradeId),
-      jobText: payload.jobText,
-      landscape: payload.landscape,
-    });
-    payload.candidates = mergeGeminiCandidates(payload.candidates, result.candidates, 12);
-    payload.evidence = mergeEvidence(payload.evidence, result.evidence);
-    addUsage(payload, result.usage);
-    note(
-      payload,
-      `Added ${result.candidates.length} cited source candidates; ${payload.candidates.length} to review.`,
-    );
-  } catch (err) {
-    note(
-      payload,
-      `Source candidates unavailable: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-  payload.stage = "review";
 }
 
 async function review(payload: GeminiPayload): Promise<void> {
@@ -382,6 +417,7 @@ async function review(payload: GeminiPayload): Promise<void> {
   });
   payload.review = result.review;
   addUsage(payload, result.usage);
+  noteCutOff(payload, "Review", result.cutOff);
   payload.found = reviewedGeminiCompanies(
     payload.candidates,
     payload.evidence,
@@ -574,42 +610,59 @@ export async function runGeminiFoundSlice(args: {
   });
   try {
     let outcome: "continue" | "ready" = "continue";
-    if (payload.stage === "lookup")
-      outcome = await lookup(args.store, payload, (next) => (publicResult = next));
-    else if (payload.stage === "find") {
-      const tries = payload.progress.filter((line) =>
-        line.startsWith("Searching the live web"),
-      ).length;
-      if (tries >= 2) {
-        payload.stage = "done";
-        note(payload, "Live search was started twice and did not finish.");
-        publicResult = HhhPublicShortlistSchema.parse({
-          fromCache: false,
-          companies: [],
-        });
-      } else {
-        note(payload, "Searching the live web for local companies.");
+    const waveStarted = Date.now();
+    let waves = 0;
+    while (outcome === "continue" && payload.stage !== "done") {
+      if (waves > 0 && Date.now() - waveStarted > WAVE_BUDGET_MS) break;
+      if (payload.stage === "lookup") {
+        outcome = await lookup(args.store, payload, (next) => (publicResult = next));
+      } else if (payload.stage === "find" || payload.stage === "sources") {
+        if (payload.stage === "find") {
+          const tries = payload.progress.filter((line) =>
+            line.startsWith("Searching the live web"),
+          ).length;
+          if (tries >= 2) {
+            payload.stage = "done";
+            note(payload, "Live search was started twice and did not finish.");
+            publicResult = HhhPublicShortlistSchema.parse({
+              fromCache: false,
+              companies: [],
+            });
+          } else {
+            note(payload, "Searching the live web for local companies.");
+            await savePartnerJob(args.admin, {
+              id: job.id,
+              status: "running",
+              payload: { ...payload },
+              publicResult,
+            });
+            await discoverWave(payload);
+          }
+        } else {
+          await discoverWave(payload);
+        }
+      } else if (
+        payload.stage === "candidateEvidence" ||
+        payload.stage === "sourceCandidates"
+      ) {
+        const listed = await investigateWave(payload);
+        if (listed) publicResult = listed;
+      } else if (payload.stage === "review") {
+        await review(payload);
+      } else if (payload.stage === "store") {
+        publicResult = publishHeld(payload);
+      } else outcome = "ready";
+      if (payload.stage === "done") outcome = "ready";
+      waves += 1;
+      if (outcome === "continue") {
         await savePartnerJob(args.admin, {
           id: job.id,
           status: "running",
           payload: { ...payload },
           publicResult,
         });
-        const listed = await find(payload);
-        if (listed) publicResult = listed;
       }
-    } else if (payload.stage === "sources") {
-      await discoverSources(payload);
-    } else if (payload.stage === "candidateEvidence") {
-      await investigateCandidates(payload);
-    } else if (payload.stage === "sourceCandidates") {
-      await discoverSourceCandidates(payload);
-    } else if (payload.stage === "review") {
-      await review(payload);
-    } else if (payload.stage === "store") {
-      publicResult = publishHeld(payload);
-    } else outcome = "ready";
-    if (payload.stage === "done") outcome = "ready";
+    }
     if (outcome === "ready") {
       await commitSearchResult(
         args,

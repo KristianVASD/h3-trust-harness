@@ -50,7 +50,15 @@ function collectUrls(payload: unknown): string[] {
   return [...urls];
 }
 
-type Completion = { content: string; urls: string[]; usage: GeminiUsage };
+type Completion = {
+  content: string;
+  urls: string[];
+  usage: GeminiUsage;
+  cutOff: boolean;
+};
+
+/** Reply room for a test run. The model is not told this number. */
+const OUTPUT_TOKENS = 20_000;
 
 function readUsage(value: unknown): GeminiUsage {
   const row =
@@ -83,10 +91,14 @@ async function complete(body: Record<string, unknown>): Promise<Completion> {
     throw new Error(`OpenRouter ${res.status}: ${text.slice(0, 300)}`);
   }
   const payload = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string; annotations?: Annotation[] } }>;
+    choices?: Array<{
+      finish_reason?: string;
+      message?: { content?: string; annotations?: Annotation[] };
+    }>;
     usage?: unknown;
   };
-  const message = payload.choices?.[0]?.message;
+  const choice = payload.choices?.[0];
+  const message = choice?.message;
   const content = message?.content?.trim() ?? "";
   const urls = collectUrls({
     annotations: message?.annotations ?? [],
@@ -96,7 +108,12 @@ async function complete(body: Record<string, unknown>): Promise<Completion> {
     const url = annotation.url_citation?.url;
     if (url) urls.push(url);
   }
-  return { content, urls: [...new Set(urls)], usage: readUsage(payload.usage) };
+  return {
+    content,
+    urls: [...new Set(urls)],
+    usage: readUsage(payload.usage),
+    cutOff: choice?.finish_reason === "length",
+  };
 }
 
 async function ask(
@@ -110,7 +127,7 @@ async function ask(
     plugins: [{ id: "web", max_results: options.maxResults ?? 5 }],
     provider: { sort: "price" },
     temperature: 0.1,
-    max_tokens: options.maxTokens ?? 1600,
+    max_tokens: options.maxTokens ?? OUTPUT_TOKENS,
     reasoning: { enabled: false },
   };
   try {
@@ -123,7 +140,7 @@ async function ask(
       model: online,
       messages,
       temperature: 0.1,
-      max_tokens: options.maxTokens ?? 1600,
+      max_tokens: options.maxTokens ?? OUTPUT_TOKENS,
       reasoning: { enabled: false },
     });
   }
@@ -185,6 +202,7 @@ export async function findLocalCompanies(args: {
   raw: string;
   parsed: boolean;
   usage: GeminiUsage;
+  cutOff: boolean;
 }> {
   const jobLine =
     args.jobText.trim() ||
@@ -213,7 +231,7 @@ export async function findLocalCompanies(args: {
       ].join("\n"),
     },
   ];
-  const { content, usage } = await ask(messages, { maxResults: 10, maxTokens: 1600 });
+  const { content, usage, cutOff } = await ask(messages, { maxResults: 10 });
   if (!content) {
     throw new Error(
       "Find step returned no company list. The model used the whole reply before the JSON.",
@@ -230,7 +248,14 @@ export async function findLocalCompanies(args: {
   }
   const reviewed = reviewFoundFirms(proposed);
   if (reviewed.kept.length === 0 && !raw) raw = content.slice(0, 500);
-  return { companies: reviewed.kept, skipped: reviewed.skipped, raw, parsed, usage };
+  return {
+    companies: reviewed.kept,
+    skipped: reviewed.skipped,
+    raw,
+    parsed,
+    usage,
+    cutOff,
+  };
 }
 
 function citationKey(raw: string): string | null {
@@ -319,7 +344,7 @@ export async function findGeminiLandscape(args: {
   place: string;
   tradeLabel: string;
   jobText: string;
-}): Promise<{ landscape: GeminiLandscape; usage: GeminiUsage }> {
+}): Promise<{ landscape: GeminiLandscape; usage: GeminiUsage; cutOff: boolean }> {
   const messages = [
     {
       role: "system",
@@ -337,14 +362,12 @@ export async function findGeminiLandscape(args: {
       content: `Plaats: ${args.place}\nVak: ${args.tradeLabel}\nKlus: ${args.jobText}\nVind maximaal 12 bruikbare openbare bronnen.`,
     },
   ];
-  const { content, urls, usage } = await ask(messages, {
-    maxResults: 12,
-    maxTokens: 1300,
-  });
+  const { content, urls, usage, cutOff } = await ask(messages, { maxResults: 12 });
   const parsed = GeminiLandscapeSchema.parse(parseJsonObject(content));
   return {
     landscape: filterLandscapeToCitations(parsed, urls),
     usage,
+    cutOff,
   };
 }
 
@@ -364,7 +387,7 @@ export async function checkGeminiCandidateEvidence(args: {
   jobText: string;
   candidates: readonly GeminiCandidate[];
   landscape: GeminiLandscape;
-}): Promise<{ evidence: GeminiEvidenceResult; usage: GeminiUsage }> {
+}): Promise<{ evidence: GeminiEvidenceResult; usage: GeminiUsage; cutOff: boolean }> {
   const messages = [
     {
       role: "system",
@@ -388,14 +411,12 @@ export async function checkGeminiCandidateEvidence(args: {
       ].join("\n"),
     },
   ];
-  const { content, urls, usage } = await ask(messages, {
-    maxResults: 12,
-    maxTokens: 1900,
-  });
+  const { content, urls, usage, cutOff } = await ask(messages, { maxResults: 12 });
   const parsed = GeminiEvidenceResultSchema.parse(parseJsonObject(content));
   return {
     evidence: filterEvidenceToCitations(parsed, urls),
     usage,
+    cutOff,
   };
 }
 
@@ -408,6 +429,7 @@ export async function findGeminiSourceCandidates(args: {
   candidates: GeminiCandidate[];
   evidence: GeminiEvidenceResult;
   usage: GeminiUsage;
+  cutOff: boolean;
 }> {
   const messages = [
     {
@@ -430,10 +452,7 @@ export async function findGeminiSourceCandidates(args: {
       ].join("\n"),
     },
   ];
-  const { content, urls, usage } = await ask(messages, {
-    maxResults: 10,
-    maxTokens: 1500,
-  });
+  const { content, urls, usage, cutOff } = await ask(messages, { maxResults: 10 });
   const parsed = GeminiSourceCandidatesSchema.parse(parseJsonObject(content));
   const cited = citationSet(urls);
   const accepted = parsed.companies.filter(
@@ -473,6 +492,7 @@ export async function findGeminiSourceCandidates(args: {
       })),
     },
     usage,
+    cutOff,
   };
 }
 
@@ -482,7 +502,7 @@ export async function reviewGeminiCompanies(args: {
   jobText: string;
   candidates: readonly GeminiCandidate[];
   evidence: GeminiEvidenceResult;
-}): Promise<{ review: GeminiReview; usage: GeminiUsage }> {
+}): Promise<{ review: GeminiReview; usage: GeminiUsage; cutOff: boolean }> {
   const messages = [
     {
       role: "system",
@@ -508,10 +528,7 @@ export async function reviewGeminiCompanies(args: {
       ].join("\n"),
     },
   ];
-  const { content, urls, usage } = await ask(messages, {
-    maxResults: 12,
-    maxTokens: 1700,
-  });
+  const { content, urls, usage, cutOff } = await ask(messages, { maxResults: 12 });
   const parsed = GeminiReviewSchema.parse(parseJsonObject(content));
   const cited = citationSet(urls);
   return {
@@ -528,6 +545,7 @@ export async function reviewGeminiCompanies(args: {
       }),
     },
     usage,
+    cutOff,
   };
 }
 
@@ -566,7 +584,7 @@ export async function checkLocalMentions(args: {
       ].join("\n"),
     },
   ];
-  const { content, urls } = await ask(messages, { maxResults: 10, maxTokens: 1900 });
+  const { content, urls } = await ask(messages, { maxResults: 10 });
   const parsed = GeminiCheckSchema.safeParse(parseJsonObject(content));
   if (!parsed.success) {
     throw new Error(
