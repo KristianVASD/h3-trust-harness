@@ -442,7 +442,9 @@ export function ControlHhhPage() {
                                   firm.name
                                 )}
                                 <div className="muted">
-                                  {[firm.address, firm.phone, firm.website ? "" : "no website"].filter(Boolean).join(" · ")}
+                                  {[firm.address, firm.phone, firm.email, firm.website ? "" : "no website"]
+                                    .filter(Boolean)
+                                    .join(" · ")}
                                 </div>
                               </li>
                             ))}
@@ -484,6 +486,17 @@ export function ControlHhhPage() {
                                   : `${company.status} · ${company.score}`}
                               </span>
                               <div className="muted">{company.matchNote}</div>
+                              {company.email ? (
+                                <div className="muted">
+                                  <a href={`mailto:${company.email}`}>{company.email}</a>
+                                </div>
+                              ) : company.contactUrl ? (
+                                <div className="muted">
+                                  <a href={company.contactUrl} target="_blank" rel="noreferrer">
+                                    Contact page
+                                  </a>
+                                </div>
+                              ) : null}
                             </li>
                           ))}
                         </ul>

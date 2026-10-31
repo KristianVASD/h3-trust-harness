@@ -87,9 +87,17 @@ export type HhhDeskJob = {
     status: string;
     score: number;
     matchNote: string;
+    email?: string;
+    contactUrl?: string;
   }>;
   withheld: string[];
-  foundFirms: Array<{ name: string; website: string; phone: string; address: string }>;
+  foundFirms: Array<{
+    name: string;
+    website: string;
+    phone: string;
+    address: string;
+    email: string;
+  }>;
   checkedFirms: Array<{ name: string; website: string; matchNote: string }>;
   findSkips: string[];
   findRaw?: string;

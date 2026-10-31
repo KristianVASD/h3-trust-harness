@@ -107,9 +107,17 @@ export type HhhDeskJob = {
     status: string;
     score: number;
     matchNote: string;
+    email?: string;
+    contactUrl?: string;
   }>;
   withheld: string[];
-  foundFirms: Array<{ name: string; website: string; phone: string; address: string }>;
+  foundFirms: Array<{
+    name: string;
+    website: string;
+    phone: string;
+    address: string;
+    email: string;
+  }>;
   checkedFirms: Array<{ name: string; website: string; matchNote: string }>;
   findSkips: string[];
   findRaw?: string;
@@ -132,11 +140,13 @@ export function toDeskJob(row: Record<string, unknown>): HhhDeskJob {
     status: company.status,
     score: company.score,
     matchNote: company.matchNote,
+    email: company.email,
+    contactUrl: company.contactUrl,
   }));
   const withheld = Array.isArray(payload.drops)
     ? payload.drops.filter((item): item is string => typeof item === "string")
     : [];
-  const firmOf = (value: unknown): { name: string; website: string; phone: string; address: string; matchNote: string } | null => {
+  const firmOf = (value: unknown): { name: string; website: string; phone: string; address: string; email: string; matchNote: string } | null => {
     if (!value || typeof value !== "object") return null;
     const row = value as Record<string, unknown>;
     const name = textOf(row.name);
@@ -146,12 +156,15 @@ export function toDeskJob(row: Record<string, unknown>): HhhDeskJob {
       website: textOf(row.website),
       phone: textOf(row.phone),
       address: textOf(row.address),
+      email: textOf(row.email),
       matchNote: textOf(row.matchNote),
     };
   };
   const foundFirms = (Array.isArray(payload.candidates) ? payload.candidates : []).flatMap((item) => {
     const firm = firmOf(item);
-    return firm ? [{ name: firm.name, website: firm.website, phone: firm.phone, address: firm.address }] : [];
+    return firm
+      ? [{ name: firm.name, website: firm.website, phone: firm.phone, address: firm.address, email: firm.email }]
+      : [];
   });
   const checkedFirms = (Array.isArray(payload.found) ? payload.found : []).flatMap((item) => {
     const firm = firmOf(item);

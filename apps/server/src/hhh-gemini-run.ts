@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  CompanySchema,
   HhhPublicShortlistSchema,
   GeminiEvidenceResultSchema,
   GeminiLandscapeSchema,
@@ -9,12 +10,13 @@ import {
   cardFromStoredFound,
   lookupFoundOutcome,
   mergeGeminiCandidates,
+  publicHttpUrl,
   reviewedGeminiCompanies,
   selectFreshFound,
   tradeLabel,
+  type GeminiFoundCompany,
   type GeminiCandidate,
   type GeminiEvidenceResult,
-  type GeminiFoundCompany,
   type GeminiLandscape,
   type GeminiReview,
   type GeminiUsage,
@@ -28,6 +30,7 @@ import {
   findLocalCompanies,
   reviewGeminiCompanies,
 } from "./hhh-gemini-search.js";
+import { fillCandidateContacts } from "./site-contact.js";
 import { getPartnerJob, savePartnerJob } from "./hhh-shortlist-jobs.js";
 import {
   loadFoundCompaniesForPlace,
@@ -97,6 +100,7 @@ function readCandidates(value: unknown): GeminiCandidate[] {
         address: asString(row.address) ?? "",
         phone: asString(row.phone) ?? "",
         email: asString(row.email) ?? "",
+        contactUrl: publicHttpUrl(asString(row.contactUrl)),
         candidateBasis: Array.isArray(row.candidateBasis)
           ? row.candidateBasis.filter((item): item is string => typeof item === "string")
           : [],
@@ -207,6 +211,37 @@ function placeQuery(payload: GeminiPayload) {
   };
 }
 
+async function fillStoredContacts(
+  store: Store,
+  companies: Array<{ name: string; website_url?: string; phone?: string; email?: string }>,
+): Promise<number> {
+  const missing = companies.filter((company) => !company.email?.trim() && company.website_url);
+  if (missing.length === 0) return 0;
+  const filled = await fillCandidateContacts(
+    missing.map((company) => ({
+      name: company.name,
+      website: company.website_url ?? "",
+      address: "",
+      phone: company.phone ?? "",
+      email: "",
+    })),
+    { companies: [] },
+  ).catch(() => null);
+  if (!filled) return 0;
+  const observedAt = new Date().toISOString();
+  let count = 0;
+  for (let index = 0; index < missing.length; index += 1) {
+    const email = filled.candidates[index]?.email.trim();
+    if (!email) continue;
+    const company = missing[index]!;
+    company.email = email;
+    count += 1;
+    const next = CompanySchema.safeParse({ ...company, email, updatedAt: observedAt });
+    if (next.success) await store.upsert("companies", next.data).catch(() => undefined);
+  }
+  return count;
+}
+
 async function lookup(
   store: Store,
   payload: GeminiPayload,
@@ -215,6 +250,10 @@ async function lookup(
   const companies = await loadFoundCompaniesForPlace(store, placeQuery(payload));
   const fresh = selectFreshFound(companies, placeQuery(payload));
   if (lookupFoundOutcome(fresh.length) === "ready") {
+    const filledEmails = await fillStoredContacts(store, fresh);
+    if (filledEmails > 0) {
+      note(payload, `Site contact filled ${filledEmails} stored public email${filledEmails === 1 ? "" : "s"}.`);
+    }
     const cards = fresh.flatMap((company) => {
       const card = cardFromStoredFound(company, payload.placeLabel);
       return card ? [card] : [];
@@ -408,6 +447,14 @@ function mergeEvidence(
 }
 
 async function review(payload: GeminiPayload): Promise<void> {
+  const contact = await fillCandidateContacts(payload.candidates, payload.evidence);
+  payload.candidates = contact.candidates;
+  if (contact.filled > 0 || contact.contactOnly > 0) {
+    note(
+      payload,
+      `Site contact filled ${contact.filled} public email${contact.filled === 1 ? "" : "s"} and left ${contact.contactOnly} contact page${contact.contactOnly === 1 ? "" : "s"}.`,
+    );
+  }
   const result = await reviewGeminiCompanies({
     place: payload.placeLabel,
     tradeLabel: tradeLabel(payload.tradeId),

@@ -4,11 +4,14 @@ import {
   GeminiCheckSchema,
   cardFromFound,
   cardFromStoredFound,
+  chooseSiteEmail,
   companiesWithLocalMention,
   directoryHostsIn,
+  emailsInPage,
   mergeGeminiCandidates,
   reviewFoundFirms,
   reviewedGeminiCompanies,
+  sameHostContactUrl,
   selectFoundFirms,
   selectFreshFound,
   type GeminiCandidate,
@@ -16,6 +19,7 @@ import {
   type GeminiReview,
 } from "@h3-trust/schema";
 import { candidateBatches, readGeminiPayload } from "./hhh-gemini-run.js";
+import { fillCandidateContacts } from "./site-contact.js";
 import {
   filterCheckToCitations,
   filterEvidenceToCitations,
@@ -1237,5 +1241,152 @@ describe("four-step Gemini review", () => {
     });
     assert.equal(payload?.stage, "sourceCandidates");
     assert.equal(payload?.tokenUsage.totalTokens, 7000);
+  });
+});
+
+const KROON_CONTACT = `
+  <a href="mailto:info@kroonenergie.nl?subject=Offerte">mail</a>
+  <p>Heereweg 337A, 2161 BL Lisse T: 0252 – 823 079 E: info@kroonenergie.nl</p>
+  <img src="https://kroonenergie.nl/logo.png" />
+  <script>Sentry.init({dsn:"https://abc@sentry.io/1"})</script>
+`;
+
+describe("site contact", () => {
+  it("reads the public address on the Kroon contact page and ignores trackers", () => {
+    assert.deepEqual(emailsInPage(KROON_CONTACT), ["info@kroonenergie.nl"]);
+  });
+
+  it("reads an obfuscated address and a same-site contact link", () => {
+    const html = `<a href="/contact-kroon-energie-lisse/">Contact</a> info (at) kroonenergie.nl`;
+    assert.deepEqual(emailsInPage(html), ["info@kroonenergie.nl"]);
+    assert.equal(
+      sameHostContactUrl(html, "https://kroonenergie.nl/"),
+      "https://kroonenergie.nl/contact-kroon-energie-lisse/",
+    );
+  });
+
+  it("keeps a model address until the company domain shows a different one", () => {
+    assert.equal(
+      chooseSiteEmail({
+        found: ["info@hommabv.nl"],
+        ownHost: "homma.nl",
+        current: "info@hommabv.nl",
+      }),
+      "info@hommabv.nl",
+    );
+    assert.equal(
+      chooseSiteEmail({
+        found: ["info@kroonenergie.nl", "sales@kroonenergie.nl"],
+        ownHost: "kroonenergie.nl",
+        current: "",
+      }),
+      "info@kroonenergie.nl",
+    );
+    assert.equal(
+      chooseSiteEmail({
+        found: ["info@kroonenergie.nl"],
+        ownHost: "kroonenergie.nl",
+        current: "someone@gmail.com",
+      }),
+      "info@kroonenergie.nl",
+    );
+  });
+
+  it("fills an empty email from the cited contact page", async () => {
+    const kroon: GeminiCandidate = {
+      name: "Kroon Energie Lisse",
+      website: "http://kroonenergie.nl",
+      address: "Heereweg 337A, 2161 BL Lisse",
+      phone: "+31252823079",
+      email: "",
+    };
+    const evidence: GeminiEvidenceResult = {
+      companies: [
+        {
+          name: "Kroon Energie Lisse",
+          claims: [
+            {
+              observed_name: "Kroon Energie",
+              claim_type: "identity",
+              outcome: "confirmed",
+              source_url: "https://kroonenergie.nl/contact-kroon-energie-lisse/",
+              source_name: "kroonenergie.nl",
+              note: "Contactpagina bevestigt adres en telefoon.",
+            },
+          ],
+        },
+      ],
+    };
+    const result = await fillCandidateContacts([kroon], evidence, async (url) => ({
+      url,
+      ok: true,
+      status: 200,
+      html: KROON_CONTACT,
+      text: "info@kroonenergie.nl",
+    }));
+    assert.equal(result.filled, 1);
+    assert.equal(result.candidates[0]?.email, "info@kroonenergie.nl");
+    assert.equal(result.candidates[0]?.contactUrl, undefined);
+  });
+
+  it("keeps the contact page when the site shows no address", async () => {
+    const firm: GeminiCandidate = {
+      name: "Zonder Mail",
+      website: "https://zonder.example",
+      address: "Lisse",
+      phone: "0252123456",
+      email: "",
+    };
+    const result = await fillCandidateContacts([firm], { companies: [] }, async (url) => ({
+      url,
+      ok: true,
+      status: 200,
+      html: `<a href="/contact/">Contact</a><p>Bel ons</p>`,
+      text: "Bel ons",
+    }));
+    assert.equal(result.filled, 0);
+    assert.equal(result.contactOnly, 1);
+    assert.equal(result.candidates[0]?.email, "");
+    assert.equal(result.candidates[0]?.contactUrl, "https://zonder.example/contact/");
+  });
+
+  it("publishes the contact page on the card only when the email is missing", () => {
+    const row = {
+      name: "Kroon Energie Lisse",
+      website: "http://kroonenergie.nl",
+      address: "Heereweg 337A",
+      phone: "+31252823079",
+      email: "",
+      contactUrl: "https://kroonenergie.nl/contact-kroon-energie-lisse/",
+      sourceCount: 1,
+      matchNote: "Lokaal zonne-energiebedrijf.",
+      hits: [
+        {
+          kind: "website" as const,
+          sourceName: "kroonenergie.nl",
+          url: "https://kroonenergie.nl/",
+          relation: "Contactpagina",
+          host: "kroonenergie.nl",
+        },
+      ],
+    };
+    const card = cardFromFound({
+      id: "88888888-8888-4888-8888-888888888888",
+      row,
+      place: "Lisse",
+      tradeId: "solar",
+      observedAt: "2026-10-31T00:00:00.000Z",
+    });
+    assert.equal(card.email, undefined);
+    assert.equal(card.contactUrl, "https://kroonenergie.nl/contact-kroon-energie-lisse/");
+    const withEmail = cardFromFound({
+      id: "88888888-8888-4888-8888-888888888888",
+      row: { ...row, email: "info@kroonenergie.nl" },
+      place: "Lisse",
+      tradeId: "solar",
+      observedAt: "2026-10-31T00:00:00.000Z",
+    });
+    assert.equal(withEmail.email, "info@kroonenergie.nl");
+    assert.equal(withEmail.contactUrl, undefined);
   });
 });

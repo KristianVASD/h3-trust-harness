@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { publicHttpUrl } from "./site-email";
 import { foldTradeLabel, tradeLabel, TradeIdSchema, type TradeId } from "./trades";
 import {
   HhhShortlistCompanySchema,
@@ -153,6 +154,8 @@ export type GeminiCandidate = {
   address: string;
   phone: string;
   email: string;
+  /** Set when the company site had no public email. */
+  contactUrl?: string;
   candidateBasis?: string[];
   riskFlags?: string[];
 };
@@ -661,6 +664,9 @@ export function cardFromFound(args: {
     website: args.row.website,
     phone: args.row.phone || undefined,
     email: args.row.email || undefined,
+    contactUrl: args.row.email?.trim()
+      ? undefined
+      : publicHttpUrl(args.row.contactUrl) ?? publicHttpUrl(args.row.website),
     tradeId: args.tradeId,
     tradeLabel: tradeLabel(args.tradeId),
     status: localConnection ? "lokaal_verbonden" : "geverifieerd",
@@ -706,6 +712,7 @@ export function cardFromStoredFound(
     website: company.website_url ?? "",
     phone: company.phone || undefined,
     email: company.email || undefined,
+    contactUrl: company.email?.trim() ? undefined : publicHttpUrl(company.website_url),
     tradeId: trade.data,
     tradeLabel: tradeLabel(trade.data),
     status: local.length > 0 ? "lokaal_verbonden" : "geverifieerd",

@@ -89,6 +89,8 @@ export const HhhShortlistCompanySchema = z.object({
   website: z.string().default(""),
   phone: z.string().optional(),
   email: z.string().optional(),
+  /** Company contact page, present when no public email was found. */
+  contactUrl: z.string().optional(),
   tradeId: TradeIdSchema,
   tradeLabel: z.string().min(1).optional(),
   status: z.enum(["gevonden", "geverifieerd", "lokaal_verbonden"]),
