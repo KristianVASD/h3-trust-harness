@@ -21,8 +21,17 @@ const STAGE_RAIL = [
 
 function tone(status: HhhDeskJob["status"]): "done" | "active" | "waiting" {
   if (status === "ready") return "done";
-  if (status === "failed") return "waiting";
+  if (status === "failed" || status === "deep_search") return "waiting";
   return "active";
+}
+
+function isDeepSearch(job: HhhDeskJob): boolean {
+  return job.deepSearch === true || job.status === "deep_search";
+}
+
+function deepPlace(job: HhhDeskJob): string {
+  const bits = [job.postcode4, job.gemeente].filter(Boolean);
+  return bits.length > 0 ? bits.join(" · ") : job.place || "Plaats niet meegegeven";
 }
 
 function placeOf(job: HhhDeskJob): string {
@@ -88,7 +97,14 @@ export function ControlHhhPage() {
       for (let step = 0; step < 24; step += 1) {
         const res = await api.stepHhhShortlist(jobId);
         setJobs((current) => current.map((job) => (job.id === res.job.id ? res.job : job)));
-        if (res.job.status === "ready" || res.job.status === "failed") break;
+        if (
+          res.job.status === "ready" ||
+          res.job.status === "failed" ||
+          res.job.status === "no_results" ||
+          res.job.status === "deep_search"
+        ) {
+          break;
+        }
         if (!res.continued) await new Promise((resolve) => window.setTimeout(resolve, 3000));
       }
       await load();
@@ -114,6 +130,12 @@ export function ControlHhhPage() {
     const timer = window.setInterval(() => void load(), 4000);
     return () => window.clearInterval(timer);
   }, [live, isAdmin]);
+
+  useEffect(() => {
+    if (authLoading || needsLogin || !isAdmin) return;
+    const timer = window.setInterval(() => void load(), 12000);
+    return () => window.clearInterval(timer);
+  }, [authLoading, needsLogin, isAdmin]);
 
   async function onAbortLive() {
     if (!isAdmin || stopping) return;
@@ -360,12 +382,42 @@ export function ControlHhhPage() {
 
       {isAdmin ? (
         <section className="panel" style={{ marginTop: "1.25rem" }}>
+          <h2>Handmatige zoektocht</h2>
+          <p className="hint">
+            HandyHouseHelp vraagt dit als de bewoner 0 bedrijven kreeg. Er start geen
+            automatische zoekactie. De klus, het vak en de plaats staan hier.
+          </p>
+          {jobs.filter(isDeepSearch).length === 0 ? (
+            <p className="muted">Nog geen handmatige zoekopdracht.</p>
+          ) : (
+            jobs.filter(isDeepSearch).map((job) => (
+              <article key={job.id} className="mission-card">
+                <div className="row" style={{ gap: "0.4rem", flexWrap: "wrap" }}>
+                  <StatusChip label="Handmatig" tone="waiting" />
+                  <StatusChip label={tradeLabel(job.tradeId)} tone="active" />
+                </div>
+                <h3 style={{ margin: "0.6rem 0 0.2rem" }}>
+                  {tradeLabel(job.tradeId)} · {deepPlace(job)}
+                </h3>
+                <p className="muted" style={{ margin: 0 }}>
+                  {job.requestId}
+                  {job.updatedAt ? ` · ${new Date(job.updatedAt).toLocaleString()}` : ""}
+                </p>
+                {job.jobText ? <p style={{ margin: "0.45rem 0 0" }}>{job.jobText}</p> : null}
+              </article>
+            ))
+          )}
+        </section>
+      ) : null}
+
+      {isAdmin ? (
+        <section className="panel" style={{ marginTop: "1.25rem" }}>
           <h2>Requests</h2>
           {loading ? <p className="muted">Loading requests…</p> : null}
-          {!loading && jobs.length === 0 ? (
+          {!loading && jobs.filter((job) => !isDeepSearch(job)).length === 0 ? (
             <div className="empty">No shortlist requests yet.</div>
           ) : null}
-          {jobs.map((job) => {
+          {jobs.filter((job) => !isDeepSearch(job)).map((job) => {
             const open = openId === job.id;
             const at = railIndex(job);
             const latest = job.progress[job.progress.length - 1];

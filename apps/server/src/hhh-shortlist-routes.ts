@@ -60,6 +60,7 @@ async function runHhhChain(
   lock?: string,
 ): Promise<void> {
   const first = await getPartnerJob(deps.admin, jobId);
+  if (first?.payload.route === "deep-search" || first?.status === "deep_search") return;
   if (first?.payload.route === "gemini-found") {
     const result = await runHhhShortlistSlice({
       admin: deps.admin,
@@ -69,7 +70,15 @@ async function runHhhChain(
       lock,
     });
     const latest = await getPartnerJob(deps.admin, jobId);
-    if (!latest || latest.status === "failed" || latest.status === "ready" || latest.status === "no_results") return;
+    if (
+      !latest ||
+      latest.status === "failed" ||
+      latest.status === "ready" ||
+      latest.status === "no_results" ||
+      latest.status === "deep_search"
+    ) {
+      return;
+    }
     if (result.continue) scheduleHhhShortlistStep(jobId);
     return;
   }
@@ -88,7 +97,15 @@ async function runHhhChain(
       lock: nextLock,
     });
     const latest = await getPartnerJob(deps.admin, jobId);
-    if (!latest || latest.status === "failed" || latest.status === "ready" || latest.status === "no_results") return;
+    if (
+      !latest ||
+      latest.status === "failed" ||
+      latest.status === "ready" ||
+      latest.status === "no_results" ||
+      latest.status === "deep_search"
+    ) {
+      return;
+    }
     if (!result.continue || !result.lock) return;
     nextLock = result.lock;
   }
@@ -136,6 +153,40 @@ export function registerHhhShortlistRoutes(
     }
     const input = parsed.data;
     try {
+      if (input.deepSearch === true) {
+        const existing = await findPartnerJobByRequest(deps.admin, input.requestId);
+        if (existing) {
+          return c.json(
+            { jobId: existing.id, status: existing.status, requestId: input.requestId },
+            202,
+          );
+        }
+        const placeLabel = input.gemeente || input.postcode4 || "";
+        const job = await insertPartnerJob(deps.admin, {
+          id: randomUUID(),
+          requestId: input.requestId,
+          status: "deep_search",
+          payload: {
+            requestId: input.requestId,
+            postcode4: input.postcode4,
+            gemeente: input.gemeente,
+            placeLabel,
+            tradeId: input.tradeId,
+            elementCodes: input.elementCodes,
+            jobText: input.jobText ?? "",
+            route: "deep-search",
+            deepSearch: true,
+            stage: "manual",
+            progress: [
+              "HandyHouseHelp asked for a manual search. No automatic search was started.",
+            ],
+          },
+        });
+        return c.json(
+          { jobId: job.id, status: "deep_search", requestId: input.requestId },
+          202,
+        );
+      }
       const existing = await findPartnerJobByRequest(deps.admin, input.requestId);
       if (existing) {
         nudgeIdleShortlist(
@@ -223,6 +274,14 @@ export function registerHhhShortlistRoutes(
     nudgeIdleShortlist({ store: deps.store, admin: deps.admin, cells: deps.cells }, job);
     if (job.status === "ready" && isShortlistResult(job.public_result)) {
       return c.json({ jobId: job.id, status: "ready", ...job.public_result });
+    }
+    if (job.status === "deep_search" || job.payload.route === "deep-search") {
+      return c.json({
+        jobId: job.id,
+        status: "deep_search",
+        fromCache: false,
+        companies: [],
+      });
     }
     if (job.status === "no_results") {
       return c.json({
@@ -486,7 +545,14 @@ export function registerHhhShortlistRoutes(
     if (!jobId) return c.json({ error: "jobId is required" }, 400);
     const admin = deps.admin;
     const existing = await getPartnerJob(admin, jobId);
-    if (!existing || existing.status === "failed" || existing.status === "ready" || existing.status === "no_results") {
+    if (
+      !existing ||
+      existing.status === "failed" ||
+      existing.status === "ready" ||
+      existing.status === "no_results" ||
+      existing.status === "deep_search" ||
+      existing.payload.route === "deep-search"
+    ) {
       return c.json(
         { accepted: false, skipped: true, status: existing?.status ?? "missing" },
         200,

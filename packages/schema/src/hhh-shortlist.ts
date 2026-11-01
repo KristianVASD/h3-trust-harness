@@ -73,6 +73,8 @@ export const HhhShortlistRequestSchema = z
     tradeId: TradeIdSchema,
     elementCodes: z.array(z.string().trim().min(1).max(40)).max(12).default([]),
     jobText: z.string().trim().max(400).optional(),
+    /** HandyHouseHelp asks a person to search. No automatic shortlist is started. */
+    deepSearch: z.boolean().optional(),
   })
   .refine((value) => Boolean(value.postcode4 || value.gemeente), {
     message: "postcode4 or gemeente is required",

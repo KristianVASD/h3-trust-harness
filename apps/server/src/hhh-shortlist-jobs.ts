@@ -9,7 +9,13 @@ export function isShortlistResult(
   return Boolean(value && "companies" in value && Array.isArray(value.companies));
 }
 
-export type PartnerJobStatus = "queued" | "running" | "ready" | "no_results" | "failed";
+export type PartnerJobStatus =
+  | "queued"
+  | "running"
+  | "ready"
+  | "no_results"
+  | "failed"
+  | "deep_search";
 
 export type PartnerJob = {
   id: string;
@@ -21,7 +27,14 @@ export type PartnerJob = {
 
 function asJob(row: Record<string, unknown>): PartnerJob {
   const status = row.status;
-  const allowed: PartnerJobStatus[] = ["queued", "running", "ready", "no_results", "failed"];
+  const allowed: PartnerJobStatus[] = [
+    "queued",
+    "running",
+    "ready",
+    "no_results",
+    "failed",
+    "deep_search",
+  ];
   return {
     id: String(row.id),
     request_id: String(row.request_id),
@@ -59,14 +72,19 @@ export async function getPartnerJob(
 
 export async function insertPartnerJob(
   admin: SupabaseClient,
-  row: { id: string; requestId: string; payload: Record<string, unknown> },
+  row: {
+    id: string;
+    requestId: string;
+    payload: Record<string, unknown>;
+    status?: PartnerJobStatus;
+  },
 ): Promise<PartnerJob> {
   const { data, error } = await admin
     .from("partner_jobs")
     .insert({
       id: row.id,
       request_id: row.requestId,
-      status: "queued",
+      status: row.status ?? "queued",
       payload: row.payload,
       public_result: null,
     })
@@ -133,6 +151,8 @@ export type HhhDeskJob = {
   lastError?: string;
   checked: number;
   visitCount: number;
+  /** HandyHouseHelp asked for a person to search. No automatic run was started. */
+  deepSearch: boolean;
 };
 
 function textOf(value: unknown): string {
@@ -212,6 +232,7 @@ export function toDeskJob(row: Record<string, unknown>): HhhDeskJob {
     lastError: textOf(payload.lastError) || undefined,
     checked: typeof payload.assessIndex === "number" ? payload.assessIndex : 0,
     visitCount: Array.isArray(payload.shortlist) ? payload.shortlist.length : 0,
+    deepSearch: payload.deepSearch === true || payload.route === "deep-search",
   };
 }
 

@@ -156,6 +156,9 @@ export async function runHhhShortlistSlice(args: {
 }): Promise<{ continue: boolean; lock?: string }> {
   const job = await getPartnerJob(args.admin, args.jobId);
   if (!job) return { continue: false };
+  if (job.payload?.route === "deep-search" || job.status === "deep_search") {
+    return { continue: false };
+  }
   if (job.payload?.route === "gemini-found") return runGeminiFoundSlice(args);
   if (job.payload?.route === "recommend-check") return runRecommendationSlice(args);
   if (job.status === "ready" || job.status === "failed" || job.status === "no_results") return { continue: false };

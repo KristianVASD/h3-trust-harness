@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import {
+  HhhShortlistRequestSchema,
   buildVisitList,
   decideAssessment,
   filterHitsToSearch,
@@ -183,6 +184,55 @@ describe("stored matches", () => {
     assert.equal(stale.length, 1);
     assert.equal(lookupOutcome(0, 0), "search");
     assert.equal(lookupOutcome(1, 2), "recheck");
+  });
+});
+
+describe("deep search request", () => {
+  it("accepts the same shortlist body plus deepSearch", () => {
+    const parsed = HhhShortlistRequestSchema.parse({
+      requestId: "hhh-3976d155-electro-mh1k9xyz34",
+      tradeId: "electro",
+      jobText: "Groepenkast vervangen.",
+      elementCodes: [],
+      postcode4: "2161",
+      deepSearch: true,
+    });
+    assert.equal(parsed.deepSearch, true);
+    assert.equal(parsed.postcode4, "2161");
+    const plain = HhhShortlistRequestSchema.parse({
+      requestId: "hhh-3976d155-electro-mh1k2abc12",
+      tradeId: "electro",
+      jobText: "Groepenkast vervangen.",
+      elementCodes: [],
+      postcode4: "2161",
+    });
+    assert.equal(plain.deepSearch, undefined);
+  });
+
+  it("shows a stored manual search on the desk without a company list", () => {
+    const desk = toDeskJob({
+      id: "job-deep",
+      request_id: "hhh-3976d155-electro-mh1k9xyz34",
+      status: "deep_search",
+      updated_at: "2026-11-01T18:00:00.000Z",
+      payload: {
+        route: "deep-search",
+        deepSearch: true,
+        placeLabel: "2161",
+        postcode4: "2161",
+        tradeId: "electro",
+        jobText: "Groepenkast vervangen.",
+        stage: "manual",
+        progress: ["HandyHouseHelp asked for a manual search. No automatic search was started."],
+      },
+      public_result: null,
+    });
+    assert.equal(desk.status, "deep_search");
+    assert.equal(desk.deepSearch, true);
+    assert.equal(desk.tradeId, "electro");
+    assert.equal(desk.jobText, "Groepenkast vervangen.");
+    assert.equal(desk.postcode4, "2161");
+    assert.deepEqual(desk.companies, []);
   });
 });
 

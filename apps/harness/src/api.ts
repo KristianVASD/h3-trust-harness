@@ -72,7 +72,7 @@ export type SearchDemandRow = {
 export type HhhDeskJob = {
   id: string;
   requestId: string;
-  status: "queued" | "running" | "ready" | "failed";
+  status: "queued" | "running" | "ready" | "no_results" | "failed" | "deep_search";
   updatedAt: string;
   place: string;
   postcode4?: string;
@@ -105,6 +105,7 @@ export type HhhDeskJob = {
   lastError?: string;
   checked: number;
   visitCount: number;
+  deepSearch?: boolean;
 };
 
 export type LocalSourceSummary = {
