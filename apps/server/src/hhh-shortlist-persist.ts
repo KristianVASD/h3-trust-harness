@@ -11,7 +11,9 @@ import {
   factExpiry,
   findCompanyMatchIndex,
   foundFacts,
+  inviteStillFresh,
   placeCellSector,
+  recommendationKeepsSearchStatus,
   tradeLabel,
   type Company,
   type GeminiFoundCompany,
@@ -442,6 +444,162 @@ export async function storeFoundCompanies(args: {
     ids.set(row.name, created.id);
   }
   return { ids, withheld };
+}
+
+export async function storeRecommendation(args: {
+  store: Store;
+  cells: PlaceCellStore;
+  place: {
+    postcode4?: string;
+    gemeente?: string;
+    woonplaats?: string;
+    placeLabel: string;
+    lat: number;
+    lon: number;
+    tradeId: string;
+  };
+  row: {
+    name: string;
+    website: string;
+    phone: string;
+    email: string;
+    publish: boolean;
+    matchNote: string;
+    local: { kind: "ov" | "sport" | "festivity"; url: string; sourceName: string } | null;
+    queueInvite: boolean;
+  };
+  observedAt: string;
+}): Promise<{ id: string | null; invite: "queued" | "skipped" }> {
+  const cell = await ensureShortlistCell(args.store, args.cells, args.place);
+  const mission = await args.store.getMission(cell.missionId);
+  if (!mission) throw new Error("Shortlist mission is missing");
+  const companies = await args.store.listByMission("companies", mission.id);
+  const indexes = buildCompanyIndexes(companies);
+  let matchAt = findCompanyMatchIndex(
+    {
+      name: args.row.name,
+      website_url: args.row.website,
+      region: args.place.placeLabel,
+      email: args.row.email,
+    },
+    indexes,
+  );
+  if (matchAt == null) {
+    const needle = args.row.name.trim().toLowerCase();
+    const byName = companies.findIndex((company) => company.name.trim().toLowerCase() === needle);
+    if (byName >= 0) matchAt = byName;
+  }
+  const prev = matchAt != null ? companies[matchAt] : undefined;
+  const nowMs = Date.parse(args.observedAt);
+  const already = inviteStillFresh(prev?.partnerTrust?.invitedAt, nowMs);
+  const invite = args.row.queueInvite && !already ? "queued" : "skipped";
+  const invitedAt = invite === "queued" ? args.observedAt : prev?.partnerTrust?.invitedAt;
+  const recommendedAt = args.row.publish
+    ? (prev?.partnerTrust?.recommendedAt ?? args.observedAt)
+    : prev?.partnerTrust?.recommendedAt;
+  const keepsSearch = recommendationKeepsSearchStatus(prev?.partnerTrust?.status);
+  const keepEarlierPublish =
+    !args.row.publish &&
+    prev?.partnerTrust?.status === "aanbevolen_door_klant" &&
+    (prev.partnerTrust.score ?? 0) > 0;
+  if (!args.row.publish && invite !== "queued") {
+    return { id: prev?.id ?? null, invite };
+  }
+
+  const facts: PartnerFact[] = args.row.publish
+    ? [
+        {
+          kind: "website",
+          sourceUrl: args.row.website,
+          observedAt: args.observedAt,
+          expiresAt: factExpiry(args.observedAt),
+        },
+        ...(args.row.local
+          ? [
+              {
+                kind: args.row.local.kind,
+                sourceUrl: args.row.local.url,
+                sourceName: args.row.local.sourceName,
+                observedAt: args.observedAt,
+                expiresAt: factExpiry(args.observedAt),
+              },
+            ]
+          : []),
+      ]
+    : (prev?.partnerTrust?.facts ?? []);
+
+  const trust = PartnerTrustSchema.parse({
+    ...(keepsSearch || keepEarlierPublish ? prev?.partnerTrust : {}),
+    status: keepsSearch ? prev?.partnerTrust?.status : "aanbevolen_door_klant",
+    tradeId: prev?.partnerTrust?.tradeId ?? args.place.tradeId,
+    postcode4: args.place.postcode4 ?? prev?.partnerTrust?.postcode4,
+    gemeente: args.place.gemeente ?? prev?.partnerTrust?.gemeente,
+    woonplaats: args.place.woonplaats ?? prev?.partnerTrust?.woonplaats,
+    score: keepsSearch || keepEarlierPublish
+      ? (prev?.partnerTrust?.score ?? 0)
+      : args.row.publish
+        ? args.row.local
+          ? 2
+          : 1
+        : 0,
+    matchNote:
+      keepsSearch || keepEarlierPublish
+        ? prev?.partnerTrust?.matchNote
+        : args.row.publish
+          ? args.row.matchNote
+          : prev?.partnerTrust?.matchNote,
+    elementCodes: prev?.partnerTrust?.elementCodes ?? [],
+    categorySignal:
+      keepsSearch || keepEarlierPublish
+        ? prev?.partnerTrust?.categorySignal
+        : args.row.local
+          ? "in_category"
+          : "not_listed",
+    facts: keepsSearch || keepEarlierPublish ? (prev?.partnerTrust?.facts ?? []) : facts,
+    recommendedAt,
+    invitedAt,
+  });
+
+  const membership = args.row.local?.sourceName ? [args.row.local.sourceName] : [];
+  if (prev && matchAt != null) {
+    const next = CompanySchema.parse({
+      ...prev,
+      region: prev.region || args.place.placeLabel,
+      category: prev.category || args.place.tradeId,
+      website_url: prev.website_url || args.row.website,
+      phone: keepsSearch ? prev.phone || args.row.phone : args.row.phone || prev.phone,
+      email: keepsSearch ? prev.email || args.row.email : args.row.email || prev.email,
+      list_membership: [...new Set([...(prev.list_membership ?? []), ...membership])],
+      partnerTrust: trust,
+      placeCellId: cell.id,
+      updatedAt: args.observedAt,
+    });
+    await args.store.upsert("companies", next);
+    return { id: next.id, invite };
+  }
+  const created = CompanySchema.parse({
+    id: randomUUID(),
+    missionId: mission.id,
+    producer: "ExternalAI",
+    createdAt: args.observedAt,
+    updatedAt: args.observedAt,
+    v: 1,
+    name: args.row.name,
+    address: "",
+    region: args.place.placeLabel,
+    sector: placeCellSector(),
+    category: args.place.tradeId,
+    website_url: args.row.website || undefined,
+    phone: args.row.phone || undefined,
+    email: args.row.email || undefined,
+    list_membership: membership,
+    status: "candidate",
+    kvk_gate: "unchecked",
+    partnerTrust: trust,
+    placeCellId: cell.id,
+  });
+  await args.store.upsert("companies", created);
+  return { id: created.id, invite };
 }
 
 export async function markFoundKnockout(args: {

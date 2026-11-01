@@ -654,4 +654,5 @@ export * from "./contact-minimize";
 export * from "./address-search";
 export * from "./hhh-shortlist";
 export * from "./hhh-gemini-found";
+export * from "./hhh-recommendation";
 export * from "./site-email";

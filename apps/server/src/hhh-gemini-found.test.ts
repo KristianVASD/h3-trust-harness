@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   GeminiCheckSchema,
+  acceptLandscape,
   cardFromFound,
   cardFromStoredFound,
   chooseSiteEmail,
@@ -1144,6 +1145,46 @@ describe("four-step Gemini review", () => {
     assert.deepEqual(
       filtered.sources.map((source) => source.id),
       ["club"],
+    );
+  });
+
+  it("keeps a source map when one listing label is outside the five words", () => {
+    const landscape = acceptLandscape({
+      sources: [
+        {
+          id: "ov",
+          name: "OV Zundert",
+          url: "https://ov-zundert.example/leden",
+          kind: "local_business_association",
+          scope: "local",
+          place: "Zundert",
+          listing_type: "information",
+          why_relevant: "Ledenlijst",
+          observed_on: "2026-11-01",
+        },
+        {
+          id: "broken",
+          name: "",
+          url: "not-a-url",
+          kind: "sports_club",
+          scope: "local",
+        },
+        {
+          id: "club",
+          name: "FC Zundert",
+          url: "https://fc-zundert.example/sponsors",
+          kind: "sports_club",
+          scope: "local",
+          listing_type: "sponsors",
+        },
+      ],
+    });
+    assert.deepEqual(
+      landscape.sources.map((source) => [source.id, source.listing_type]),
+      [
+        ["ov", "search"],
+        ["club", "sponsors"],
+      ],
     );
   });
 

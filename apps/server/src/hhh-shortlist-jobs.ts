@@ -1,5 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { HhhPublicShortlist } from "@h3-trust/schema";
+import type { HhhPublicShortlist, HhhRecommendationResult } from "@h3-trust/schema";
+
+export type PartnerPublicResult = HhhPublicShortlist | HhhRecommendationResult;
+
+export function isShortlistResult(
+  value: PartnerPublicResult | null,
+): value is HhhPublicShortlist {
+  return Boolean(value && "companies" in value && Array.isArray(value.companies));
+}
 
 export type PartnerJobStatus = "queued" | "running" | "ready" | "failed";
 
@@ -8,7 +16,7 @@ export type PartnerJob = {
   request_id: string;
   status: PartnerJobStatus;
   payload: Record<string, unknown>;
-  public_result: HhhPublicShortlist | null;
+  public_result: PartnerPublicResult | null;
 };
 
 function asJob(row: Record<string, unknown>): PartnerJob {
@@ -19,7 +27,7 @@ function asJob(row: Record<string, unknown>): PartnerJob {
     request_id: String(row.request_id),
     status: allowed.includes(status as PartnerJobStatus) ? (status as PartnerJobStatus) : "failed",
     payload: (row.payload ?? {}) as Record<string, unknown>,
-    public_result: (row.public_result ?? null) as HhhPublicShortlist | null,
+    public_result: (row.public_result ?? null) as PartnerPublicResult | null,
   };
 }
 
@@ -74,7 +82,7 @@ export async function savePartnerJob(
     id: string;
     status: PartnerJobStatus;
     payload: Record<string, unknown>;
-    publicResult: HhhPublicShortlist | null;
+    publicResult: PartnerPublicResult | null;
   },
 ): Promise<void> {
   const { error } = await admin
@@ -134,7 +142,12 @@ function textOf(value: unknown): string {
 export function toDeskJob(row: Record<string, unknown>): HhhDeskJob {
   const job = asJob(row);
   const payload = job.payload;
-  const companies = (job.public_result?.companies ?? []).map((company) => ({
+  const listed = isShortlistResult(job.public_result)
+    ? job.public_result.companies
+    : job.public_result && "company" in job.public_result && job.public_result.company
+      ? [job.public_result.company]
+      : [];
+  const companies = listed.map((company) => ({
     name: company.name,
     website: company.website,
     status: company.status,
@@ -143,9 +156,12 @@ export function toDeskJob(row: Record<string, unknown>): HhhDeskJob {
     email: company.email,
     contactUrl: company.contactUrl,
   }));
-  const withheld = Array.isArray(payload.drops)
-    ? payload.drops.filter((item): item is string => typeof item === "string")
-    : [];
+  const withheld =
+    payload.route === "recommend-check" && Array.isArray(payload.reasons)
+      ? payload.reasons.filter((item): item is string => typeof item === "string")
+      : Array.isArray(payload.drops)
+        ? payload.drops.filter((item): item is string => typeof item === "string")
+        : [];
   const firmOf = (value: unknown): { name: string; website: string; phone: string; address: string; email: string; matchNote: string } | null => {
     if (!value || typeof value !== "object") return null;
     const row = value as Record<string, unknown>;

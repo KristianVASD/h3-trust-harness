@@ -160,6 +160,15 @@ export type GeminiCandidate = {
   riskFlags?: string[];
 };
 
+const LANDSCAPE_LISTING_TYPES = ["members", "sponsors", "partners", "register", "search"] as const;
+
+function landscapeListingType(value: unknown): (typeof LANDSCAPE_LISTING_TYPES)[number] {
+  return typeof value === "string" &&
+    (LANDSCAPE_LISTING_TYPES as readonly string[]).includes(value)
+    ? (value as (typeof LANDSCAPE_LISTING_TYPES)[number])
+    : "search";
+}
+
 export const GeminiLandscapeSourceSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -167,7 +176,7 @@ export const GeminiLandscapeSourceSchema = z.object({
   kind: z.string().min(1),
   scope: z.enum(["local", "regional", "national"]),
   place: z.string().default(""),
-  listing_type: z.enum(["members", "sponsors", "partners", "register", "search"]),
+  listing_type: z.preprocess(landscapeListingType, z.enum(LANDSCAPE_LISTING_TYPES)),
   why_relevant: z.string().default(""),
   observed_on: z.string().default(""),
 });
@@ -177,6 +186,22 @@ export const GeminiLandscapeSchema = z.object({
   sources: z.array(GeminiLandscapeSourceSchema).max(20).default([]),
 });
 export type GeminiLandscape = z.infer<typeof GeminiLandscapeSchema>;
+
+/** Keep every valid source. An unknown listing label becomes search, and one bad source stays out. */
+export function acceptLandscape(raw: unknown): GeminiLandscape {
+  const sources =
+    raw && typeof raw === "object" && Array.isArray((raw as { sources?: unknown }).sources)
+      ? (raw as { sources: unknown[] }).sources
+      : [];
+  const kept: GeminiLandscape["sources"] = [];
+  for (const source of sources) {
+    const parsed = GeminiLandscapeSourceSchema.safeParse(source);
+    if (!parsed.success) continue;
+    kept.push(parsed.data);
+    if (kept.length >= 20) break;
+  }
+  return { sources: kept };
+}
 
 export const GeminiEvidenceClaimSchema = z.object({
   observed_name: z.string().min(1),
@@ -705,6 +730,7 @@ export function cardFromStoredFound(
   if (local.length > 0) badges.push("lokaal_verbonden");
   if (professional.length > 0) badges.push("professioneel_aangesloten");
   if (local.length === 0 && professional.length === 0) badges.push("beperkt_bewijs");
+  if (trust.recommendedAt) badges.push("aanbevolen");
   return HhhShortlistCompanySchema.parse({
     id: company.id,
     name: company.name,

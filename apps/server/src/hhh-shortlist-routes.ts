@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Hono } from "hono";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { HhhShortlistRequestSchema } from "@h3-trust/schema";
+import { HhhRecommendationRequestSchema, HhhRecommendationResultSchema, HhhShortlistRequestSchema } from "@h3-trust/schema";
 import type { Store } from "@h3-trust/store";
 import { geocodeCached } from "./address-search-job.js";
 import { isAdmin, type AppVariables } from "./auth.js";
@@ -17,6 +17,7 @@ import {
   findPartnerJobByRequest,
   getPartnerJob,
   insertPartnerJob,
+  isShortlistResult,
   listPartnerJobs,
   toDeskJob,
 } from "./hhh-shortlist-jobs.js";
@@ -185,7 +186,9 @@ export function registerHhhShortlistRoutes(
     }
     if (!deps.admin) return c.json(engineUnavailable(), 503);
     const job = await getPartnerJob(deps.admin, c.req.param("jobId"));
-    if (!job) return c.json({ error: "Shortlist job not found" }, 404);
+    if (!job || job.payload.route === "recommend-check") {
+      return c.json({ error: "Shortlist job not found" }, 404);
+    }
     const released = await releaseHeldSearch({
       admin: deps.admin,
       store: deps.store,
@@ -194,8 +197,130 @@ export function registerHhhShortlistRoutes(
     });
     if (released) return c.json({ jobId: job.id, status: "ready", ...released });
     nudgeIdleShortlist({ store: deps.store, admin: deps.admin, cells: deps.cells }, job);
-    if (job.status === "ready" && job.public_result) {
+    if (job.status === "ready" && isShortlistResult(job.public_result)) {
       return c.json({ jobId: job.id, status: "ready", ...job.public_result });
+    }
+    if (job.status === "failed") return c.json({ jobId: job.id, status: "failed" });
+    return c.json({ jobId: job.id, status: job.status });
+  });
+
+  app.post("/api/partner/hhh/recommend", async (c) => {
+    if (!c.get("isPartner") && !isAdmin(c.get("auth"))) {
+      return c.json({ error: "Forbidden", code: "forbidden" }, 403);
+    }
+    if (!deps.admin) return c.json(engineUnavailable(), 503);
+    const body = await c.req.json().catch(() => null);
+    const parsed = HhhRecommendationRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json(
+        { error: parsed.error.issues[0]?.message ?? "Invalid recommendation" },
+        400,
+      );
+    }
+    const input = parsed.data;
+    try {
+      const existing = await findPartnerJobByRequest(deps.admin, input.requestId);
+      if (existing) {
+        nudgeIdleShortlist(
+          { store: deps.store, admin: deps.admin, cells: deps.cells },
+          existing,
+        );
+        return c.json(
+          { jobId: existing.id, status: existing.status, requestId: input.requestId },
+          202,
+        );
+      }
+      const query = input.postcode4 ?? input.gemeente ?? "";
+      const geo =
+        (await geocodeCached(
+          deps.cells,
+          query,
+          input.postcode4 ? "adres" : "woonplaats",
+        )) ?? (await geocodeCached(deps.cells, query, "woonplaats"));
+      if (!geo) return c.json({ error: `No PDOK hit for “${query}”` }, 400);
+      const placeLabel =
+        geo.woonplaats || geo.gemeente || input.gemeente || input.postcode4 || geo.label;
+      const job = await insertPartnerJob(deps.admin, {
+        id: randomUUID(),
+        requestId: input.requestId,
+        payload: {
+          route: "recommend-check",
+          requestId: input.requestId,
+          postcode4: input.postcode4 ?? geo.postcode4,
+          gemeente: input.gemeente ?? geo.gemeente,
+          woonplaats: geo.woonplaats,
+          placeLabel,
+          lat: geo.lat,
+          lon: geo.lon,
+          tradeId: input.tradeId,
+          name: input.name,
+          phone: input.phone,
+          email: input.email,
+          stage: "resolve",
+          lock: randomUUID(),
+          lockAt: new Date().toISOString(),
+          website: "",
+          host: "",
+          pageTitle: "",
+          foundEmails: [],
+          phones: [],
+          listedPhone: "",
+          inviteTo: "",
+          siteLoaded: false,
+          nameOnPage: false,
+          tradeMatch: false,
+          fakeLocal: false,
+          geographicPhone: false,
+          areaKnown: false,
+          areaMatched: false,
+          domainAgeYears: null,
+          placeInIdentity: false,
+          localMention: null,
+          reasons: [],
+          notes: [],
+          progress: [],
+        },
+      });
+      const bootLock = typeof job.payload.lock === "string" ? job.payload.lock : undefined;
+      beginHhhShortlist(
+        { store: deps.store, admin: deps.admin, cells: deps.cells },
+        job.id,
+        bootLock,
+      );
+      return c.json(
+        { jobId: job.id, status: job.status, requestId: input.requestId },
+        202,
+      );
+    } catch (err) {
+      console.error("[hhh-recommend] enqueue", err instanceof Error ? err.message : err);
+      return c.json({ error: "Could not start the recommendation" }, 500);
+    }
+  });
+
+  app.get("/api/partner/hhh/recommend/:jobId", async (c) => {
+    if (!c.get("isPartner") && !isAdmin(c.get("auth"))) {
+      return c.json({ error: "Forbidden", code: "forbidden" }, 403);
+    }
+    if (!deps.admin) return c.json(engineUnavailable(), 503);
+    const job = await getPartnerJob(deps.admin, c.req.param("jobId"));
+    if (!job || job.payload.route !== "recommend-check") {
+      return c.json({ error: "Recommendation job not found" }, 404);
+    }
+    nudgeIdleShortlist({ store: deps.store, admin: deps.admin, cells: deps.cells }, job);
+    if (job.status === "ready") {
+      const result = HhhRecommendationResultSchema.safeParse(
+        job.public_result ?? job.payload.result,
+      );
+      if (result.success) {
+        return c.json({ jobId: job.id, status: "ready", ...result.data });
+      }
+      return c.json({
+        jobId: job.id,
+        status: "ready",
+        outcome: "withheld",
+        company: null,
+        invite: "skipped",
+      });
     }
     if (job.status === "failed") return c.json({ jobId: job.id, status: "failed" });
     return c.json({ jobId: job.id, status: job.status });

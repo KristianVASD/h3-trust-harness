@@ -54,6 +54,10 @@ export const PartnerTrustSchema = z.object({
   elementCodes: z.array(z.string()).default([]),
   categorySignal: CategorySignalSchema.optional(),
   facts: z.array(PartnerFactSchema).default([]),
+  /** Set when a customer recommendation passed the gate. Drives the Aanbevolen badge. */
+  recommendedAt: z.string().optional(),
+  /** Set when the invitation letter was queued. A second letter waits out the fact TTL. */
+  invitedAt: z.string().optional(),
 });
 export type PartnerTrust = z.infer<typeof PartnerTrustSchema>;
 
@@ -104,9 +108,10 @@ export const HhhShortlistCompanySchema = z.object({
         "professioneel_aangesloten",
         "beperkt_bewijs",
         "risicosignaal",
+        "aanbevolen",
       ]),
     )
-    .max(7)
+    .max(8)
     .default([]),
   /** Gemini route: number of unique local sources, capped at 4. */
   sourceCount: z.number().int().min(1).max(4).optional(),

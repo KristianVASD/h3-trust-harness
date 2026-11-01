@@ -31,7 +31,7 @@ import {
   reviewGeminiCompanies,
 } from "./hhh-gemini-search.js";
 import { fillCandidateContacts } from "./site-contact.js";
-import { getPartnerJob, savePartnerJob } from "./hhh-shortlist-jobs.js";
+import { getPartnerJob, isShortlistResult, savePartnerJob } from "./hhh-shortlist-jobs.js";
 import {
   loadFoundCompaniesForPlace,
   storeFoundCompanies,
@@ -627,8 +627,21 @@ export async function releaseHeldSearch(args: {
   cells: PlaceCellStore;
   job: { id: string; status: string; payload: Record<string, unknown> };
 }): Promise<HhhPublicShortlist | null> {
-  void args;
-  return null;
+  if (args.job.status === "ready" || args.job.status === "failed") return null;
+  if (args.job.payload.route !== "gemini-found") return null;
+  const payload = readGeminiPayload(args.job.payload);
+  if (!payload || payload.stage !== "store" || !canRun(payload)) return null;
+  const listed = publishHeld(payload);
+  return commitSearchResult(
+    {
+      admin: args.admin,
+      store: args.store,
+      cells: args.cells,
+      jobId: args.job.id,
+    },
+    payload,
+    listed,
+  );
 }
 
 export async function runGeminiFoundSlice(args: {
@@ -648,7 +661,7 @@ export async function runGeminiFoundSlice(args: {
   const lock = randomUUID();
   payload.lock = lock;
   payload.lockAt = new Date().toISOString();
-  let publicResult = job.public_result;
+  let publicResult = isShortlistResult(job.public_result) ? job.public_result : null;
   await savePartnerJob(args.admin, {
     id: job.id,
     status: "running",
@@ -660,7 +673,13 @@ export async function runGeminiFoundSlice(args: {
     const waveStarted = Date.now();
     let waves = 0;
     while (outcome === "continue" && payload.stage !== "done") {
-      if (waves > 0 && Date.now() - waveStarted > WAVE_BUDGET_MS) break;
+      if (waves > 0 && Date.now() - waveStarted > WAVE_BUDGET_MS) {
+        if (payload.stage === "store") {
+          publicResult = publishHeld(payload);
+          outcome = "ready";
+        }
+        break;
+      }
       if (payload.stage === "lookup") {
         outcome = await lookup(args.store, payload, (next) => (publicResult = next));
       } else if (payload.stage === "find" || payload.stage === "sources") {

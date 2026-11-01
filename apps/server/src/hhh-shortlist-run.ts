@@ -25,7 +25,8 @@ import type { Store } from "@h3-trust/store";
 import { fetchPage, pageBlocked, extractBusinesses } from "./address-search-fetch.js";
 import { assessCompany } from "./company-assess.js";
 import { runGeminiFoundSlice } from "./hhh-gemini-run.js";
-import { getPartnerJob, savePartnerJob } from "./hhh-shortlist-jobs.js";
+import { runRecommendationSlice } from "./recommendation-run.js";
+import { getPartnerJob, isShortlistResult, savePartnerJob } from "./hhh-shortlist-jobs.js";
 import { browserSearchCompanies } from "./hhh-shortlist-search.js";
 import { listActiveLocalSources } from "./hhh-shortlist-sources.js";
 import {
@@ -156,13 +157,16 @@ export async function runHhhShortlistSlice(args: {
   const job = await getPartnerJob(args.admin, args.jobId);
   if (!job) return { continue: false };
   if (job.payload?.route === "gemini-found") return runGeminiFoundSlice(args);
+  if (job.payload?.route === "recommend-check") return runRecommendationSlice(args);
   if (job.status === "ready" || job.status === "failed") return { continue: false };
   const payload = readPayload(job.payload);
   if (!canRun(payload, args.lock)) return { continue: false };
   const lock = randomUUID();
   payload.lock = lock;
   payload.lockAt = new Date().toISOString();
-  let publicResult = job.public_result;
+  let publicResult: HhhPublicShortlist | null = isShortlistResult(job.public_result)
+    ? job.public_result
+    : null;
   await savePartnerJob(args.admin, {
     id: job.id,
     status: "running",

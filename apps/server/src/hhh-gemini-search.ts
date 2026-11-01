@@ -2,7 +2,7 @@ import {
   foldTradeLabel,
   GeminiCheckSchema,
   GeminiEvidenceResultSchema,
-  GeminiLandscapeSchema,
+  acceptLandscape,
   GeminiReviewSchema,
   GeminiSourceCandidatesSchema,
   reviewFoundFirms,
@@ -354,6 +354,7 @@ export async function findGeminiLandscape(args: {
         "Zoek lokale ondernemers- en bedrijvenverenigingen, bedrijventerreinen, coöperaties, sportclubs, lokale evenementen en relevante officiële branche-, vak-, erkennings- en certificeringsregisters.",
         "Een branche- of vakregister is national of regional en is professioneel bewijs, nooit automatisch lokale verankering.",
         "Gebruik alleen werkelijk gevonden URL's. Geen telefoongidsen, vergelijkers, offerteplatforms, sociale media of algemene zoekresultaatpagina's.",
+        "listing_type is alleen een van deze vijf woorden: members, sponsors, partners, register, search.",
         'Antwoord alleen met JSON: {"sources":[{"id":"s1","name":"","url":"https://","kind":"local_business_association","scope":"local","place":"","listing_type":"members","why_relevant":"","observed_on":"YYYY-MM-DD"}]}',
       ].join("\n"),
     },
@@ -363,7 +364,7 @@ export async function findGeminiLandscape(args: {
     },
   ];
   const { content, urls, usage, cutOff } = await ask(messages, { maxResults: 12 });
-  const parsed = GeminiLandscapeSchema.parse(parseJsonObject(content));
+  const parsed = acceptLandscape(parseJsonObject(content));
   return {
     landscape: filterLandscapeToCitations(parsed, urls),
     usage,
