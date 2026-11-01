@@ -602,6 +602,81 @@ export function lookupFoundOutcome(freshCount: number): "ready" | "find" {
   return freshCount >= FOUND_LOOKUP_COUNT ? "ready" : "find";
 }
 
+const UNREVIEWED_NOTE =
+  "Gevonden bij het zoeken naar een lokale specialist. De eindcontrole is niet afgerond.";
+
+/** The search already named these firms. The final review did not run, so the card stays gevonden. */
+export function unreviewedShortlistCards(args: {
+  candidates: readonly GeminiCandidate[];
+  place: string;
+  tradeId: TradeId;
+  observedAt: string;
+  idFor: (index: number) => string;
+}): HhhShortlistCompany[] {
+  const kept: GeminiCandidate[] = [];
+  const hosts = new Set<string>();
+  for (const row of args.candidates) {
+    const name = row.name.trim();
+    if (!name) continue;
+    const website = canonicalWebsite(row.website) ?? "";
+    const host = website ? websiteHost(website) : null;
+    if (host && LEAD_HOST.test(host)) continue;
+    const phone = row.phone.trim();
+    const address = row.address.trim();
+    if (!host && !phone && !address) continue;
+    if (host && hosts.has(host)) continue;
+    if (kept.some((current) => namesMatch(current.name, name))) continue;
+    if (host) hosts.add(host);
+    kept.push({
+      ...row,
+      name,
+      website,
+      phone,
+      address,
+      email: row.email.trim(),
+    });
+  }
+  const filled = (row: GeminiCandidate) =>
+    [row.website, row.phone, row.address, row.email].filter((value) => value.trim()).length;
+  const ranked = [...kept].sort(
+    (a, b) =>
+      Number(Boolean(b.website.trim())) - Number(Boolean(a.website.trim())) ||
+      filled(b) - filled(a) ||
+      a.name.localeCompare(b.name, "nl"),
+  );
+  return ranked.slice(0, FOUND_RETURN_COUNT).map((row, index) => {
+    const website = publicHttpUrl(row.website);
+    const host = website ? websiteHost(website) : null;
+    return HhhShortlistCompanySchema.parse({
+      id: args.idFor(index),
+      name: row.name,
+      place: args.place,
+      website: website ?? "",
+      phone: row.phone || undefined,
+      email: row.email || undefined,
+      contactUrl: row.email
+        ? undefined
+        : publicHttpUrl(row.contactUrl) ?? website,
+      tradeId: args.tradeId,
+      tradeLabel: tradeLabel(args.tradeId),
+      status: "gevonden",
+      badges: ["gevonden", "beperkt_bewijs"],
+      score: 1,
+      matchNote: UNREVIEWED_NOTE,
+      evidence: website
+        ? [
+            {
+              kind: "search",
+              sourceName: host ?? row.name,
+              url: website,
+              observedAt: args.observedAt,
+            },
+          ]
+        : [],
+    });
+  });
+}
+
 type FoundView = PartnerCompanyView & {
   phone?: string;
   email?: string;

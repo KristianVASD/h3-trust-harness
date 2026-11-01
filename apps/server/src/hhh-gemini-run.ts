@@ -13,6 +13,7 @@ import {
   publicHttpUrl,
   reviewedGeminiCompanies,
   selectFreshFound,
+  unreviewedShortlistCards,
   tradeLabel,
   type GeminiFoundCompany,
   type GeminiCandidate,
@@ -302,6 +303,36 @@ function publishHeld(payload: GeminiPayload): HhhPublicShortlist {
   return listed;
 }
 
+function candidateAnswerStage(stage: GeminiStage): boolean {
+  return (
+    stage === "candidateEvidence" ||
+    stage === "sourceCandidates" ||
+    stage === "review"
+  );
+}
+
+/** Firms are already named. Send those three instead of waiting for a review that did not start. */
+function publishUnreviewed(payload: GeminiPayload): HhhPublicShortlist | null {
+  if (payload.found.length > 0 || !candidateAnswerStage(payload.stage)) return null;
+  if (payload.candidates.length === 0) return null;
+  payload.stage = "done";
+  const listed = HhhPublicShortlistSchema.parse({
+    fromCache: false,
+    companies: unreviewedShortlistCards({
+      candidates: payload.candidates,
+      place: payload.placeLabel,
+      tradeId: payload.tradeId,
+      observedAt: new Date().toISOString(),
+      idFor: () => randomUUID(),
+    }),
+  });
+  note(
+    payload,
+    `Returning ${listed.companies.length} companies from the search. The final review did not finish.`,
+  );
+  return listed;
+}
+
 function noteCutOff(payload: GeminiPayload, label: string, cutOff: boolean): void {
   if (cutOff) note(payload, `${label} reply was incomplete.`);
 }
@@ -580,6 +611,7 @@ async function commitSearchResult(
   args: { admin: SupabaseClient; store: Store; cells: PlaceCellStore; jobId: string },
   payload: GeminiPayload,
   sealed: HhhPublicShortlist,
+  persistFound = true,
 ): Promise<HhhPublicShortlist> {
   payload.stage = "done";
   payload.lock = undefined;
@@ -590,6 +622,7 @@ async function commitSearchResult(
     payload: { ...payload },
     publicResult: sealed,
   });
+  if (!persistFound) return sealed;
   try {
     let stored = sealed;
     await storeFound({ store: args.store, cells: args.cells }, payload, (next) => {
@@ -630,8 +663,10 @@ export async function releaseHeldSearch(args: {
   if (args.job.status === "ready" || args.job.status === "failed") return null;
   if (args.job.payload.route !== "gemini-found") return null;
   const payload = readGeminiPayload(args.job.payload);
-  if (!payload || payload.stage !== "store" || !canRun(payload)) return null;
-  const listed = publishHeld(payload);
+  if (!payload || !canRun(payload)) return null;
+  const reviewed = payload.stage === "store";
+  const listed = reviewed ? publishHeld(payload) : publishUnreviewed(payload);
+  if (!listed) return null;
   return commitSearchResult(
     {
       admin: args.admin,
@@ -641,6 +676,7 @@ export async function releaseHeldSearch(args: {
     },
     payload,
     listed,
+    reviewed,
   );
 }
 
@@ -670,6 +706,7 @@ export async function runGeminiFoundSlice(args: {
   });
   try {
     let outcome: "continue" | "ready" = "continue";
+    let persistFound = true;
     const waveStarted = Date.now();
     let waves = 0;
     while (outcome === "continue" && payload.stage !== "done") {
@@ -677,6 +714,13 @@ export async function runGeminiFoundSlice(args: {
         if (payload.stage === "store") {
           publicResult = publishHeld(payload);
           outcome = "ready";
+        } else {
+          const listed = publishUnreviewed(payload);
+          if (listed) {
+            publicResult = listed;
+            outcome = "ready";
+            persistFound = false;
+          }
         }
         break;
       }
@@ -735,6 +779,7 @@ export async function runGeminiFoundSlice(args: {
         payload,
         publicResult ??
           HhhPublicShortlistSchema.parse({ fromCache: false, companies: [] }),
+        persistFound,
       );
       return { continue: false };
     }

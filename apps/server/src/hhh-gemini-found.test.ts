@@ -15,6 +15,7 @@ import {
   sameHostContactUrl,
   selectFoundFirms,
   selectFreshFound,
+  unreviewedShortlistCards,
   type GeminiCandidate,
   type GeminiEvidenceResult,
   type GeminiReview,
@@ -1282,6 +1283,78 @@ describe("four-step Gemini review", () => {
     });
     assert.equal(payload?.stage, "sourceCandidates");
     assert.equal(payload?.tokenUsage.totalTokens, 7000);
+  });
+});
+
+describe("search answer before the final review", () => {
+  const ids = [
+    "11111111-1111-4111-8111-111111111111",
+    "22222222-2222-4222-8222-222222222222",
+    "33333333-3333-4333-8333-333333333333",
+  ];
+
+  it("sends three named firms and does not call them verified", () => {
+    const cards = unreviewedShortlistCards({
+      candidates: [
+        {
+          name: "RJ Inspecties",
+          website: "",
+          address: "",
+          phone: "",
+          email: "",
+        },
+        {
+          name: "Werkspot Zundert",
+          website: "https://www.werkspot.nl/zundert",
+          address: "Molenstraat 1",
+          phone: "0761234567",
+          email: "",
+        },
+        {
+          name: "JEZ de Jong Electro Zundert V.O.F.",
+          website: "http://jez-electro.nl",
+          address: "Zundert",
+          phone: "+31765975861",
+          email: "info@jez-electro.nl",
+        },
+        {
+          name: "Fixionality",
+          website: "https://fixionality.nl",
+          address: "",
+          phone: "",
+          email: "",
+        },
+        {
+          name: "JEZ Electro",
+          website: "https://jez-electro.nl/contact",
+          address: "",
+          phone: "",
+          email: "",
+        },
+        {
+          name: "Alleen telefoon",
+          website: "",
+          address: "",
+          phone: "0760000000",
+          email: "",
+        },
+      ],
+      place: "Zundert",
+      tradeId: "solar",
+      observedAt: "2026-11-01T12:34:00.000Z",
+      idFor: (index) => ids[index] ?? ids[0]!,
+    });
+    assert.deepEqual(
+      cards.map((card) => card.name),
+      ["JEZ de Jong Electro Zundert V.O.F.", "Fixionality", "Alleen telefoon"],
+    );
+    assert.equal(cards[0]?.status, "gevonden");
+    assert.deepEqual(cards[0]?.badges, ["gevonden", "beperkt_bewijs"]);
+    assert.equal(cards[0]?.email, "info@jez-electro.nl");
+    assert.equal(cards[0]?.evidence[0]?.url, "http://jez-electro.nl/");
+    assert.match(cards[0]?.matchNote ?? "", /eindcontrole is niet afgerond/);
+    assert.equal(cards[2]?.website, "");
+    assert.equal(cards[2]?.phone, "0760000000");
   });
 });
 
