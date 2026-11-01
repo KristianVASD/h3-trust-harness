@@ -158,7 +158,7 @@ export async function runHhhShortlistSlice(args: {
   if (!job) return { continue: false };
   if (job.payload?.route === "gemini-found") return runGeminiFoundSlice(args);
   if (job.payload?.route === "recommend-check") return runRecommendationSlice(args);
-  if (job.status === "ready" || job.status === "failed") return { continue: false };
+  if (job.status === "ready" || job.status === "failed" || job.status === "no_results") return { continue: false };
   const payload = readPayload(job.payload);
   if (!canRun(payload, args.lock)) return { continue: false };
   const lock = randomUUID();

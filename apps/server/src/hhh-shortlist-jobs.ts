@@ -9,7 +9,7 @@ export function isShortlistResult(
   return Boolean(value && "companies" in value && Array.isArray(value.companies));
 }
 
-export type PartnerJobStatus = "queued" | "running" | "ready" | "failed";
+export type PartnerJobStatus = "queued" | "running" | "ready" | "no_results" | "failed";
 
 export type PartnerJob = {
   id: string;
@@ -21,7 +21,7 @@ export type PartnerJob = {
 
 function asJob(row: Record<string, unknown>): PartnerJob {
   const status = row.status;
-  const allowed: PartnerJobStatus[] = ["queued", "running", "ready", "failed"];
+  const allowed: PartnerJobStatus[] = ["queued", "running", "ready", "no_results", "failed"];
   return {
     id: String(row.id),
     request_id: String(row.request_id),

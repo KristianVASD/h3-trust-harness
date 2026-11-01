@@ -69,7 +69,7 @@ async function runHhhChain(
       lock,
     });
     const latest = await getPartnerJob(deps.admin, jobId);
-    if (!latest || latest.status === "failed" || latest.status === "ready") return;
+    if (!latest || latest.status === "failed" || latest.status === "ready" || latest.status === "no_results") return;
     if (result.continue) scheduleHhhShortlistStep(jobId);
     return;
   }
@@ -88,7 +88,7 @@ async function runHhhChain(
       lock: nextLock,
     });
     const latest = await getPartnerJob(deps.admin, jobId);
-    if (!latest || latest.status === "failed" || latest.status === "ready") return;
+    if (!latest || latest.status === "failed" || latest.status === "ready" || latest.status === "no_results") return;
     if (!result.continue || !result.lock) return;
     nextLock = result.lock;
   }
@@ -224,7 +224,22 @@ export function registerHhhShortlistRoutes(
     if (job.status === "ready" && isShortlistResult(job.public_result)) {
       return c.json({ jobId: job.id, status: "ready", ...job.public_result });
     }
+    if (job.status === "no_results") {
+      return c.json({
+        jobId: job.id,
+        status: "no_results",
+        fromCache: false,
+        companies: [],
+      });
+    }
     if (job.status === "failed") return c.json({ jobId: job.id, status: "failed" });
+    if (
+      job.status === "running" &&
+      isShortlistResult(job.public_result) &&
+      job.public_result.companies.length > 0
+    ) {
+      return c.json({ jobId: job.id, status: "running", ...job.public_result });
+    }
     return c.json({
       jobId: job.id,
       status: job.status,
@@ -471,7 +486,7 @@ export function registerHhhShortlistRoutes(
     if (!jobId) return c.json({ error: "jobId is required" }, 400);
     const admin = deps.admin;
     const existing = await getPartnerJob(admin, jobId);
-    if (!existing || existing.status === "failed" || existing.status === "ready") {
+    if (!existing || existing.status === "failed" || existing.status === "ready" || existing.status === "no_results") {
       return c.json(
         { accepted: false, skipped: true, status: existing?.status ?? "missing" },
         200,

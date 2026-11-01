@@ -6,23 +6,34 @@ import {
   GeminiEvidenceResultSchema,
   GeminiLandscapeSchema,
   GeminiReviewSchema,
+  acceptLocalPage,
+  annotateFoundReview,
+  applyShortlistGates,
+  attachVerifiedLocalHits,
   cardFromFound,
   cardFromStoredFound,
+  citedLocalHits,
+  domainAgeYears,
+  foldTradeLabel,
   lookupFoundOutcome,
   publicHttpUrl,
-  reviewedGeminiCompanies,
+  registrationMillis,
   selectFreshFound,
   tradeLabel,
+  websiteHost,
   type GeminiFoundCompany,
   type GeminiCandidate,
+  type GeminiCheck,
   type GeminiEvidenceResult,
   type GeminiLandscape,
   type GeminiReview,
   type GeminiUsage,
   type HhhPublicShortlist,
+  type LocalHit,
   type TradeId,
 } from "@h3-trust/schema";
-import { findLocalCompanies, reviewGeminiCompanies } from "./hhh-gemini-search.js";
+import { checkLocalMentions, findLocalCompanies, reviewGeminiCompanies } from "./hhh-gemini-search.js";
+import { fetchPage, pageBlocked } from "./address-search-fetch.js";
 import { fillCandidateContacts, screenCandidateSites } from "./site-contact.js";
 import { getPartnerJob, isShortlistResult, savePartnerJob } from "./hhh-shortlist-jobs.js";
 import {
@@ -44,6 +55,7 @@ type GeminiStage =
   | "candidateEvidence"
   | "sourceCandidates"
   | "review"
+  | "mentions"
   | "store"
   | "done";
 
@@ -128,6 +140,7 @@ export function readGeminiPayload(raw: Record<string, unknown>): GeminiPayload |
     "candidateEvidence",
     "sourceCandidates",
     "review",
+    "mentions",
     "store",
     "done",
   ];
@@ -239,32 +252,61 @@ async function fillStoredContacts(
   return count;
 }
 
+async function storedCards(
+  store: Store,
+  payload: GeminiPayload,
+): Promise<HhhPublicShortlist["companies"]> {
+  const companies = await loadFoundCompaniesForPlace(store, placeQuery(payload));
+  const fresh = selectFreshFound(companies, placeQuery(payload));
+  return fresh.flatMap((company) => {
+    const card = cardFromStoredFound(company, payload.placeLabel);
+    return card ? [card] : [];
+  });
+}
+
 async function lookup(
   store: Store,
   payload: GeminiPayload,
   setPublic: (result: HhhPublicShortlist) => void,
 ): Promise<"continue" | "ready"> {
-  const companies = await loadFoundCompaniesForPlace(store, placeQuery(payload));
-  const fresh = selectFreshFound(companies, placeQuery(payload));
-  if (lookupFoundOutcome(fresh.length) === "ready") {
+  let cards: HhhPublicShortlist["companies"] = [];
+  try {
+    const companies = await loadFoundCompaniesForPlace(store, placeQuery(payload));
+    const fresh = selectFreshFound(companies, placeQuery(payload));
     const filledEmails = await fillStoredContacts(store, fresh);
     if (filledEmails > 0) {
       note(payload, `Site contact filled ${filledEmails} stored public email${filledEmails === 1 ? "" : "s"}.`);
     }
-    const cards = fresh.flatMap((company) => {
+    cards = fresh.flatMap((company) => {
       const card = cardFromStoredFound(company, payload.placeLabel);
       return card ? [card] : [];
     });
+  } catch {
+    note(payload, "Stored companies could not be read. Starting live candidate discovery.");
+    payload.stage = "find";
+    return "continue";
+  }
+  const outcome = lookupFoundOutcome(cards.length);
+  if (outcome === "ready") {
     payload.fromCache = true;
     payload.stage = "done";
-    note(
-      payload,
-      `Found ${cards.length} fresh local companies for this place. Returning those.`,
-    );
+    note(payload, `Found ${cards.length} fresh local companies for this place. Returning those.`);
     setPublic(
       HhhPublicShortlistSchema.parse({ fromCache: true, companies: cards.slice(0, 3) }),
     );
     return "ready";
+  }
+  if (outcome === "fill") {
+    payload.fromCache = true;
+    payload.stage = "find";
+    note(
+      payload,
+      `Found ${cards.length} stored companies. Publishing those and searching for more.`,
+    );
+    setPublic(
+      HhhPublicShortlistSchema.parse({ fromCache: true, companies: cards.slice(0, 3) }),
+    );
+    return "continue";
   }
   payload.stage = "find";
   note(payload, "No complete local shortlist yet. Starting live candidate discovery.");
@@ -378,37 +420,188 @@ export function candidateBatches(
   return [candidates.slice(0, 5), candidates.slice(5, 10)];
 }
 
-async function review(payload: GeminiPayload, reviewCompanies: ReviewCompanies): Promise<void> {
-  const result = await reviewCompanies({
-    place: payload.placeLabel,
-    tradeLabel: tradeLabel(payload.tradeId),
-    jobText: payload.jobText,
-    candidates: payload.candidates,
-    evidence: payload.evidence,
-  });
-  payload.review = result.review;
-  addUsage(payload, result.usage);
-  noteCutOff(payload, "Review", result.cutOff);
-  payload.found = reviewedGeminiCompanies(
-    payload.candidates,
-    payload.evidence,
-    payload.review,
+type ReadDomainAge = (host: string) => Promise<number | null>;
+type CheckMentions = typeof checkLocalMentions;
+type FetchMention = (
+  url: string,
+) => Promise<{ url: string; ok: boolean; status: number; html: string; text: string }>;
+
+async function readDomainAge(host: string): Promise<number | null> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const res = await fetch(`https://rdap.org/domain/${encodeURIComponent(host)}`, {
+      signal: ctrl.signal,
+      headers: { Accept: "application/rdap+json, application/json" },
+    });
+    if (!res.ok) return null;
+    const registered = registrationMillis(await res.json());
+    return registered == null ? null : domainAgeYears(registered);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function domainAges(
+  candidates: readonly GeminiCandidate[],
+  readAge: ReadDomainAge,
+): Promise<Record<string, number | null>> {
+  const hosts = [
+    ...new Set(
+      candidates.flatMap((candidate) => {
+        const host = websiteHost(candidate.website);
+        return host ? [host] : [];
+      }),
+    ),
+  ];
+  const rows = await Promise.all(
+    hosts.map(async (host) => {
+      try {
+        return [host, await readAge(host)] as const;
+      } catch {
+        return [host, null] as const;
+      }
+    }),
   );
-  const keptNames = new Set(payload.found.map((company) => company.name));
-  payload.drops = payload.review.companies
-    .filter((company) => !company.keep || company.hard_reject_reason)
-    .map((company) => `${company.name}: ${company.hard_reject_reason ?? "not kept"}`);
+  return Object.fromEntries(rows);
+}
+
+/** True when every candidate was rejected. Survivors are stored on the payload. */
+async function gateCandidates(
+  payload: GeminiPayload,
+  readAge: ReadDomainAge,
+): Promise<boolean> {
+  const gated = applyShortlistGates({
+    candidates: payload.candidates,
+    place: payload.placeLabel,
+    domainAgeByHost: await domainAges(payload.candidates, readAge),
+  });
+  payload.drops = [...payload.drops, ...gated.dropped];
+  payload.found = gated.kept;
+  payload.candidates = gated.kept;
   note(
     payload,
-    `Final review kept ${payload.found.length} companies. Token total: ${payload.tokenUsage.totalTokens}.`,
+    gated.dropped.length
+      ? `Code checks kept ${gated.kept.length} companies and dropped ${gated.dropped.length}.`
+      : `Code checks kept ${gated.kept.length} companies.`,
   );
-  for (const candidate of payload.candidates) {
-    if (
-      !keptNames.has(candidate.name) &&
-      !payload.drops.some((drop) => drop.startsWith(`${candidate.name}:`))
-    ) {
-      payload.drops.push(`${candidate.name}: incomplete final proof`);
+  return gated.kept.length === 0;
+}
+
+function provisionalList(
+  payload: GeminiPayload,
+  remembered: HhhPublicShortlist["companies"],
+): HhhPublicShortlist {
+  const observedAt = new Date().toISOString();
+  const fresh = payload.found.map((row) =>
+    cardFromFound({
+      id: randomUUID(),
+      row,
+      place: payload.placeLabel,
+      tradeId: payload.tradeId,
+      observedAt,
+    }),
+  );
+  return HhhPublicShortlistSchema.parse({
+    fromCache: false,
+    companies: publishCards([...fresh, ...remembered]),
+  });
+}
+
+async function finishWithoutNewFirms(
+  store: Store,
+  payload: GeminiPayload,
+): Promise<{ outcome: "ready" | "no_results"; result: HhhPublicShortlist }> {
+  const companies = publishCards(await rememberedCards(store, payload));
+  payload.stage = "done";
+  if (companies.length === 0) {
+    note(payload, "No stored or new company passed the checks.");
+    return {
+      outcome: "no_results",
+      result: HhhPublicShortlistSchema.parse({ fromCache: false, companies: [] }),
+    };
+  }
+  payload.fromCache = true;
+  note(
+    payload,
+    `No new firm passed the checks. Returning ${companies.length} companies already on file.`,
+  );
+  return {
+    outcome: "ready",
+    result: HhhPublicShortlistSchema.parse({ fromCache: true, companies }),
+  };
+}
+
+async function review(payload: GeminiPayload, reviewCompanies: ReviewCompanies): Promise<void> {
+  try {
+    const result = await reviewCompanies({
+      place: payload.placeLabel,
+      tradeLabel: tradeLabel(payload.tradeId),
+      jobText: payload.jobText,
+      candidates: payload.candidates,
+      evidence: payload.evidence,
+    });
+    payload.review = result.review;
+    addUsage(payload, result.usage);
+    noteCutOff(payload, "Review", result.cutOff);
+    payload.found = annotateFoundReview(payload.found, payload.review);
+    note(
+      payload,
+      `Review noted ${payload.found.length} companies. Token total: ${payload.tokenUsage.totalTokens}.`,
+    );
+  } catch {
+    note(payload, "Review did not finish. Keeping the published companies.");
+  }
+  payload.stage = "mentions";
+}
+
+async function mention(
+  payload: GeminiPayload,
+  checkMentions: CheckMentions,
+  fetchMention: FetchMention,
+): Promise<void> {
+  try {
+    const check: GeminiCheck = await checkMentions({
+      place: payload.placeLabel,
+      tradeLabel: tradeLabel(payload.tradeId),
+      companies: payload.found,
+    });
+    const verified: { name: string; hits: LocalHit[] }[] = [];
+    for (const company of payload.found) {
+      const accepted: LocalHit[] = [];
+      for (const hit of citedLocalHits(company, check)) {
+        try {
+          const page = await fetchMention(hit.url);
+          if (
+            !page.ok ||
+            pageBlocked(page.url || hit.url, page.status, page.html, page.text)
+          ) {
+            continue;
+          }
+          if (
+            !acceptLocalPage({
+              companyName: company.name,
+              ownHost: websiteHost(company.website) ?? "",
+              url: hit.url,
+              text: page.text,
+            })
+          ) {
+            continue;
+          }
+          accepted.push(hit);
+        } catch {
+          continue;
+        }
+      }
+      verified.push({ name: company.name, hits: accepted });
     }
+    payload.found = attachVerifiedLocalHits(payload.found, verified);
+    const proved = verified.filter((item) => item.hits.length > 0).length;
+    note(payload, `Local pages confirmed for ${proved} companies.`);
+  } catch {
+    note(payload, "Local mention check did not finish. Companies stay without a local badge.");
   }
   payload.stage = "store";
 }
@@ -417,11 +610,11 @@ async function rememberedCards(
   store: Store,
   payload: GeminiPayload,
 ): Promise<HhhPublicShortlist["companies"]> {
-  const companies = await loadFoundCompaniesForPlace(store, placeQuery(payload));
-  return selectFreshFound(companies, placeQuery(payload)).flatMap((company) => {
-    const card = cardFromStoredFound(company, payload.placeLabel);
-    return card ? [card] : [];
-  });
+  try {
+    return await storedCards(store, payload);
+  } catch {
+    return [];
+  }
 }
 
 function publishCards(
@@ -429,8 +622,9 @@ function publishCards(
 ): HhhPublicShortlist["companies"] {
   const seen = new Set<string>();
   const unique = cards.filter((card) => {
-    if (seen.has(card.id)) return false;
-    seen.add(card.id);
+    const key = websiteHost(card.website) || foldTradeLabel(card.name);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
     return true;
   });
   const proved = (card: (typeof unique)[number]) =>
@@ -457,8 +651,8 @@ async function storeFound(
     note(
       payload,
       companies.length > 0
-        ? `No new local mention. Returning ${companies.length} companies already on file.`
-        : "No company had a local mention.",
+        ? `No new firm passed the checks. Returning ${companies.length} companies already on file.`
+        : "No company passed the checks.",
     );
     return;
   }
@@ -494,7 +688,7 @@ async function storeFound(
   const companies = publishCards([...fresh, ...remembered]);
   payload.stage = "done";
   setPublic(HhhPublicShortlistSchema.parse({ fromCache: false, companies }));
-  note(payload, `Returning ${companies.length} locally proven companies.`);
+  note(payload, `Returning ${companies.length} companies.`);
 }
 
 /** Save the partner list first. A failed database write must leave that list in place. */
@@ -551,7 +745,9 @@ export async function releaseHeldSearch(args: {
   cells: PlaceCellStore;
   job: { id: string; status: string; payload: Record<string, unknown> };
 }): Promise<HhhPublicShortlist | null> {
-  if (args.job.status === "ready" || args.job.status === "failed") return null;
+  if (args.job.status === "ready" || args.job.status === "failed" || args.job.status === "no_results") {
+    return null;
+  }
   if (args.job.payload.route !== "gemini-found") return null;
   const payload = readGeminiPayload(args.job.payload);
   if (!payload || payload.stage !== "store" || payload.found.length === 0 || !canRun(payload)) {
@@ -580,10 +776,14 @@ export async function runGeminiFoundSlice(args: {
   findCompanies?: FindCompanies;
   screenSites?: ScreenSites;
   reviewCompanies?: ReviewCompanies;
+  readDomainAge?: ReadDomainAge;
+  checkMentions?: CheckMentions;
+  fetchMention?: FetchMention;
 }): Promise<{ continue: boolean; lock?: string }> {
   const job = await getPartnerJob(args.admin, args.jobId);
-  if (!job || job.status === "ready" || job.status === "failed")
+  if (!job || job.status === "ready" || job.status === "failed" || job.status === "no_results") {
     return { continue: false };
+  }
   const payload = readGeminiPayload(job.payload);
   if (!payload) return { continue: false };
   if (!canRun(payload, args.lock)) return { continue: false };
@@ -597,58 +797,98 @@ export async function runGeminiFoundSlice(args: {
     payload: { ...payload },
     publicResult,
   });
+  const saveNoResults = async (): Promise<void> => {
+    payload.stage = "done";
+    payload.lock = undefined;
+    payload.lockAt = undefined;
+    await savePartnerJob(args.admin, {
+      id: job.id,
+      status: "no_results",
+      payload: { ...payload },
+      publicResult: HhhPublicShortlistSchema.parse({ fromCache: false, companies: [] }),
+    });
+  };
   try {
     if (!payload.startedAt) payload.startedAt = new Date().toISOString();
     if (payload.stage !== "store" && payload.stage !== "done" && searchExpired(payload)) {
-      payload.stage = "done";
-      payload.lock = undefined;
-      payload.lockAt = undefined;
-      note(payload, "The search ran for three minutes without a finished review.");
-      await savePartnerJob(args.admin, {
-        id: job.id,
-        status: "failed",
-        payload: { ...payload },
-        publicResult: HhhPublicShortlistSchema.parse({ fromCache: false, companies: [] }),
-      });
+      if (publicResult && publicResult.companies.length > 0) {
+        note(payload, "The search reached three minutes. Returning the companies already found.");
+        await commitSearchResult(args, payload, publicResult, payload.found.length > 0);
+        return { continue: false };
+      }
+      note(payload, "The search ran for three minutes without a company to return.");
+      await saveNoResults();
       return { continue: false };
     }
     const findCompanies = args.findCompanies ?? findLocalCompanies;
     const screenSites = args.screenSites ?? screenCandidateSites;
     const reviewCompanies = args.reviewCompanies ?? reviewGeminiCompanies;
-    let outcome: "continue" | "ready" = "continue";
+    const readAge = args.readDomainAge ?? readDomainAge;
+    const checkMentions = args.checkMentions ?? checkLocalMentions;
+    const fetchMention = args.fetchMention ?? fetchPage;
+    let outcome: "continue" | "ready" | "no_results" = "continue";
     const siteStage =
       payload.stage === "check" ||
       payload.stage === "sources" ||
       payload.stage === "candidateEvidence" ||
       payload.stage === "sourceCandidates";
     if (payload.stage === "lookup") {
-      outcome = await lookup(args.store, payload, (next) => (publicResult = next));
+      outcome = await lookup(args.store, payload, (next) => {
+        publicResult = next;
+      });
     } else if (payload.stage === "find" || (payload.stage === "sources" && payload.candidates.length === 0)) {
       const finished = await findOnly(payload, findCompanies);
       if (finished) {
-        publicResult = HhhPublicShortlistSchema.parse({ fromCache: false, companies: [] });
-        outcome = "ready";
+        const settled = await finishWithoutNewFirms(args.store, payload);
+        publicResult = settled.result;
+        outcome = settled.outcome;
       }
     } else if (siteStage) {
       const finished = await checkSites(payload, screenSites);
-      if (finished) {
-        publicResult = HhhPublicShortlistSchema.parse({ fromCache: false, companies: [] });
-        outcome = "ready";
+      if (finished || (await gateCandidates(payload, readAge))) {
+        const settled = await finishWithoutNewFirms(args.store, payload);
+        publicResult = settled.result;
+        outcome = settled.outcome;
+      } else {
+        publicResult = provisionalList(payload, await rememberedCards(args.store, payload));
+        payload.stage = "review";
+        note(payload, `Publishing ${publicResult.companies.length} companies before review.`);
       }
     } else if (payload.stage === "review") {
-      await review(payload, reviewCompanies);
+      if (payload.found.length === 0 && payload.candidates.length > 0) {
+        const empty = await gateCandidates(payload, readAge);
+        if (!empty) {
+          publicResult = provisionalList(payload, await rememberedCards(args.store, payload));
+        }
+      }
+      if (payload.found.length === 0) {
+        const settled = await finishWithoutNewFirms(args.store, payload);
+        publicResult = settled.result;
+        outcome = settled.outcome;
+      } else {
+        await review(payload, reviewCompanies);
+      }
+    } else if (payload.stage === "mentions") {
+      await mention(payload, checkMentions, fetchMention);
+      publicResult = provisionalList(payload, await rememberedCards(args.store, payload));
     } else if (payload.stage === "store") {
       publicResult = publishHeld(payload);
       outcome = "ready";
     } else outcome = "ready";
-    if (payload.stage === "done") outcome = "ready";
+    if (outcome === "no_results") {
+      await saveNoResults();
+      return { continue: false };
+    }
     if (outcome === "ready") {
-      await commitSearchResult(
-        args,
-        payload,
-        publicResult ??
-          HhhPublicShortlistSchema.parse({ fromCache: false, companies: [] }),
-      );
+      if (!publicResult || publicResult.companies.length === 0) {
+        const settled = await finishWithoutNewFirms(args.store, payload);
+        if (settled.outcome === "no_results") {
+          await saveNoResults();
+          return { continue: false };
+        }
+        publicResult = settled.result;
+      }
+      await commitSearchResult(args, payload, publicResult, payload.found.length > 0);
       return { continue: false };
     }
     payload.lock = undefined;
@@ -657,7 +897,7 @@ export async function runGeminiFoundSlice(args: {
       id: job.id,
       status: "running",
       payload: { ...payload },
-      publicResult: null,
+      publicResult,
     });
     return { continue: true };
   } catch (err) {
@@ -666,6 +906,16 @@ export async function runGeminiFoundSlice(args: {
     payload.lock = undefined;
     payload.lastError = message;
     note(payload, message);
+    if (publicResult && publicResult.companies.length > 0) {
+      payload.stage = "done";
+      await savePartnerJob(args.admin, {
+        id: job.id,
+        status: "ready",
+        payload: { ...payload },
+        publicResult,
+      });
+      return { continue: false };
+    }
     await savePartnerJob(args.admin, {
       id: job.id,
       status: "failed",

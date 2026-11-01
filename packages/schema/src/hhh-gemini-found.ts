@@ -74,6 +74,8 @@ const DIRECTORY_HOSTS = [
   "instagram.com",
   "linkedin.com",
   "wikipedia.org",
+  "compadex.com",
+  "warmtepompplek.nl",
 ];
 
 const DIRECTORY_CATEGORY = new Set([
@@ -280,6 +282,36 @@ export type GeminiUsage = {
 };
 
 const LEAD_HOST = /(?:^|\.)(?:werkspot|trustoo|zoofy|vergelijk)\.nl$/i;
+/** 080, 084, 085, 087, 088, 090 and 097. A 06 stays usable. */
+const SERVICE_SWITCHBOARD = /^(?:08[04578]|090|097)/;
+/** Same five-year line as the recommendation gate. A young domain is not proof. */
+export const FOUND_MIN_DOMAIN_YEARS = 5;
+
+function dutchPhoneDigits(raw: string): string[] {
+  const found = new Set<string>();
+  for (const match of raw.matchAll(/(?:\+31|0031|0)(?:[\s()./-]*\d){8,12}/g)) {
+    let digits = (match[0] ?? "").replace(/\D/g, "");
+    if (digits.startsWith("0031")) digits = `0${digits.slice(4)}`;
+    else if (digits.startsWith("31") && digits.length >= 11) digits = `0${digits.slice(2)}`;
+    if (!digits.startsWith("0") || digits.length < 10) continue;
+    found.add(digits.slice(0, 10));
+  }
+  return [...found];
+}
+
+/** Keeps a geographic number or a 06. A switchboard on its own is a rejection. */
+export function chooseListedPhone(raw: string): { phone: string; serviceOnly: boolean } {
+  const phones = dutchPhoneDigits(raw);
+  if (phones.length === 0) return { phone: raw.trim(), serviceOnly: false };
+  const usable = phones.filter((phone) => !SERVICE_SWITCHBOARD.test(phone));
+  if (usable.length === 0) return { phone: "", serviceOnly: true };
+  const geographic = usable.find((phone) => !phone.startsWith("06"));
+  const chosen = geographic ?? usable[0]!;
+  if (phones.some((phone) => SERVICE_SWITCHBOARD.test(phone))) {
+    return { phone: chosen, serviceOnly: false };
+  }
+  return { phone: raw.trim(), serviceOnly: false };
+}
 
 /** First-step firms. A lead site is dropped. A missing website is not, when a phone or address is present. */
 export function reviewFoundFirms(proposed: readonly GeminiCandidate[]): {
@@ -299,6 +331,11 @@ export function reviewFoundFirms(proposed: readonly GeminiCandidate[]): {
       skipped.push("A row had no name.");
       continue;
     }
+    const listed = chooseListedPhone(phone);
+    if (listed.serviceOnly) {
+      skipped.push(`${name}: service number`);
+      continue;
+    }
     if (host && LEAD_HOST.test(host)) {
       skipped.push(`${name}: lead site`);
       continue;
@@ -316,7 +353,7 @@ export function reviewFoundFirms(proposed: readonly GeminiCandidate[]): {
       name,
       website: website ?? "",
       address,
-      phone,
+      phone: listed.phone || phone,
       email: row.email.trim(),
       candidateBasis: row.candidateBasis ?? [],
       riskFlags: row.riskFlags ?? [],
@@ -349,6 +386,9 @@ export type GeminiFoundCompany = GeminiCandidate & {
   professionalConnection?: boolean;
   evidenceLevel?: "strong" | "moderate" | "limited";
   hardRejectReason?: string;
+  /** Structural label before a fetched local page. A missing age stays gevonden. */
+  listing?: "gevonden" | "geverifieerd";
+  domainAgeYears?: number | null;
 };
 
 function text(value: string | null | undefined): string {
@@ -393,16 +433,6 @@ export function mergeGeminiCandidates(
   return out;
 }
 
-function evidenceFor(
-  candidate: GeminiCandidate,
-  evidence: GeminiEvidenceResult,
-): GeminiEvidenceClaim[] {
-  return evidence.companies
-    .filter((company) => namesMatch(company.name, candidate.name))
-    .flatMap((company) => company.claims)
-    .filter((claim) => namesMatch(claim.observed_name, candidate.name));
-}
-
 function reviewFor(candidate: GeminiCandidate, review: GeminiReview) {
   return review.companies.find((company) => namesMatch(company.name, candidate.name));
 }
@@ -413,6 +443,7 @@ export function reviewedGeminiCompanies(
   evidence: GeminiEvidenceResult,
   review: GeminiReview,
 ): GeminiFoundCompany[] {
+  void evidence;
   const rows: GeminiFoundCompany[] = [];
   for (const candidate of candidates) {
     const verdict = reviewFor(candidate, review);
@@ -426,63 +457,46 @@ export function reviewedGeminiCompanies(
     ) {
       continue;
     }
-    const claims = evidenceFor(candidate, evidence).filter(
-      (claim) => claim.outcome === "confirmed",
-    );
-    const hitsByUrl = new Map<string, LocalHit>();
-    for (const claim of claims) {
-      const url = httpsUrl(claim.source_url);
-      const host = url ? websiteHost(url) : null;
-      if (!url || !host || hitsByUrl.has(url)) continue;
-      const kind: LocalHit["kind"] =
-        claim.claim_type === "local_connection"
-          ? "ov"
-          : claim.claim_type === "professional_connection"
-            ? "professional"
-            : "website";
-      hitsByUrl.set(url, {
-        kind,
-        sourceName: claim.source_name,
-        url,
-        relation: claim.note || claim.source_name,
-        host,
-      });
-    }
-    for (const sourceUrl of verdict.source_urls) {
-      const url = httpsUrl(sourceUrl);
-      const host = url ? websiteHost(url) : null;
-      if (!url || !host || hitsByUrl.has(url)) continue;
-      hitsByUrl.set(url, {
-        kind: "website",
-        sourceName: host,
-        url,
-        relation: "Gebruikt voor de bedrijfs- en kluscontrole.",
-        host,
-      });
-    }
-    const hits = [...hitsByUrl.values()];
-    const localConnection = hits.some(
-      (hit) => hit.kind === "ov" || hit.kind === "sport" || hit.kind === "festivity",
-    );
-    const professionalConnection = hits.some((hit) => hit.kind === "professional");
-    const sourceCount = Math.min(
-      FOUND_SOURCE_CAP,
-      new Set(hits.map((hit) => hit.host)).size,
-    );
+    const listed = chooseListedPhone(candidate.phone);
+    if (listed.serviceOnly) continue;
     rows.push({
       ...candidate,
+      phone: listed.phone || candidate.phone,
       riskFlags: [...new Set([...(candidate.riskFlags ?? []), ...verdict.risk_flags])],
-      sourceCount,
+      sourceCount: 1,
       matchNote: verdict.summary.slice(0, 400),
-      hits,
+      hits: [],
       jobFit: true,
       locationChecked: true,
-      professionalConnection,
-      evidenceLevel:
-        localConnection || professionalConnection ? verdict.evidence_level : "limited",
+      professionalConnection: false,
+      evidenceLevel: "limited",
     });
   }
   return rankFound(rows);
+}
+
+/** Copy the review note onto firms the code already kept. It cannot add or remove one. */
+export function annotateFoundReview(
+  companies: readonly GeminiFoundCompany[],
+  review: GeminiReview,
+): GeminiFoundCompany[] {
+  return companies.map((company) => {
+    const verdict = reviewFor(company, review);
+    if (!verdict) return company;
+    return {
+      ...company,
+      riskFlags: [
+        ...new Set([
+          ...(company.riskFlags ?? []),
+          ...verdict.risk_flags,
+          ...(verdict.hard_reject_reason ? [verdict.hard_reject_reason] : []),
+        ]),
+      ],
+      matchNote: verdict.summary.slice(0, 400) || company.matchNote,
+      jobFit: verdict.job_fit,
+      locationChecked: verdict.location_checked,
+    };
+  });
 }
 
 function localHits(
@@ -525,6 +539,13 @@ function localHits(
     }
   }
   return [...seen.values()];
+}
+
+/** Local-organisation hits named by the check. The caller still has to fetch the page. */
+export function citedLocalHits(candidate: GeminiCandidate, check: GeminiCheck): LocalHit[] {
+  const checked = check.companies.find((company) => namesMatch(company.name, candidate.name));
+  if (!checked) return [];
+  return localHits(candidate.website || text(checked.website), checked.claims, check.sources);
 }
 
 /** Keep find-step firms that the check named, and only when a local page names the company. */
@@ -579,8 +600,6 @@ export function rankFound<
       : 0;
   const professional = (row: T) =>
     row.hits?.some((hit) => hit.kind === "professional") ? 1 : 0;
-  const specificity = (row: T) =>
-    /organis|bestuur|opricht|sponsor|lid van|member/i.test(row.matchNote ?? "") ? 1 : 0;
   const completeness = (row: T) =>
     [row.website, row.address, row.phone, row.email].filter((value) =>
       Boolean(value?.trim()),
@@ -591,14 +610,185 @@ export function rankFound<
         local(b) - local(a) ||
         professional(b) - professional(a) ||
         b.sourceCount - a.sourceCount ||
-        specificity(b) - specificity(a) ||
-        completeness(b) - completeness(a),
+        completeness(b) - completeness(a) ||
+        a.name.localeCompare(b.name, "nl"),
     )
     .slice(0, FOUND_RETURN_COUNT);
 }
 
-export function lookupFoundOutcome(freshCount: number): "ready" | "find" {
-  return freshCount >= FOUND_LOOKUP_COUNT ? "ready" : "find";
+function hasStreetAddress(address: string, place: string): boolean {
+  const folded = foldTradeLabel(address);
+  if (!folded) return false;
+  const street =
+    /straat|laan|weg|plein|kade|dijk|singel|gracht|hof|park|dreef|steeg|baan|veld/.test(
+      folded,
+    );
+  const placeName = foldTradeLabel(place).replace(/\s+/g, "");
+  const placeHit = placeName.length >= 4 && folded.replace(/\s+/g, "").includes(placeName);
+  const postcode = /\b\d{4}\s?[a-z]{2}\b/i.test(address);
+  return street || (/\d/.test(address) && (placeHit || postcode));
+}
+
+function placeToken(place: string): string {
+  return foldTradeLabel(place).replace(/\s+/g, "");
+}
+
+function placeInUrlPath(website: string, place: string): boolean {
+  const token = placeToken(place);
+  if (token.length < 4 || !website.trim()) return false;
+  try {
+    const url = new URL(website.trim().includes("://") ? website.trim() : `https://${website.trim()}`);
+    const path = foldTradeLabel(decodeURIComponent(url.pathname)).replace(/\s+/g, "");
+    return path.includes(token);
+  } catch {
+    return false;
+  }
+}
+
+function placeInHost(website: string, place: string): boolean {
+  const token = placeToken(place);
+  const host = websiteHost(website);
+  if (!host || token.length < 4) return false;
+  const labels = foldTradeLabel(host.split(".").slice(0, -1).join(" ")).replace(/\s+/g, "");
+  return labels.includes(token);
+}
+
+function emailHost(email: string): string | null {
+  const at = email.lastIndexOf("@");
+  if (at < 1) return null;
+  return websiteHost(email.slice(at + 1));
+}
+
+function domainsDiffer(website: string, email: string): boolean {
+  const site = websiteHost(website);
+  const mail = emailHost(email);
+  if (!site || !mail) return false;
+  if (site === mail || site.endsWith(`.${mail}`) || mail.endsWith(`.${site}`)) return false;
+  return true;
+}
+
+/** A city landing page: the place is the page, and there is no street address there. */
+export function rejectPlaceLanding(args: {
+  website: string;
+  email: string;
+  address: string;
+  place: string;
+}): boolean {
+  const street = hasStreetAddress(args.address, args.place);
+  const inPath = placeInUrlPath(args.website, args.place);
+  const inHost = placeInHost(args.website, args.place);
+  const otherDomain = domainsDiffer(args.website, args.email);
+  if (inPath && !street) return true;
+  if (inHost && !street) return true;
+  if (otherDomain && (inPath || !street)) return true;
+  return false;
+}
+
+function domainDecision(
+  age: number | null,
+  street: boolean,
+  usablePhone: boolean,
+): "drop" | "gevonden" | "geverifieerd" {
+  if (age == null) return "gevonden";
+  if (age < FOUND_MIN_DOMAIN_YEARS) return street && usablePhone ? "gevonden" : "drop";
+  return "geverifieerd";
+}
+
+/**
+ * Hard no before publication. A review that says keep cannot put a dropped firm back.
+ * An unknown domain age does not drop a firm that has a real number and a street.
+ */
+export function applyShortlistGates(args: {
+  candidates: readonly GeminiCandidate[];
+  place: string;
+  domainAgeByHost: Readonly<Record<string, number | null>>;
+}): { kept: GeminiFoundCompany[]; dropped: string[] } {
+  const kept: GeminiFoundCompany[] = [];
+  const dropped: string[] = [];
+  for (const candidate of args.candidates) {
+    const listed = chooseListedPhone(candidate.phone);
+    if (listed.serviceOnly) {
+      dropped.push(`${candidate.name}: service number`);
+      continue;
+    }
+    if (
+      rejectPlaceLanding({
+        website: candidate.website,
+        email: candidate.email,
+        address: candidate.address,
+        place: args.place,
+      })
+    ) {
+      dropped.push(`${candidate.name}: place landing`);
+      continue;
+    }
+    const host = websiteHost(candidate.website);
+    const age = host && host in args.domainAgeByHost ? args.domainAgeByHost[host]! : null;
+    const street = hasStreetAddress(candidate.address, args.place);
+    const usablePhone = dutchPhoneDigits(listed.phone).length > 0;
+    const listing = domainDecision(age, street, usablePhone);
+    if (listing === "drop") {
+      dropped.push(`${candidate.name}: young domain`);
+      continue;
+    }
+    const basis = (candidate.candidateBasis ?? []).map((item) => item.trim()).filter(Boolean);
+    kept.push({
+      ...candidate,
+      phone: listed.phone || candidate.phone,
+      sourceCount: 1,
+      matchNote: (basis.join("; ") || `Gevonden in ${args.place}.`).slice(0, 400),
+      hits: [],
+      jobFit: true,
+      locationChecked: street,
+      professionalConnection: false,
+      evidenceLevel: "limited",
+      listing,
+      domainAgeYears: age,
+    });
+  }
+  return { kept, dropped };
+}
+
+/** A fetched club, association, or festivity page raises the firm. A miss leaves it in place. */
+export function attachVerifiedLocalHits(
+  companies: readonly GeminiFoundCompany[],
+  verified: readonly { name: string; hits: readonly LocalHit[] }[],
+): GeminiFoundCompany[] {
+  const next = companies.map((company) => {
+    const own = websiteHost(company.website);
+    const extra =
+      verified.find((item) => namesMatch(item.name, company.name))?.hits ?? [];
+    const hits = extra.filter((hit) => {
+      if (hit.kind !== "ov" && hit.kind !== "sport" && hit.kind !== "festivity") return false;
+      if (!hit.host || nationalDirectoryHost(hit.host)) return false;
+      if (own && (hit.host === own || hit.host.endsWith(`.${own}`) || own.endsWith(`.${hit.host}`))) {
+        return false;
+      }
+      return true;
+    });
+    const hosts = new Set(hits.map((hit) => hit.host));
+    const sourceCount = Math.max(1, Math.min(FOUND_SOURCE_CAP, hosts.size || 1));
+    const relation = hits
+      .map((hit) => hit.relation.trim())
+      .filter(Boolean)
+      .join(" · ")
+      .slice(0, 400);
+    return {
+      ...company,
+      hits,
+      sourceCount,
+      professionalConnection: false,
+      evidenceLevel: hits.length > 0 ? ("strong" as const) : ("limited" as const),
+      matchNote: relation || company.matchNote,
+    };
+  });
+  return rankFound(next);
+}
+
+export function lookupFoundOutcome(freshCount: number): "ready" | "fill" | "find" {
+  if (freshCount >= FOUND_LOOKUP_COUNT) return "ready";
+  if (freshCount > 0) return "fill";
+  return "find";
 }
 
 type FoundView = PartnerCompanyView & {
@@ -613,21 +803,29 @@ function directoryFact(fact: PartnerFact): boolean {
   return DIRECTORY_WORD.test(`${fact.sourceName ?? ""}\n${fact.sourceUrl}`);
 }
 
-/** Club, festivity, and association pages. A phone book or an SBI sentence is not local proof. */
-function localFacts(trust: PartnerTrust | undefined): PartnerFact[] {
+function ownSiteFact(fact: PartnerFact, website?: string): boolean {
+  const own = website ? websiteHost(website) : null;
+  const host = websiteHost(fact.sourceUrl);
+  if (!own || !host) return false;
+  return host === own || host.endsWith(`.${own}`) || own.endsWith(`.${host}`);
+}
+
+/** Club, festivity, and association pages. A phone book, an SBI line, or the firm's own site is not local proof. */
+function localFacts(trust: PartnerTrust | undefined, website?: string): PartnerFact[] {
   return (trust?.facts ?? []).filter(
     (fact) =>
       (fact.kind === "ov" || fact.kind === "sport" || fact.kind === "festivity") &&
-      !directoryFact(fact),
+      !directoryFact(fact) &&
+      !ownSiteFact(fact, website),
   );
 }
 
-function reviewedFacts(trust: PartnerTrust | undefined): PartnerFact[] {
-  const acceptedLocal = new Set(localFacts(trust));
+function reviewedFacts(trust: PartnerTrust | undefined, website?: string): PartnerFact[] {
+  const acceptedLocal = new Set(localFacts(trust, website));
   return (trust?.facts ?? []).filter(
     (fact) =>
       fact.kind === "website" ||
-      (fact.kind === "professional" && !directoryFact(fact)) ||
+      (fact.kind === "professional" && !directoryFact(fact) && !ownSiteFact(fact, website)) ||
       acceptedLocal.has(fact),
   );
 }
@@ -654,13 +852,25 @@ export function selectFreshFound(
       if (trust.score < 1) return false;
       if (company.localAuthenticity?.verdict === "fake_local") return false;
       if (!placeMatchesTrust(trust, query)) return false;
-      return evidenceFresh(reviewedFacts(trust), now);
+      return evidenceFresh(reviewedFacts(trust, company.website_url), now);
     })
     .sort(
       (a, b) =>
         (b.partnerTrust?.score ?? 0) - (a.partnerTrust?.score ?? 0) ||
         a.name.localeCompare(b.name, "nl"),
     );
+}
+
+function publishedLocalHits(row: GeminiFoundCompany): LocalHit[] {
+  const own = websiteHost(row.website);
+  return row.hits.filter((hit) => {
+    if (hit.kind !== "ov" && hit.kind !== "sport" && hit.kind !== "festivity") return false;
+    if (!hit.host || nationalDirectoryHost(hit.host)) return false;
+    if (own && (hit.host === own || hit.host.endsWith(`.${own}`) || own.endsWith(`.${hit.host}`))) {
+      return false;
+    }
+    return true;
+  });
 }
 
 export function cardFromFound(args: {
@@ -670,15 +880,14 @@ export function cardFromFound(args: {
   tradeId: TradeId;
   observedAt: string;
 }): HhhShortlistCompany {
-  const localConnection = args.row.hits.some(
-    (hit) => hit.kind === "ov" || hit.kind === "sport" || hit.kind === "festivity",
-  );
-  const professionalConnection = args.row.hits.some((hit) => hit.kind === "professional");
+  const localHits = publishedLocalHits(args.row);
+  const localConnection = localHits.length > 0;
+  const hosts = new Set(localHits.map((hit) => hit.host));
+  const sourceCount = Math.max(1, Math.min(FOUND_SOURCE_CAP, hosts.size || 1));
   const badges: HhhShortlistCompany["badges"] = ["gevonden"];
   if (args.row.jobFit) badges.push("klus_passend");
   if (args.row.locationChecked) badges.push("vestiging_gecontroleerd");
   if (localConnection) badges.push("lokaal_verbonden");
-  if (professionalConnection) badges.push("professioneel_aangesloten");
   if (args.row.evidenceLevel === "limited") badges.push("beperkt_bewijs");
   if ((args.row.riskFlags?.length ?? 0) > 0) badges.push("risicosignaal");
   return HhhShortlistCompanySchema.parse({
@@ -693,12 +902,16 @@ export function cardFromFound(args: {
       : publicHttpUrl(args.row.contactUrl) ?? publicHttpUrl(args.row.website),
     tradeId: args.tradeId,
     tradeLabel: tradeLabel(args.tradeId),
-    status: localConnection ? "lokaal_verbonden" : "geverifieerd",
+    status: localConnection
+      ? "lokaal_verbonden"
+      : args.row.listing === "geverifieerd"
+        ? "geverifieerd"
+        : "gevonden",
     badges,
-    sourceCount: args.row.sourceCount > 0 ? args.row.sourceCount : undefined,
-    score: Math.max(1, args.row.sourceCount),
+    sourceCount,
+    score: sourceCount,
     matchNote: args.row.matchNote,
-    evidence: args.row.hits.map((hit) => ({
+    evidence: localHits.map((hit) => ({
       kind: hit.kind,
       sourceName: hit.sourceName,
       url: hit.url,
@@ -716,11 +929,14 @@ export function cardFromStoredFound(
   if (company.localAuthenticity?.verdict === "fake_local") return null;
   const trade = TradeIdSchema.safeParse(trust.tradeId);
   if (!trade.success) return null;
-  const facts = reviewedFacts(trust);
+  const facts = reviewedFacts(trust, company.website_url);
   if (facts.length === 0) return null;
-  const local = localFacts(trust);
+  const local = localFacts(trust, company.website_url);
   const professional = facts.filter((fact) => fact.kind === "professional");
-  const sourceCount = Math.min(FOUND_SOURCE_CAP, facts.length);
+  const hosts = new Set(
+    local.map((fact) => websiteHost(fact.sourceUrl)).filter((host): host is string => Boolean(host)),
+  );
+  const sourceCount = Math.max(1, Math.min(FOUND_SOURCE_CAP, hosts.size || 1));
   const badges: HhhShortlistCompany["badges"] = [
     "gevonden",
     "klus_passend",
@@ -740,12 +956,12 @@ export function cardFromStoredFound(
     contactUrl: company.email?.trim() ? undefined : publicHttpUrl(company.website_url),
     tradeId: trade.data,
     tradeLabel: tradeLabel(trade.data),
-    status: local.length > 0 ? "lokaal_verbonden" : "geverifieerd",
+    status: local.length > 0 ? "lokaal_verbonden" : "gevonden",
     badges,
     sourceCount,
     score: sourceCount,
-    matchNote: storedMatchNote(trust, facts),
-    evidence: facts.map((fact) => ({
+    matchNote: storedMatchNote(trust, local.length > 0 ? local : facts),
+    evidence: local.map((fact) => ({
       kind: fact.kind,
       sourceName: fact.sourceName,
       url: fact.sourceUrl,

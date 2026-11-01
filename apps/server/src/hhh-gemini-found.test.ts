@@ -3,12 +3,18 @@ import { describe, it } from "node:test";
 import {
   GeminiCheckSchema,
   acceptLandscape,
+  annotateFoundReview,
+  applyShortlistGates,
+  attachVerifiedLocalHits,
   cardFromFound,
   cardFromStoredFound,
   chooseSiteEmail,
+  chooseListedPhone,
+  citedLocalHits,
   companiesWithLocalMention,
   directoryHostsIn,
   emailsInPage,
+  lookupFoundOutcome,
   mergeGeminiCandidates,
   reviewFoundFirms,
   reviewedGeminiCompanies,
@@ -444,7 +450,7 @@ describe("first search firms", () => {
     assert.equal(kept[0]?.address, "Heereweg 12, Lisse");
   });
 
-  it("keeps up to ten candidates and records 085 as a warning", () => {
+  it("drops an 085 number and still keeps ten other candidates", () => {
     const read = proposedCandidates({
       companies: Array.from({ length: 11 }, (_, index) => ({
         name: `Firma ${index + 1}`,
@@ -456,11 +462,11 @@ describe("first search firms", () => {
         risk_flags: index === 0 ? ["Alleen een 085-nummer gevonden"] : [],
       })),
     });
-    const kept = reviewFoundFirms(read).kept;
-    assert.equal(kept.length, 10);
-    assert.equal(kept[0]?.phone, "085 123 4567");
-    assert.deepEqual(kept[0]?.riskFlags, ["Alleen een 085-nummer gevonden"]);
-    assert.deepEqual(kept[0]?.candidateBasis, ["Eigen website en vestigingsadres"]);
+    const reviewed = reviewFoundFirms(read);
+    assert.equal(reviewed.kept.length, 10);
+    assert.equal(reviewed.kept[0]?.name, "Firma 2");
+    assert.equal(reviewed.kept[0]?.phone.startsWith("06"), true);
+    assert.ok(reviewed.skipped.some((line) => line.includes("Firma 1: service number")));
   });
 });
 
@@ -542,8 +548,8 @@ describe("model words for a football sponsor", () => {
     assert.deepEqual(
       found.map((row) => [row.name, row.sourceCount, row.hits[0]?.kind]),
       [
-        ["Installatiebedrijf Kusch", 1, "sport"],
         ["Coppens Alkmaar", 1, "ov"],
+        ["Installatiebedrijf Kusch", 1, "sport"],
       ],
     );
   });
@@ -1205,32 +1211,18 @@ describe("four-step Gemini review", () => {
     );
   });
 
-  it("keeps a checked firm without a local mention and treats 085 as a soft flag", () => {
+  it("drops a service number and does not treat an unfetched page as local proof", () => {
     const found = reviewedGeminiCompanies(candidates, evidence, review);
     assert.deepEqual(
       found.map((company) => company.name),
-      ["Lokale Loodgieter", "Vakbedrijf Zonder Club"],
+      ["Lokale Loodgieter"],
     );
-    const limited = found[1]!;
-    assert.equal(limited.evidenceLevel, "limited");
-    assert.deepEqual(limited.riskFlags, ["085-nummer"]);
-    const card = cardFromFound({
-      id: "66666666-6666-4666-8666-666666666666",
-      row: limited,
-      place: "Lisse",
-      tradeId: "bath",
-      observedAt: "2026-10-28T00:00:00.000Z",
-    });
-    assert.equal(card.status, "geverifieerd");
-    assert.ok(card.badges.includes("klus_passend"));
-    assert.ok(card.badges.includes("vestiging_gecontroleerd"));
-    assert.ok(card.badges.includes("beperkt_bewijs"));
-    assert.ok(card.badges.includes("risicosignaal"));
-  });
-
-  it("keeps professional and local evidence separate and rejects a hard risk", () => {
-    const found = reviewedGeminiCompanies(candidates, evidence, review);
     const local = found[0]!;
+    assert.equal(local.hits.length, 0);
+    assert.equal(
+      found.some((company) => company.name === "Tussenpersoon"),
+      false,
+    );
     const card = cardFromFound({
       id: "77777777-7777-4777-8777-777777777777",
       row: local,
@@ -1238,12 +1230,9 @@ describe("four-step Gemini review", () => {
       tradeId: "bath",
       observedAt: "2026-10-28T00:00:00.000Z",
     });
-    assert.ok(card.badges.includes("lokaal_verbonden"));
-    assert.ok(card.badges.includes("professioneel_aangesloten"));
-    assert.equal(
-      found.some((company) => company.name === "Tussenpersoon"),
-      false,
-    );
+    assert.equal(card.status, "gevonden");
+    assert.equal(card.evidence.length, 0);
+    assert.equal(card.badges.includes("lokaal_verbonden"), false);
   });
 
   it("merges source candidates by host or folded name", () => {
@@ -1395,6 +1384,246 @@ function geminiJob(stage: string, extra: Record<string, unknown> = {}): MemoryRo
   };
 }
 
+describe("watertight shortlist", () => {
+  const snepvangers = {
+    name: "Snepvangers Installatiewerken",
+    website: "https://snepvangers-installatiewerken.nl",
+    address: "Rustenburgstraat 6B, 4881 DN Zundert",
+    phone: "076 597 7125",
+    email: "info@snepvangers-installatiewerken.nl",
+  };
+  const hanvos = {
+    name: "HanVos Warmtepomp",
+    website: "https://hanvoswarmtepomp.nl/warmtepomp-zundert",
+    address: "Breda (regio Zundert)",
+    phone: "085 303 7272",
+    email: "info@hanvosinstallaties.nl",
+  };
+
+  it("publishes one stored firm and keeps searching until there are three", () => {
+    assert.equal(lookupFoundOutcome(0), "find");
+    assert.equal(lookupFoundOutcome(1), "fill");
+    assert.equal(lookupFoundOutcome(2), "fill");
+    assert.equal(lookupFoundOutcome(3), "ready");
+  });
+
+  it("drops 085 and 088 and keeps a 076 and a 06", () => {
+    const gated = applyShortlistGates({
+      place: "Zundert",
+      domainAgeByHost: {},
+      candidates: [
+        hanvos,
+        { ...snepvangers, name: "Alleen 088", phone: "088 123 4567", website: "https://alleen088.example" },
+        snepvangers,
+        {
+          name: "Mobiele Loodgieter",
+          website: "https://mobiel.example",
+          address: "Molenstraat 4, Zundert",
+          phone: "06 12345678",
+          email: "info@mobiel.example",
+        },
+      ],
+    });
+    assert.deepEqual(
+      gated.kept.map((company) => company.name),
+      ["Snepvangers Installatiewerken", "Mobiele Loodgieter"],
+    );
+    assert.equal(gated.kept[0]?.phone, "076 597 7125");
+    assert.equal(gated.kept[1]?.phone, "06 12345678");
+    const mixed = chooseListedPhone("085 303 7272 of 076 597 7125");
+    assert.equal(mixed.serviceOnly, false);
+    assert.equal(mixed.phone, "0765977125");
+    assert.ok(gated.dropped.some((line) => line.startsWith("HanVos Warmtepomp")));
+    assert.ok(gated.dropped.some((line) => line.startsWith("Alleen 088")));
+  });
+
+  it("drops a place landing page and a review cannot put it back", () => {
+    const landing = {
+      ...hanvos,
+      phone: "076 597 7100",
+      email: "info@hanvoswarmtepomp.nl",
+    };
+    const gated = applyShortlistGates({
+      place: "Zundert",
+      domainAgeByHost: { "hanvoswarmtepomp.nl": 12, "snepvangers-installatiewerken.nl": 12 },
+      candidates: [hanvos, landing, snepvangers],
+    });
+    assert.deepEqual(gated.kept.map((company) => company.name), ["Snepvangers Installatiewerken"]);
+    const noted = annotateFoundReview(gated.kept, {
+      companies: [
+        {
+          name: "HanVos Warmtepomp",
+          job_fit: true,
+          location_checked: true,
+          serves_private: true,
+          keep: true,
+          evidence_level: "strong",
+          risk_flags: [],
+          hard_reject_reason: null,
+          summary: "Een gladde lokale pagina.",
+          source_urls: ["https://hanvoswarmtepomp.nl/warmtepomp-zundert"],
+        },
+      ],
+    });
+    assert.equal(
+      noted.some((company) => company.name === "HanVos Warmtepomp"),
+      false,
+    );
+  });
+
+  it("does not let an own site or a directory raise the score", () => {
+    const card = cardFromFound({
+      id: "99999999-9999-4999-8999-999999999999",
+      place: "Zundert",
+      tradeId: "hvac",
+      observedAt: "2026-11-01T13:42:24.719Z",
+      row: {
+        ...snepvangers,
+        sourceCount: 3,
+        listing: "geverifieerd",
+        matchNote: "Installatiebedrijf in Zundert.",
+        hits: [
+          {
+            kind: "website",
+            sourceName: "snepvangers-installatiewerken.nl",
+            url: "https://snepvangers-installatiewerken.nl/",
+            relation: "Eigen site",
+            host: "snepvangers-installatiewerken.nl",
+          },
+          {
+            kind: "website",
+            sourceName: "compadex.com",
+            url: "https://www.compadex.com/nl/businesses/nl/snepvangers-installatiewerken",
+            relation: "Directory",
+            host: "compadex.com",
+          },
+          {
+            kind: "website",
+            sourceName: "warmtepompplek.nl",
+            url: "https://www.warmtepompplek.nl/bedrijf/snepvangers-installatiewerken-5071/",
+            relation: "Directory",
+            host: "warmtepompplek.nl",
+          },
+        ],
+      },
+    });
+    assert.equal(card.score, 1);
+    assert.equal(card.status, "geverifieerd");
+    assert.equal(card.evidence.length, 0);
+    assert.equal(card.badges.includes("lokaal_verbonden"), false);
+  });
+
+  it("badges a fetched club page and keeps a firm when that page is missing", () => {
+    const gated = applyShortlistGates({
+      place: "Zundert",
+      domainAgeByHost: { "snepvangers-installatiewerken.nl": null },
+      candidates: [snepvangers],
+    });
+    const plain = attachVerifiedLocalHits(gated.kept, []);
+    assert.equal(plain.length, 1);
+    assert.equal(plain[0]?.hits.length, 0);
+    const proved = attachVerifiedLocalHits(gated.kept, [
+      {
+        name: "Snepvangers Installatiewerken",
+        hits: [
+          {
+            kind: "sport",
+            sourceName: "FC Zundert",
+            url: "https://fczundert.nl/sponsors",
+            relation: "Sponsor van FC Zundert",
+            host: "fczundert.nl",
+          },
+        ],
+      },
+    ]);
+    const card = cardFromFound({
+      id: "99999999-9999-4999-8999-999999999991",
+      row: proved[0]!,
+      place: "Zundert",
+      tradeId: "hvac",
+      observedAt: "2026-11-01T13:42:24.719Z",
+    });
+    assert.equal(card.status, "lokaal_verbonden");
+    assert.deepEqual(
+      card.evidence.map((item) => item.url),
+      ["https://fczundert.nl/sponsors"],
+    );
+    assert.equal(card.score, 1);
+    assert.equal(citedLocalHits(snepvangers, { sources: [], companies: [] }).length, 0);
+  });
+
+  it("drops a young domain without a street and keeps an unknown age with a 076 and a street as gevonden", () => {
+    const young = applyShortlistGates({
+      place: "Zundert",
+      domainAgeByHost: { "nieuw.example": 1 },
+      candidates: [
+        {
+          name: "Nieuw Zonder Adres",
+          website: "https://nieuw.example",
+          address: "Zundert",
+          phone: "076 111 2233",
+          email: "info@nieuw.example",
+        },
+      ],
+    });
+    assert.equal(young.kept.length, 0);
+    assert.ok(young.dropped[0]?.includes("young domain"));
+    const unknown = applyShortlistGates({
+      place: "Zundert",
+      domainAgeByHost: { "snepvangers-installatiewerken.nl": null },
+      candidates: [snepvangers],
+    });
+    assert.equal(unknown.kept.length, 1);
+    assert.equal(unknown.kept[0]?.listing, "gevonden");
+    const youngLocal = applyShortlistGates({
+      place: "Zundert",
+      domainAgeByHost: { "snepvangers-installatiewerken.nl": 1 },
+      candidates: [snepvangers],
+    });
+    assert.equal(youngLocal.kept[0]?.listing, "gevonden");
+  });
+
+  it("does not treat the company's own page as a local association", () => {
+    const card = cardFromStoredFound(
+      {
+        id: "12121212-1212-4212-8212-121212121212",
+        name: "Kroon Energie Lisse",
+        website_url: "https://kroonenergie.nl",
+        phone: "0252 823079",
+        email: "info@kroonenergie.nl",
+        partnerTrust: {
+          status: "gevonden",
+          tradeId: "solar",
+          postcode4: "2161",
+          score: 1,
+          elementCodes: [],
+          matchNote: "Echte lokale vestiging in Lisse.",
+          facts: [
+            {
+              kind: "ov",
+              sourceUrl: "https://kroonenergie.nl/contact-kroon-energie-lisse/",
+              sourceName: "Kroon Energie",
+              observedAt: "2026-10-30T12:14:30.631Z",
+              expiresAt: "2027-01-28T12:14:30.631Z",
+            },
+            {
+              kind: "website",
+              sourceUrl: "https://kroonenergie.nl/",
+              sourceName: "kroonenergie.nl",
+              observedAt: "2026-10-30T12:14:30.631Z",
+              expiresAt: "2027-01-28T12:14:30.631Z",
+            },
+          ],
+        },
+      },
+      "Lisse",
+    );
+    assert.equal(card?.status, "gevonden");
+    assert.equal(card?.badges.includes("lokaal_verbonden"), false);
+    assert.equal(card?.evidence.length, 0);
+  });
+});
+
 describe("one search phase per invocation", () => {
   const store = new Proxy(
     {},
@@ -1465,11 +1694,14 @@ describe("one search phase per invocation", () => {
         filled: 0,
         contactOnly: 0,
       }),
+      readDomainAge: async () => null,
     });
     assert.equal(checked.continue, true);
     assert.equal(foundJob.read().payload.stage, "review");
     assert.equal(foundJob.read().payload.lock, undefined);
-    assert.equal(foundJob.read().public_result, null);
+    const published = foundJob.read().public_result as { companies?: { name?: string }[] };
+    assert.equal(published.companies?.length, 1);
+    assert.equal(published.companies?.[0]?.name, "JEZ de Jong Electro Zundert V.O.F.");
 
     const held = memoryAdmin(geminiJob("store", {
       found: [
@@ -1509,6 +1741,126 @@ describe("one search phase per invocation", () => {
     assert.equal(listed?.companies.length, 1);
     assert.equal(listed?.companies[0]?.name, "JEZ de Jong Electro Zundert V.O.F.");
     assert.equal(held.read().status, "ready");
+  });
+
+  it("publishes one stored firm and continues the live search", async () => {
+    const expires = new Date(Date.now() + 86_400_000).toISOString();
+    const store = {
+      listMissions: async () => [{ id: "m1", subsector: "local-network", notes: "" }],
+      listByMission: async () => [
+        {
+          id: "22222222-2222-4222-8222-222222222222",
+          name: "Snepvangers Installatiewerken",
+          website_url: "https://snepvangers-installatiewerken.nl",
+          phone: "0765977125",
+          email: "info@snepvangers-installatiewerken.nl",
+          partnerTrust: {
+            status: "gevonden",
+            tradeId: "hvac",
+            postcode4: "4881",
+            score: 1,
+            elementCodes: [],
+            matchNote: "Installatiebedrijf in Zundert.",
+            facts: [
+              {
+                kind: "website",
+                sourceUrl: "https://snepvangers-installatiewerken.nl/",
+                sourceName: "snepvangers-installatiewerken.nl",
+                observedAt: new Date().toISOString(),
+                expiresAt: expires,
+              },
+            ],
+          },
+        },
+      ],
+    };
+    const memory = memoryAdmin(geminiJob("lookup", { tradeId: "hvac", placeLabel: "Zundert", postcode4: "4881" }));
+    const result = await runGeminiFoundSlice({
+      admin: memory.admin,
+      store: store as never,
+      cells: {} as never,
+      jobId: "11111111-1111-4111-8111-111111111111",
+    });
+    const saved = memory.read();
+    const published = saved.public_result as {
+      fromCache?: boolean;
+      companies?: { name?: string; status?: string }[];
+    };
+    assert.equal(result.continue, true);
+    assert.equal(saved.status, "running");
+    assert.equal(saved.payload.stage, "find");
+    assert.equal(published.fromCache, true);
+    assert.equal(published.companies?.length, 1);
+    assert.equal(published.companies?.[0]?.name, "Snepvangers Installatiewerken");
+    assert.equal(published.companies?.[0]?.status, "gevonden");
+  });
+
+  it("returns stored firms when the live search keeps nobody, and no_results when nothing is stored", async () => {
+    const expires = new Date(Date.now() + 86_400_000).toISOString();
+    const store = {
+      listMissions: async () => [{ id: "m1", subsector: "local-network", notes: "" }],
+      listByMission: async () => [
+        {
+          id: "22222222-2222-4222-8222-222222222222",
+          name: "Snepvangers Installatiewerken",
+          website_url: "https://snepvangers-installatiewerken.nl",
+          phone: "0765977125",
+          email: "info@snepvangers-installatiewerken.nl",
+          partnerTrust: {
+            status: "gevonden",
+            tradeId: "hvac",
+            postcode4: "4881",
+            score: 1,
+            elementCodes: [],
+            matchNote: "Installatiebedrijf in Zundert.",
+            facts: [
+              {
+                kind: "website",
+                sourceUrl: "https://snepvangers-installatiewerken.nl/",
+                sourceName: "snepvangers-installatiewerken.nl",
+                observedAt: new Date().toISOString(),
+                expiresAt: expires,
+              },
+            ],
+          },
+        },
+      ],
+    };
+    const emptyFind = async () => ({
+      companies: [],
+      skipped: [],
+      raw: "",
+      parsed: true,
+      usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+      cutOff: false,
+    });
+    const withStore = memoryAdmin(geminiJob("find", { tradeId: "hvac", placeLabel: "Zundert", postcode4: "4881" }));
+    const kept = await runGeminiFoundSlice({
+      admin: withStore.admin,
+      store: store as never,
+      cells: {} as never,
+      jobId: "11111111-1111-4111-8111-111111111111",
+      findCompanies: emptyFind,
+    });
+    const keptSaved = withStore.read();
+    const keptPublic = keptSaved.public_result as { companies?: unknown[]; fromCache?: boolean };
+    assert.equal(kept.continue, false);
+    assert.equal(keptSaved.status, "ready");
+    assert.equal(keptPublic.fromCache, true);
+    assert.equal(keptPublic.companies?.length, 1);
+
+    const withoutStore = memoryAdmin(geminiJob("find"));
+    const none = await runGeminiFoundSlice({
+      admin: withoutStore.admin,
+      store: store as never,
+      cells: {} as never,
+      jobId: "11111111-1111-4111-8111-111111111111",
+      findCompanies: emptyFind,
+    });
+    assert.equal(none.continue, false);
+    assert.equal(withoutStore.read().status, "no_results");
+    const emptyPublic = withoutStore.read().public_result as { companies?: unknown[] };
+    assert.equal(emptyPublic.companies?.length, 0);
   });
 });
 
