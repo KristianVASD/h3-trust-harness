@@ -9,11 +9,9 @@ import {
   cardFromFound,
   cardFromStoredFound,
   lookupFoundOutcome,
-  mergeGeminiCandidates,
   publicHttpUrl,
   reviewedGeminiCompanies,
   selectFreshFound,
-  unreviewedShortlistCards,
   tradeLabel,
   type GeminiFoundCompany,
   type GeminiCandidate,
@@ -24,14 +22,8 @@ import {
   type HhhPublicShortlist,
   type TradeId,
 } from "@h3-trust/schema";
-import {
-  checkGeminiCandidateEvidence,
-  findGeminiLandscape,
-  findGeminiSourceCandidates,
-  findLocalCompanies,
-  reviewGeminiCompanies,
-} from "./hhh-gemini-search.js";
-import { fillCandidateContacts } from "./site-contact.js";
+import { findLocalCompanies, reviewGeminiCompanies } from "./hhh-gemini-search.js";
+import { fillCandidateContacts, screenCandidateSites } from "./site-contact.js";
 import { getPartnerJob, isShortlistResult, savePartnerJob } from "./hhh-shortlist-jobs.js";
 import {
   loadFoundCompaniesForPlace,
@@ -41,12 +33,13 @@ import type { PlaceCellStore } from "./place-cell-store.js";
 import type { Store } from "@h3-trust/store";
 
 const STALE_MS = 90_000;
-/** Start another model wave only while the 60s function still has room to finish it. */
-const WAVE_BUDGET_MS = 30_000;
+/** A search that has not finished its review by then fails empty. */
+const SEARCH_BUDGET_MS = 3 * 60 * 1000;
 
 type GeminiStage =
   | "lookup"
   | "find"
+  | "check"
   | "sources"
   | "candidateEvidence"
   | "sourceCandidates"
@@ -67,6 +60,8 @@ type GeminiPayload = {
   elementCodes: string[];
   jobText: string;
   stage: GeminiStage;
+  /** Set when the job is created. The three-minute clock starts here. */
+  startedAt?: string;
   lock?: string;
   lockAt?: string;
   candidates: GeminiCandidate[];
@@ -128,6 +123,7 @@ export function readGeminiPayload(raw: Record<string, unknown>): GeminiPayload |
   const stages: GeminiStage[] = [
     "lookup",
     "find",
+    "check",
     "sources",
     "candidateEvidence",
     "sourceCandidates",
@@ -135,8 +131,7 @@ export function readGeminiPayload(raw: Record<string, unknown>): GeminiPayload |
     "store",
     "done",
   ];
-  const legacyStage =
-    raw.stage === "check" || raw.stage === "gate" ? "sources" : raw.stage;
+  const legacyStage = raw.stage === "gate" ? "check" : raw.stage;
   const stage = stages.includes(legacyStage as GeminiStage)
     ? (legacyStage as GeminiStage)
     : "lookup";
@@ -162,6 +157,7 @@ export function readGeminiPayload(raw: Record<string, unknown>): GeminiPayload |
       : [],
     jobText: asString(raw.jobText) ?? "",
     stage,
+    startedAt: asString(raw.startedAt),
     lock: asString(raw.lock),
     lockAt: asString(raw.lockAt),
     candidates: readCandidates(raw.candidates),
@@ -303,36 +299,6 @@ function publishHeld(payload: GeminiPayload): HhhPublicShortlist {
   return listed;
 }
 
-function candidateAnswerStage(stage: GeminiStage): boolean {
-  return (
-    stage === "candidateEvidence" ||
-    stage === "sourceCandidates" ||
-    stage === "review"
-  );
-}
-
-/** Firms are already named. Send those three instead of waiting for a review that did not start. */
-function publishUnreviewed(payload: GeminiPayload): HhhPublicShortlist | null {
-  if (payload.found.length > 0 || !candidateAnswerStage(payload.stage)) return null;
-  if (payload.candidates.length === 0) return null;
-  payload.stage = "done";
-  const listed = HhhPublicShortlistSchema.parse({
-    fromCache: false,
-    companies: unreviewedShortlistCards({
-      candidates: payload.candidates,
-      place: payload.placeLabel,
-      tradeId: payload.tradeId,
-      observedAt: new Date().toISOString(),
-      idFor: () => randomUUID(),
-    }),
-  });
-  note(
-    payload,
-    `Returning ${listed.companies.length} companies from the search. The final review did not finish.`,
-  );
-  return listed;
-}
-
 function noteCutOff(payload: GeminiPayload, label: string, cutOff: boolean): void {
   if (cutOff) note(payload, `${label} reply was incomplete.`);
 }
@@ -341,58 +307,69 @@ function searchPlace(payload: GeminiPayload): string {
   return [payload.placeLabel, payload.postcode4].filter(Boolean).join(" ");
 }
 
-/** Candidate discovery and the source map do not need each other's answers. */
-async function discoverWave(payload: GeminiPayload): Promise<void> {
-  const runFind = payload.stage === "find";
-  const trade = tradeLabel(payload.tradeId);
-  const [foundResult, landscapeResult] = await Promise.allSettled([
-    runFind
-      ? findLocalCompanies({
-          tradeLabel: trade,
-          jobText: payload.jobText,
-          place: searchPlace(payload),
-        })
-      : Promise.resolve(null),
-    findGeminiLandscape({
-      place: payload.placeLabel,
-      tradeLabel: trade,
-      jobText: payload.jobText,
-    }),
-  ]);
-  if (foundResult.status === "fulfilled" && foundResult.value) {
-    const found = foundResult.value;
-    addUsage(payload, found.usage);
-    payload.candidates = found.companies;
-    payload.findSkips = found.skipped;
-    payload.findRaw = found.raw || undefined;
+function searchExpired(payload: GeminiPayload): boolean {
+  const start = Date.parse(payload.startedAt ?? "");
+  return Number.isFinite(start) && Date.now() - start > SEARCH_BUDGET_MS;
+}
+
+type FindCompanies = typeof findLocalCompanies;
+type ScreenSites = typeof screenCandidateSites;
+type ReviewCompanies = typeof reviewGeminiCompanies;
+
+/** One model call. The site check and the review each get their own invocation. */
+async function findOnly(payload: GeminiPayload, findCompanies: FindCompanies): Promise<boolean> {
+  const tries = payload.progress.filter((line) => line.startsWith("Searching the live web")).length;
+  if (tries >= 2) {
+    payload.found = [];
+    payload.stage = "done";
+    note(payload, "Live search was started twice and did not finish.");
+    return true;
+  }
+  note(payload, "Searching the live web for local companies.");
+  const found = await findCompanies({
+    tradeLabel: tradeLabel(payload.tradeId),
+    jobText: payload.jobText,
+    place: searchPlace(payload),
+  });
+  addUsage(payload, found.usage);
+  payload.candidates = found.companies;
+  payload.findSkips = found.skipped;
+  payload.findRaw = found.raw || undefined;
+  note(
+    payload,
+    found.parsed
+      ? `Find step kept ${found.companies.length} companies${found.skipped.length ? `, skipped ${found.skipped.length}` : ""}.`
+      : "Find step reply was not usable JSON.",
+  );
+  noteCutOff(payload, "Find", found.cutOff);
+  if (payload.candidates.length === 0) {
+    payload.found = [];
+    payload.stage = "done";
+    return true;
+  }
+  payload.stage = "check";
+  return false;
+}
+
+async function checkSites(payload: GeminiPayload, screenSites: ScreenSites): Promise<boolean> {
+  const screened = await screenSites(payload.candidates, payload.evidence);
+  payload.candidates = screened.candidates;
+  payload.drops = [...payload.drops, ...screened.drops];
+  if (screened.filled > 0 || screened.contactOnly > 0) {
     note(
       payload,
-      found.parsed
-        ? `Find step kept ${found.companies.length} companies${found.skipped.length ? `, skipped ${found.skipped.length}` : ""}.`
-        : "Find step reply was not usable JSON.",
-    );
-    noteCutOff(payload, "Find", found.cutOff);
-  } else if (foundResult.status === "rejected") {
-    note(
-      payload,
-      `Find step unavailable: ${foundResult.reason instanceof Error ? foundResult.reason.message : String(foundResult.reason)}`,
+      `Site contact filled ${screened.filled} public email${screened.filled === 1 ? "" : "s"} and left ${screened.contactOnly} contact page${screened.contactOnly === 1 ? "" : "s"}.`,
     );
   }
-  if (landscapeResult.status === "fulfilled") {
-    payload.landscape = landscapeResult.value.landscape;
-    addUsage(payload, landscapeResult.value.usage);
-    note(
-      payload,
-      `Found ${landscapeResult.value.landscape.sources.length} cited local or professional sources.`,
-    );
-    noteCutOff(payload, "Source", landscapeResult.value.cutOff);
-  } else {
-    note(
-      payload,
-      `Source landscape unavailable: ${landscapeResult.reason instanceof Error ? landscapeResult.reason.message : String(landscapeResult.reason)}`,
-    );
+  if (payload.candidates.length === 0) {
+    payload.found = [];
+    payload.stage = "done";
+    note(payload, "No company site confirmed the name.");
+    return true;
   }
-  payload.stage = "candidateEvidence";
+  note(payload, `${payload.candidates.length} company sites confirmed. Ready for review.`);
+  payload.stage = "review";
+  return false;
 }
 
 export function candidateBatches(
@@ -401,92 +378,8 @@ export function candidateBatches(
   return [candidates.slice(0, 5), candidates.slice(5, 10)];
 }
 
-async function investigateWave(
-  payload: GeminiPayload,
-): Promise<HhhPublicShortlist | null> {
-  const trade = tradeLabel(payload.tradeId);
-  const runEvidence =
-    payload.stage === "candidateEvidence" && payload.candidates.length > 0;
-  const runExtra = payload.landscape.sources.length > 0;
-  const [evidenceResult, extraResult] = await Promise.allSettled([
-    runEvidence
-      ? checkGeminiCandidateEvidence({
-          place: payload.placeLabel,
-          tradeLabel: trade,
-          jobText: payload.jobText,
-          candidates: payload.candidates,
-          landscape: payload.landscape,
-        })
-      : Promise.resolve(null),
-    runExtra
-      ? findGeminiSourceCandidates({
-          place: payload.placeLabel,
-          tradeLabel: trade,
-          jobText: payload.jobText,
-          landscape: payload.landscape,
-        })
-      : Promise.resolve(null),
-  ]);
-  if (evidenceResult.status === "fulfilled" && evidenceResult.value) {
-    payload.evidence = evidenceResult.value.evidence;
-    addUsage(payload, evidenceResult.value.usage);
-    note(
-      payload,
-      `Recorded cited evidence for ${evidenceResult.value.evidence.companies.length} candidates.`,
-    );
-    noteCutOff(payload, "Evidence", evidenceResult.value.cutOff);
-  } else if (evidenceResult.status === "rejected") {
-    payload.evidence = { companies: [] };
-    note(
-      payload,
-      `Candidate evidence unavailable: ${evidenceResult.reason instanceof Error ? evidenceResult.reason.message : String(evidenceResult.reason)}`,
-    );
-  }
-  if (extraResult.status === "fulfilled" && extraResult.value) {
-    payload.candidates = mergeGeminiCandidates(
-      payload.candidates,
-      extraResult.value.candidates,
-      12,
-    );
-    payload.evidence = mergeEvidence(payload.evidence, extraResult.value.evidence);
-    addUsage(payload, extraResult.value.usage);
-    note(
-      payload,
-      `Added ${extraResult.value.candidates.length} cited source candidates; ${payload.candidates.length} to review.`,
-    );
-    noteCutOff(payload, "Source candidates", extraResult.value.cutOff);
-  } else if (extraResult.status === "rejected") {
-    note(
-      payload,
-      `Source candidates unavailable: ${extraResult.reason instanceof Error ? extraResult.reason.message : String(extraResult.reason)}`,
-    );
-  }
-  if (payload.candidates.length === 0) {
-    payload.found = [];
-    payload.stage = "done";
-    return HhhPublicShortlistSchema.parse({ fromCache: false, companies: [] });
-  }
-  payload.stage = "review";
-  return null;
-}
-
-function mergeEvidence(
-  left: GeminiEvidenceResult,
-  right: GeminiEvidenceResult,
-): GeminiEvidenceResult {
-  return { companies: [...left.companies, ...right.companies] };
-}
-
-async function review(payload: GeminiPayload): Promise<void> {
-  const contact = await fillCandidateContacts(payload.candidates, payload.evidence);
-  payload.candidates = contact.candidates;
-  if (contact.filled > 0 || contact.contactOnly > 0) {
-    note(
-      payload,
-      `Site contact filled ${contact.filled} public email${contact.filled === 1 ? "" : "s"} and left ${contact.contactOnly} contact page${contact.contactOnly === 1 ? "" : "s"}.`,
-    );
-  }
-  const result = await reviewGeminiCompanies({
+async function review(payload: GeminiPayload, reviewCompanies: ReviewCompanies): Promise<void> {
+  const result = await reviewCompanies({
     place: payload.placeLabel,
     tradeLabel: tradeLabel(payload.tradeId),
     jobText: payload.jobText,
@@ -545,9 +438,7 @@ function publishCards(
   return unique
     .sort(
       (a, b) =>
-        proved(b) - proved(a) ||
-        (b.sourceCount ?? b.score) - (a.sourceCount ?? a.score) ||
-        a.name.localeCompare(b.name, "nl"),
+        proved(b) - proved(a) || (b.sourceCount ?? b.score) - (a.sourceCount ?? a.score),
     )
     .slice(0, 3);
 }
@@ -663,10 +554,10 @@ export async function releaseHeldSearch(args: {
   if (args.job.status === "ready" || args.job.status === "failed") return null;
   if (args.job.payload.route !== "gemini-found") return null;
   const payload = readGeminiPayload(args.job.payload);
-  if (!payload || !canRun(payload)) return null;
-  const reviewed = payload.stage === "store";
-  const listed = reviewed ? publishHeld(payload) : publishUnreviewed(payload);
-  if (!listed) return null;
+  if (!payload || payload.stage !== "store" || payload.found.length === 0 || !canRun(payload)) {
+    return null;
+  }
+  const listed = publishHeld(payload);
   return commitSearchResult(
     {
       admin: args.admin,
@@ -676,7 +567,6 @@ export async function releaseHeldSearch(args: {
     },
     payload,
     listed,
-    reviewed,
   );
 }
 
@@ -687,6 +577,9 @@ export async function runGeminiFoundSlice(args: {
   jobId: string;
   lock?: string;
   release?: boolean;
+  findCompanies?: FindCompanies;
+  screenSites?: ScreenSites;
+  reviewCompanies?: ReviewCompanies;
 }): Promise<{ continue: boolean; lock?: string }> {
   const job = await getPartnerJob(args.admin, args.jobId);
   if (!job || job.status === "ready" || job.status === "failed")
@@ -705,101 +598,68 @@ export async function runGeminiFoundSlice(args: {
     publicResult,
   });
   try {
-    let outcome: "continue" | "ready" = "continue";
-    let persistFound = true;
-    const waveStarted = Date.now();
-    let waves = 0;
-    while (outcome === "continue" && payload.stage !== "done") {
-      if (waves > 0 && Date.now() - waveStarted > WAVE_BUDGET_MS) {
-        if (payload.stage === "store") {
-          publicResult = publishHeld(payload);
-          outcome = "ready";
-        } else {
-          const listed = publishUnreviewed(payload);
-          if (listed) {
-            publicResult = listed;
-            outcome = "ready";
-            persistFound = false;
-          }
-        }
-        break;
-      }
-      if (payload.stage === "lookup") {
-        outcome = await lookup(args.store, payload, (next) => (publicResult = next));
-      } else if (payload.stage === "find" || payload.stage === "sources") {
-        if (payload.stage === "find") {
-          const tries = payload.progress.filter((line) =>
-            line.startsWith("Searching the live web"),
-          ).length;
-          if (tries >= 2) {
-            payload.stage = "done";
-            note(payload, "Live search was started twice and did not finish.");
-            publicResult = HhhPublicShortlistSchema.parse({
-              fromCache: false,
-              companies: [],
-            });
-          } else {
-            note(payload, "Searching the live web for local companies.");
-            await savePartnerJob(args.admin, {
-              id: job.id,
-              status: "running",
-              payload: { ...payload },
-              publicResult,
-            });
-            await discoverWave(payload);
-          }
-        } else {
-          await discoverWave(payload);
-        }
-      } else if (
-        payload.stage === "candidateEvidence" ||
-        payload.stage === "sourceCandidates"
-      ) {
-        const listed = await investigateWave(payload);
-        if (listed) publicResult = listed;
-      } else if (payload.stage === "review") {
-        await review(payload);
-      } else if (payload.stage === "store") {
-        publicResult = publishHeld(payload);
-      } else outcome = "ready";
-      if (payload.stage === "done") outcome = "ready";
-      waves += 1;
-      if (outcome === "continue") {
-        await savePartnerJob(args.admin, {
-          id: job.id,
-          status: "running",
-          payload: { ...payload },
-          publicResult,
-        });
-      }
+    if (!payload.startedAt) payload.startedAt = new Date().toISOString();
+    if (payload.stage !== "store" && payload.stage !== "done" && searchExpired(payload)) {
+      payload.stage = "done";
+      payload.lock = undefined;
+      payload.lockAt = undefined;
+      note(payload, "The search ran for three minutes without a finished review.");
+      await savePartnerJob(args.admin, {
+        id: job.id,
+        status: "failed",
+        payload: { ...payload },
+        publicResult: HhhPublicShortlistSchema.parse({ fromCache: false, companies: [] }),
+      });
+      return { continue: false };
     }
+    const findCompanies = args.findCompanies ?? findLocalCompanies;
+    const screenSites = args.screenSites ?? screenCandidateSites;
+    const reviewCompanies = args.reviewCompanies ?? reviewGeminiCompanies;
+    let outcome: "continue" | "ready" = "continue";
+    const siteStage =
+      payload.stage === "check" ||
+      payload.stage === "sources" ||
+      payload.stage === "candidateEvidence" ||
+      payload.stage === "sourceCandidates";
+    if (payload.stage === "lookup") {
+      outcome = await lookup(args.store, payload, (next) => (publicResult = next));
+    } else if (payload.stage === "find" || (payload.stage === "sources" && payload.candidates.length === 0)) {
+      const finished = await findOnly(payload, findCompanies);
+      if (finished) {
+        publicResult = HhhPublicShortlistSchema.parse({ fromCache: false, companies: [] });
+        outcome = "ready";
+      }
+    } else if (siteStage) {
+      const finished = await checkSites(payload, screenSites);
+      if (finished) {
+        publicResult = HhhPublicShortlistSchema.parse({ fromCache: false, companies: [] });
+        outcome = "ready";
+      }
+    } else if (payload.stage === "review") {
+      await review(payload, reviewCompanies);
+    } else if (payload.stage === "store") {
+      publicResult = publishHeld(payload);
+      outcome = "ready";
+    } else outcome = "ready";
+    if (payload.stage === "done") outcome = "ready";
     if (outcome === "ready") {
       await commitSearchResult(
         args,
         payload,
         publicResult ??
           HhhPublicShortlistSchema.parse({ fromCache: false, companies: [] }),
-        persistFound,
       );
       return { continue: false };
     }
+    payload.lock = undefined;
+    payload.lockAt = undefined;
     await savePartnerJob(args.admin, {
       id: job.id,
       status: "running",
       payload: { ...payload },
-      publicResult,
+      publicResult: null,
     });
-    if (args.release) {
-      payload.lock = undefined;
-      payload.lockAt = undefined;
-      await savePartnerJob(args.admin, {
-        id: job.id,
-        status: "running",
-        payload: { ...payload },
-        publicResult,
-      });
-    }
-    return { continue: true, lock: args.release ? undefined : lock };
+    return { continue: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Shortlist step failed";
     console.error("[hhh-gemini]", message);

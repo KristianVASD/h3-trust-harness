@@ -1,5 +1,6 @@
 import {
   chooseSiteEmail,
+  companyNameOnPage,
   emailOnOwnHost,
   emailsInPage,
   foldTradeLabel,
@@ -17,6 +18,7 @@ type PageFetch = (url: string, timeoutMs?: number) => Promise<FetchedPage>;
 const PAGE_TIMEOUT_MS = 5000;
 const MAX_PAGES = 3;
 const CONCURRENCY = 4;
+const LEAD_HOST = /(?:^|\.)(?:werkspot|trustoo|zoofy|vergelijk)\.nl$/i;
 
 function namesMatch(left: string, right: string): boolean {
   const a = foldTradeLabel(left);
@@ -122,4 +124,58 @@ export async function fillCandidateContacts(
     else if (!after && next[index]!.contactUrl) contactOnly += 1;
   }
   return { candidates: next, filled, contactOnly };
+}
+
+/** One homepage read per firm. A lead site, a closed site, or a page without the company name stays out. */
+export async function screenCandidateSites(
+  candidates: readonly GeminiCandidate[],
+  evidence: GeminiEvidenceResult,
+  fetchImpl: PageFetch = fetchPage,
+): Promise<{
+  candidates: GeminiCandidate[];
+  drops: string[];
+  filled: number;
+  contactOnly: number;
+}> {
+  const judged = await mapPool(candidates, CONCURRENCY, async (candidate) => {
+    const host = websiteHost(candidate.website);
+    const home = publicHttpUrl(candidate.website);
+    if (host && LEAD_HOST.test(host)) {
+      return { drop: `${candidate.name}: lead site` as string | undefined, home, page: null as FetchedPage | null, candidate };
+    }
+    if (!host || !home) {
+      return { drop: `${candidate.name}: site did not load`, home, page: null, candidate };
+    }
+    const page = await fetchImpl(home, PAGE_TIMEOUT_MS).catch(() => null);
+    if (!page || !page.ok || pageBlocked(home, page.status, page.html, page.text)) {
+      return { drop: `${candidate.name}: site did not load`, home, page: null, candidate };
+    }
+    if (!companyNameOnPage(candidate.name, page.text)) {
+      return { drop: `${candidate.name}: name not on the company site`, home, page: null, candidate };
+    }
+    return { drop: undefined, home, page, candidate };
+  });
+  const kept: GeminiCandidate[] = [];
+  const drops: string[] = [];
+  const cache = new Map<string, FetchedPage>();
+  for (const row of judged) {
+    if (row.drop) {
+      drops.push(row.drop);
+      continue;
+    }
+    kept.push(row.candidate);
+    if (row.home && row.page) cache.set(row.home, row.page);
+  }
+  const contact = await fillCandidateContacts(kept, evidence, async (url, timeoutMs) => {
+    const key = publicHttpUrl(url);
+    const cached = key ? cache.get(key) : undefined;
+    if (cached) return cached;
+    return fetchImpl(url, timeoutMs);
+  });
+  return {
+    candidates: contact.candidates,
+    drops,
+    filled: contact.filled,
+    contactOnly: contact.contactOnly,
+  };
 }

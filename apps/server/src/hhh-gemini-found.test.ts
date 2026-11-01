@@ -13,14 +13,19 @@ import {
   reviewFoundFirms,
   reviewedGeminiCompanies,
   sameHostContactUrl,
+  rankFound,
   selectFoundFirms,
   selectFreshFound,
-  unreviewedShortlistCards,
   type GeminiCandidate,
   type GeminiEvidenceResult,
   type GeminiReview,
 } from "@h3-trust/schema";
-import { candidateBatches, readGeminiPayload } from "./hhh-gemini-run.js";
+import {
+  candidateBatches,
+  readGeminiPayload,
+  releaseHeldSearch,
+  runGeminiFoundSlice,
+} from "./hhh-gemini-run.js";
 import { fillCandidateContacts } from "./site-contact.js";
 import {
   filterCheckToCitations,
@@ -1286,30 +1291,160 @@ describe("four-step Gemini review", () => {
   });
 });
 
-describe("search answer before the final review", () => {
-  const ids = [
-    "11111111-1111-4111-8111-111111111111",
-    "22222222-2222-4222-8222-222222222222",
-    "33333333-3333-4333-8333-333333333333",
-  ];
+describe("three companies by source quality", () => {
+  it("keeps a local source ahead of a firm that only has a website and an earlier name", () => {
+    const ranked = rankFound([
+      {
+        name: "AAA Alleen Site",
+        website: "https://aaa.example",
+        sourceCount: 1,
+        matchNote: "Website.",
+        hits: [{ kind: "website" }],
+      },
+      {
+        name: "Zundert Club",
+        website: "https://zzz.example",
+        sourceCount: 1,
+        matchNote: "Lid van de plaatselijke vereniging.",
+        hits: [{ kind: "ov" }],
+      },
+    ]);
+    assert.deepEqual(
+      ranked.map((company) => company.name),
+      ["Zundert Club", "AAA Alleen Site"],
+    );
+  });
+});
 
-  it("sends three named firms and does not call them verified", () => {
-    const cards = unreviewedShortlistCards({
+type MemoryRow = {
+  id: string;
+  request_id: string;
+  status: string;
+  payload: Record<string, unknown>;
+  public_result: unknown;
+};
+
+function memoryAdmin(initial: MemoryRow) {
+  let row: MemoryRow = {
+    ...initial,
+    payload: { ...initial.payload },
+  };
+  const admin = {
+    from() {
+      return {
+        select() {
+          return {
+            eq() {
+              return {
+                maybeSingle: async () => ({
+                  data: { ...row, payload: { ...row.payload } },
+                  error: null,
+                }),
+              };
+            },
+          };
+        },
+        update(patch: Record<string, unknown>) {
+          return {
+            eq: async () => {
+              row = {
+                ...row,
+                status: String(patch.status ?? row.status),
+                payload: (patch.payload ?? row.payload) as Record<string, unknown>,
+                public_result: patch.public_result ?? null,
+              };
+              return { error: null };
+            },
+          };
+        },
+      };
+    },
+  };
+  return { admin: admin as never, read: () => row };
+}
+
+function geminiJob(stage: string, extra: Record<string, unknown> = {}): MemoryRow {
+  return {
+    id: "11111111-1111-4111-8111-111111111111",
+    request_id: "req-zundert",
+    status: "running",
+    public_result: null,
+    payload: {
+      route: "gemini-found",
+      requestId: "req-zundert",
+      placeLabel: "Zundert",
+      postcode4: "4881",
+      tradeId: "solar",
+      elementCodes: [],
+      jobText: "zonnepanelen",
+      lat: 51.47,
+      lon: 4.66,
+      stage,
+      startedAt: new Date().toISOString(),
+      candidates: [],
+      landscape: { sources: [] },
+      evidence: { companies: [] },
+      review: { companies: [] },
+      tokenUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+      found: [],
+      drops: [],
+      fromCache: false,
+      progress: [],
+      ...extra,
+    },
+  };
+}
+
+describe("one search phase per invocation", () => {
+  const store = new Proxy(
+    {},
+    { get: () => () => Promise.reject(new Error("no stored firms")) },
+  );
+
+  it("stops after find with the companies saved, an empty public list, and no lock", async () => {
+    const memory = memoryAdmin(geminiJob("find"));
+    const result = await runGeminiFoundSlice({
+      admin: memory.admin,
+      store: store as never,
+      cells: {} as never,
+      jobId: "11111111-1111-4111-8111-111111111111",
+      findCompanies: async () => ({
+        companies: [
+          {
+            name: "JEZ de Jong Electro Zundert V.O.F.",
+            website: "http://jez-electro.nl",
+            address: "Zundert",
+            phone: "+31765975861",
+            email: "",
+          },
+          {
+            name: "AAA Alleen Site",
+            website: "https://aaa.example",
+            address: "",
+            phone: "",
+            email: "",
+          },
+        ],
+        skipped: [],
+        raw: "",
+        parsed: true,
+        usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+        cutOff: false,
+      }),
+    });
+    const saved = memory.read();
+    assert.equal(result.continue, true);
+    assert.equal(result.lock, undefined);
+    assert.equal(saved.status, "running");
+    assert.equal(saved.public_result, null);
+    assert.equal(saved.payload.stage, "check");
+    assert.equal(saved.payload.lock, undefined);
+    assert.equal((saved.payload.candidates as unknown[]).length, 2);
+  });
+
+  it("runs the site check on the next invocation and publishes a stored review", async () => {
+    const foundJob = memoryAdmin(geminiJob("check", {
       candidates: [
-        {
-          name: "RJ Inspecties",
-          website: "",
-          address: "",
-          phone: "",
-          email: "",
-        },
-        {
-          name: "Werkspot Zundert",
-          website: "https://www.werkspot.nl/zundert",
-          address: "Molenstraat 1",
-          phone: "0761234567",
-          email: "",
-        },
         {
           name: "JEZ de Jong Electro Zundert V.O.F.",
           website: "http://jez-electro.nl",
@@ -1317,44 +1452,63 @@ describe("search answer before the final review", () => {
           phone: "+31765975861",
           email: "info@jez-electro.nl",
         },
+      ],
+    }));
+    const checked = await runGeminiFoundSlice({
+      admin: foundJob.admin,
+      store: store as never,
+      cells: {} as never,
+      jobId: "11111111-1111-4111-8111-111111111111",
+      screenSites: async (candidates) => ({
+        candidates: [...candidates],
+        drops: [],
+        filled: 0,
+        contactOnly: 0,
+      }),
+    });
+    assert.equal(checked.continue, true);
+    assert.equal(foundJob.read().payload.stage, "review");
+    assert.equal(foundJob.read().payload.lock, undefined);
+    assert.equal(foundJob.read().public_result, null);
+
+    const held = memoryAdmin(geminiJob("store", {
+      found: [
         {
-          name: "Fixionality",
-          website: "https://fixionality.nl",
-          address: "",
-          phone: "",
-          email: "",
-        },
-        {
-          name: "JEZ Electro",
-          website: "https://jez-electro.nl/contact",
-          address: "",
-          phone: "",
-          email: "",
-        },
-        {
-          name: "Alleen telefoon",
-          website: "",
-          address: "",
-          phone: "0760000000",
-          email: "",
+          name: "JEZ de Jong Electro Zundert V.O.F.",
+          website: "http://jez-electro.nl",
+          address: "Zundert",
+          phone: "+31765975861",
+          email: "info@jez-electro.nl",
+          sourceCount: 1,
+          matchNote: "Lokaal elektrobedrijf.",
+          hits: [
+            {
+              kind: "website",
+              sourceName: "jez-electro.nl",
+              url: "https://jez-electro.nl/",
+              relation: "site",
+              host: "jez-electro.nl",
+            },
+          ],
+          jobFit: true,
+          locationChecked: true,
+          evidenceLevel: "limited",
         },
       ],
-      place: "Zundert",
-      tradeId: "solar",
-      observedAt: "2026-11-01T12:34:00.000Z",
-      idFor: (index) => ids[index] ?? ids[0]!,
+    }));
+    const listed = await releaseHeldSearch({
+      admin: held.admin,
+      store: store as never,
+      cells: {} as never,
+      job: {
+        id: held.read().id,
+        status: held.read().status,
+        payload: held.read().payload,
+      },
     });
-    assert.deepEqual(
-      cards.map((card) => card.name),
-      ["JEZ de Jong Electro Zundert V.O.F.", "Fixionality", "Alleen telefoon"],
-    );
-    assert.equal(cards[0]?.status, "gevonden");
-    assert.deepEqual(cards[0]?.badges, ["gevonden", "beperkt_bewijs"]);
-    assert.equal(cards[0]?.email, "info@jez-electro.nl");
-    assert.equal(cards[0]?.evidence[0]?.url, "http://jez-electro.nl/");
-    assert.match(cards[0]?.matchNote ?? "", /eindcontrole is niet afgerond/);
-    assert.equal(cards[2]?.website, "");
-    assert.equal(cards[2]?.phone, "0760000000");
+    assert.equal(listed?.companies.length, 1);
+    assert.equal(listed?.companies[0]?.name, "JEZ de Jong Electro Zundert V.O.F.");
+    assert.equal(held.read().status, "ready");
   });
 });
 

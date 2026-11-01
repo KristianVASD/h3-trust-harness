@@ -53,12 +53,26 @@ function beginHhhShortlist(deps: ShortlistDeps, jobId: string, lock?: string): v
   );
 }
 
-/** Run stages in this invocation, then hand the rest to a fresh one before the 60s limit. */
+/** One gemini phase per invocation. The recommendation route still walks its own stages here. */
 async function runHhhChain(
   deps: ShortlistDeps,
   jobId: string,
   lock?: string,
 ): Promise<void> {
+  const first = await getPartnerJob(deps.admin, jobId);
+  if (first?.payload.route === "gemini-found") {
+    const result = await runHhhShortlistSlice({
+      admin: deps.admin,
+      store: deps.store,
+      cells: deps.cells,
+      jobId,
+      lock,
+    });
+    const latest = await getPartnerJob(deps.admin, jobId);
+    if (!latest || latest.status === "failed" || latest.status === "ready") return;
+    if (result.continue) scheduleHhhShortlistStep(jobId);
+    return;
+  }
   const started = Date.now();
   let nextLock = lock;
   for (let step = 0; step < 6; step += 1) {
@@ -79,6 +93,15 @@ async function runHhhChain(
     nextLock = result.lock;
   }
   scheduleHhhShortlistStep(jobId, nextLock);
+}
+
+function latestProgress(payload: Record<string, unknown>): string | undefined {
+  if (!Array.isArray(payload.progress)) return undefined;
+  for (let index = payload.progress.length - 1; index >= 0; index -= 1) {
+    const line = payload.progress[index];
+    if (typeof line === "string" && line.trim()) return line;
+  }
+  return undefined;
 }
 
 function nudgeIdleShortlist(
@@ -150,6 +173,7 @@ export function registerHhhShortlistRoutes(
           jobText: input.jobText ?? "",
           route: "gemini-found",
           stage: "lookup",
+          startedAt: new Date().toISOString(),
           lock: randomUUID(),
           lockAt: new Date().toISOString(),
           candidates: [],
@@ -201,7 +225,11 @@ export function registerHhhShortlistRoutes(
       return c.json({ jobId: job.id, status: "ready", ...job.public_result });
     }
     if (job.status === "failed") return c.json({ jobId: job.id, status: "failed" });
-    return c.json({ jobId: job.id, status: job.status });
+    return c.json({
+      jobId: job.id,
+      status: job.status,
+      progress: latestProgress(job.payload),
+    });
   });
 
   app.post("/api/partner/hhh/recommend", async (c) => {
